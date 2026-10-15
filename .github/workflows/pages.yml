@@ -1,0 +1,59 @@
+name: Validate and deploy static Pages
+
+on:
+  pull_request:
+  push:
+    branches: [main, develop, 'feature/**', 'release/**']
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate reviewed static site
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          package-manager-cache: false
+      - name: Test rejected artifacts
+        run: node --test scripts/check-site.test.mjs
+      - name: Validate actual site
+        run: |
+          test -d site
+          touch site/.nojekyll
+          node scripts/check-site.mjs site
+      - name: Upload reviewed site for main only
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'beidaomitu233/xinghui-admin-vue3'
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: site
+          retention-days: 1
+
+  deploy:
+    name: Deploy GitHub Pages
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'beidaomitu233/xinghui-admin-vue3'
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    concurrency:
+      group: github-pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Configure existing Pages site
+        uses: actions/configure-pages@v5
+      - name: Deploy validated artifact
+        id: deployment
+        uses: actions/deploy-pages@v4
