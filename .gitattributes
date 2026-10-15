@@ -1,0 +1,5 @@
+# Preserve the exact reviewed static artifact bytes on every checkout.
+site/** -text
+*.mjs text eol=lf
+*.yml text eol=lf
+*.md text eol=lf

@@ -1,0 +1,1 @@
+window._VBEN_ADMIN_PRO_APP_CONF_=Object.freeze({"VITE_APP_DEMO":true,"VITE_GLOB_API_URL":"/__static_demo_local_only__"});
