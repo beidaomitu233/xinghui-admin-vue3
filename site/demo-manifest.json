@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "mode": "static-demo",
+  "apiTransport": "local-only",
+  "persistence": "browser-local",
+  "base": "/xinghui-admin-vue3/",
+  "docsBase": "/xinghui-admin-vue3/docs/"
+}
