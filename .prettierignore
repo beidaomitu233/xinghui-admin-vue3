@@ -22,6 +22,6 @@ site/**
 scripts/check-site.mjs
 scripts/check-site.test.mjs
 .github/workflows/pages.yml
-README.md
-ATTRIBUTION.md
-THIRD_PARTY_NOTICES.md
+/README.md
+/ATTRIBUTION.md
+/THIRD_PARTY_NOTICES.md
