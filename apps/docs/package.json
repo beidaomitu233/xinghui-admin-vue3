@@ -1,0 +1,21 @@
+{
+  "name": "@xinghui/docs",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "vitepress dev . --host 127.0.0.1",
+    "check": "node scripts/check.mjs",
+    "check:partial": "node scripts/check.mjs --partial",
+    "test": "node scripts/check.mjs --self-test && node scripts/search-self-test.mjs && node scripts/base-path-self-test.mjs",
+    "build": "node scripts/build.mjs",
+    "build:partial": "node scripts/build.mjs --partial",
+    "preview": "vitepress preview . --host 127.0.0.1"
+  },
+  "devDependencies": {
+    "minisearch": "catalog:",
+    "vitepress": "catalog:",
+    "vue": "catalog:"
+  }
+}

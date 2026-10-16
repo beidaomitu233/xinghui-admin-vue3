@@ -1,0 +1,95 @@
+name: CI
+on:
+  pull_request:
+    branches: [main, master, develop]
+  push:
+    branches:
+      [
+        main,
+        master,
+        develop,
+        'feature/**',
+        'fix/**',
+        'release/**',
+        'releases/**',
+        'hotfix/**',
+      ]
+  workflow_dispatch:
+permissions:
+  contents: read
+env:
+  CI: true
+  TZ: Asia/Shanghai
+jobs:
+  test:
+    name: Root and application tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node
+      - run: mkdir -p .quality
+      - run: pnpm exec vitest run --dom --maxWorkers=2 --exclude '**/session-info.test.mjs' --exclude '**/captcha-state.test.mjs' --reporter=default --reporter=json --outputFile=.quality/root.json
+      - run: node scripts/verify-app-tests.mjs --root
+      - run: pnpm --filter @vben/web-ele test --maxWorkers=2 --reporter=default --reporter=json --outputFile=../../.quality/web-ele.json
+      - run: node scripts/verify-app-tests.mjs --self-test
+      - run: node scripts/verify-app-tests.mjs
+      - run: pnpm exec vitest run --dom apps/web-ele/src/api/core/session-info.test.mjs apps/web-ele/src/views/_core/authentication/captcha-state.test.mjs --reporter=default --reporter=json --outputFile=.quality/auth.json
+      - run: node scripts/verify-app-tests.mjs --auth
+      - run: node scripts/check-mock-secrets.mjs
+  check:
+    name: Project typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node
+      - run: pnpm check:type --force
+  lint:
+    name: Project lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node
+      - run: pnpm lint
+  build:
+    name: Production application and runtime API
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node
+      - run: node scripts/build-quality.mjs
+  docs:
+    name: Documentation completeness and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node
+      - run: pnpm --filter @xinghui/docs test
+      - run: pnpm docs:check
+      - run: pnpm build:docs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: documentation-site
+          path: apps/docs/.vitepress/dist
+          include-hidden-files: true
+          if-no-files-found: error
+  ci-ok:
+    name: Frontend quality gate
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    needs: [test, check, lint, build, docs]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node scripts/check-needs.mjs --self-test
+      - name: Require every dependency success
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+          REQUIRED_JOBS: test,check,lint,build,docs
+        run: node scripts/check-needs.mjs
