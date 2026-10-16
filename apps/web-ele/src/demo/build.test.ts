@@ -1,0 +1,83 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
+import { describe, expect, it } from 'vitest';
+
+import {
+  collectDemoIcons,
+  DEMO_CSP,
+  DEMO_MANIFEST,
+  DEMO_MARKER,
+  DEMO_RUNTIME,
+  demoHtml,
+  staticDemoPlugins,
+} from '../../demo-build';
+import { DEMO_MENUS, DEMO_PERMISSIONS } from './seed';
+
+describe('demo-only static publication build', () => {
+  it('does not install demo plugins for normal application mode', () => {
+    expect(staticDemoPlugins(false, '')).toEqual([]);
+  });
+  it('emits the agreed public evidence and blocks connections while preserving local assets', () => {
+    expect(DEMO_MANIFEST).toEqual({
+      schemaVersion: 1,
+      mode: 'static-demo',
+      apiTransport: 'local-only',
+      persistence: 'browser-local',
+      base: '/xinghui-admin-vue3/',
+      docsBase: '/xinghui-admin-vue3/docs/',
+    });
+    const html = demoHtml(
+      '<head><link rel="icon" href="/favicon.ico"><script>load("https://hm.baidu.com/hm.js")</script><script src="/xinghui-admin-vue3/_app.config.js"></script></head>',
+    );
+    expect(html).not.toContain('hm.baidu.com');
+    expect(html).toContain('VITE_APP_DEMO:true');
+    expect(html).toContain(DEMO_MARKER);
+    expect(html).toContain('/xinghui-admin-vue3/favicon.ico');
+    expect(html).toContain("connect-src 'none'");
+    expect(DEMO_CSP).toContain("script-src 'self'");
+    expect(DEMO_RUNTIME).toEqual({
+      VITE_APP_DEMO: true,
+      VITE_GLOB_API_URL: '/__static_demo_local_only__',
+    });
+  });
+  it('bundles actual local menu icons instead of relying on Iconify APIs', () => {
+    const workspace = resolve(import.meta.dirname, '../../../..');
+    const collections = collectDemoIcons(workspace);
+    const keyboard = collections.find((c) => c.prefix === 'mdi');
+    expect(
+      keyboard?.icons['keyboard-esc'] ?? keyboard?.aliases['keyboard-esc'],
+    ).toBeTruthy();
+    for (const menu of DEMO_MENUS.flatMap((m) => [m, ...(m.children ?? [])])) {
+      const [prefix, name] = String(menu.icon).split(':');
+      if (!prefix || !name) throw new Error('Invalid demo icon');
+      const collection = collections.find((c) => c.prefix === prefix);
+      expect(
+        collection?.icons[name] ?? collection?.aliases[name],
+        String(menu.icon),
+      ).toBeTruthy();
+    }
+  }, 30_000);
+  it('matches the real dictionary action predicates and leaves external writes disabled', () => {
+    const source = readFileSync(
+      resolve(import.meta.dirname, '../views/system/dict/index.vue'),
+      'utf8',
+    );
+    const actions = [...source.matchAll(/can\('(system:dict:[^']+)'\)/g)].map(
+      (m) => m[1],
+    );
+    expect(actions).toHaveLength(4);
+    for (const action of actions) expect(DEMO_PERMISSIONS).toContain(action);
+    expect(DEMO_PERMISSIONS).toContain('system:oss:download');
+    for (const action of [
+      'system:oss:upload',
+      'system:oss:remove',
+      'system:businessConfig:edit',
+      'ai:model:edit',
+      'ai:model:test',
+      'monitor:job:run',
+      'system:notificationTemplate:edit',
+    ])
+      expect(DEMO_PERMISSIONS).not.toContain(action);
+  });
+});

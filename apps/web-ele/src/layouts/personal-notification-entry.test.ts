@@ -1,0 +1,119 @@
+import { flushPromises, mount } from '@vue/test-utils';
+import { defineComponent, h, watch } from 'vue';
+import { createMemoryHistory, createRouter } from 'vue-router';
+
+import { useAccessStore } from '@vben/stores';
+
+import { createPinia, setActivePinia } from 'pinia';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { requireTestFixture } from '#/test-utils/required-fixture';
+
+import PersonalNotificationEntry from './personal-notification-entry.vue';
+
+const mocks = vi.hoisted(() => ({
+  getMyUnreadCount: vi.fn(),
+  listMyNotifications: vi.fn(),
+  markMyNotificationsRead: vi.fn(),
+}));
+
+vi.mock('#/api/system/personal-notification', () => ({
+  getMyUnreadCount: mocks.getMyUnreadCount,
+  listMyNotifications: mocks.listMyNotifications,
+  markMyNotificationsRead: mocks.markMyNotificationsRead,
+}));
+
+const PopoverStub = defineComponent({
+  props: { visible: Boolean },
+  emits: ['show'],
+  setup(props, { emit, slots }) {
+    watch(
+      () => props.visible,
+      (visible) => {
+        if (visible) emit('show');
+      },
+    );
+    return () =>
+      h('div', [slots.reference?.(), props.visible ? slots.default?.() : null]);
+  },
+});
+
+const ButtonStub = defineComponent({
+  inheritAttrs: false,
+  setup(_, { attrs, slots }) {
+    return () => h('button', attrs, slots.default?.());
+  },
+});
+
+function createTestRouter() {
+  return createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      {
+        path: '/notifications',
+        name: 'PersonalNotificationInbox',
+        component: { render: () => h('div') },
+      },
+    ],
+  });
+}
+
+describe('personal notification header entry', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    useAccessStore().setAccessToken('test-token');
+    vi.resetAllMocks();
+    mocks.getMyUnreadCount.mockResolvedValue(7);
+    mocks.listMyNotifications.mockResolvedValue({
+      items: [],
+      total: 0,
+      pageNum: 1,
+      pageSize: 5,
+    });
+    mocks.markMyNotificationsRead.mockResolvedValue(0);
+  });
+
+  it('shows the live unread count, loads a personal preview, and opens the inbox', async () => {
+    const router = createTestRouter();
+    await router.push('/notifications');
+    const wrapper = mount(PersonalNotificationEntry, {
+      global: {
+        plugins: [router],
+        stubs: {
+          'el-badge': {
+            props: ['value'],
+            template: '<span class="badge-value">{{ value }}<slot /></span>',
+          },
+          'el-alert': {
+            props: ['title'],
+            template: '<div>{{ title }}<slot /></div>',
+          },
+          'el-button': ButtonStub,
+          'el-popover': PopoverStub,
+          'el-tag': { template: '<span><slot /></span>' },
+        },
+      },
+    });
+    await flushPromises();
+
+    expect(wrapper.find('.badge-value').text()).toContain('7');
+    await wrapper.find('button[aria-label="个人通知"]').trigger('click');
+    await flushPromises();
+    expect(mocks.listMyNotifications).toHaveBeenCalledWith({
+      pageNum: 1,
+      pageSize: 5,
+    });
+    await requireTestFixture(
+      wrapper
+        .findAll('button')
+        .find((button) => button.text().includes('查看全部')),
+    ).trigger('click');
+    await flushPromises();
+    expect(router.currentRoute.value.name).toBe('PersonalNotificationInbox');
+
+    useAccessStore().setAccessToken(null);
+    await flushPromises();
+    expect(wrapper.find('.badge-value').text()).not.toContain('7');
+    wrapper.unmount();
+  });
+});

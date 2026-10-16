@@ -1,0 +1,13 @@
+/* UI-05: workspace surfaces follow the original neutral palette, independently
+   of the persisted accent preset. Existing locale/layout/auth storage is untouched. */
+html {
+  --background: 0 0% 100% !important;
+  --background-deep: 216 20.11% 95.47% !important;
+  --card: 0 0% 100% !important;
+}
+
+html.dark {
+  --background: 222.34deg 10.43% 12.27% !important;
+  --background-deep: 220deg 13.06% 9% !important;
+  --card: 222.34deg 10.43% 12.27% !important;
+}
