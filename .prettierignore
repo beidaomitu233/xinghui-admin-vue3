@@ -1,0 +1,27 @@
+dist
+dev-dist
+.local
+.output.js
+node_modules
+.nvmrc
+coverage
+CODEOWNERS
+.nitro
+.output
+
+
+**/*.svg
+**/*.sh
+
+public
+.npmrc
+*-lock.yaml
+
+# Reviewed static artifacts and public publication material have their own gate.
+site/**
+scripts/check-site.mjs
+scripts/check-site.test.mjs
+.github/workflows/pages.yml
+/README.md
+/ATTRIBUTION.md
+/THIRD_PARTY_NOTICES.md
