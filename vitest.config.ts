@@ -8,6 +8,9 @@ export default defineConfig({
     environment: 'happy-dom',
     exclude: [
       ...configDefaults.exclude,
+      // Static Pages use their independent node:test gate.
+      'scripts/check-site.test.mjs',
+      'site/**',
       '**/e2e/**',
       '**/dist/**',
       '**/.{idea,git,cache,output,temp}/**',
