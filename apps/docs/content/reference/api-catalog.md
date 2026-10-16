@@ -1,6 +1,8 @@
 # API 目录
 
-本页供集成开发者按路径定位 Controller、调用权限和请求 DTO。目录来自[版本组合](../releases/versions.md)的后端源码：32 个 Controller 类，其中30个包含 GET/POST/PUT/DELETE/PATCH映射，共147条路径（含资讯列表别名）。这是可核查的源码快照，不是运行时 Swagger，也不承诺未配置服务的接口可直接成功。
+本页供集成开发者按路径定位 Controller、调用权限和请求 DTO。保留的旧目录对应 v1.2.0 静态旧快照的教程基线：32 个 Controller，其中30个有HTTP映射，共147条方法/路径（含资讯列表别名）。[当前源码配对](../releases/versions.md)另新增6个一期AI Controller、59条映射，合计38个Controller、36个有映射、206条方法/路径。新增项逐条列在[当前源码一期新增AI接口](#当前源码一期新增-ai-接口)，不是通过改数量替代盘点。
+
+旧目录的签名与行号仍属于旧基线；新增节的行号属于后端 `79b4655b56621fbcdafe48eb858d312bd76eb465`。v1.2.0静态站不运行后端，当前源码AI一期未打独立发行Tag；本页不是运行时Swagger，也不承诺未配置服务的接口可直接成功。Agent/插件草案接口未收录为实现。
 
 ## 调用前提
 
@@ -817,6 +819,260 @@ public Result<String> demo()
 
 ```java
 public Result<String> demo()
+```
+
+:::
+
+## 当前源码一期新增 AI 接口
+
+以下六个 Controller 按后端 `79b4655b56621fbcdafe48eb858d312bd76eb465` 核对。表内为实际方法注解，服务端范围约束见本节说明；这些接口不属于 v1.2.0 的旧静态 API 快照。
+
+### 身份、范围与ID
+
+- 管理配置/应用/模板/资源要求表中平台身份与对应动作。配置部分动作兼容旧 `ai:model:*`，但activate/disable/archive仍使用各自新权限；不能把兼容列表读权限推广到启用。
+- 业务提交、状态、事件和取消的方法注解仅要求认证，服务层另验真实用户/tenant、应用准入、owner和业务引用。`FRONTEND/BACKGROUND/BOTH` 是应用使用范围，`TEST` 忽略这个前后台范围但不忽略允许主体和真实记录读取权限。当前HTTP没有接收客户端servicePrincipal的接口，也没有可直接使用的后台服务身份解析器。
+- 日志scope默认为 `OWN`，限定当前owner/tenant及当前允许的应用/版本；伪造其他tenantRef/subjectRef被拒绝。`AUDIT` 额外要求平台身份和 `ai:request:audit`，仍需list/query/export对应动作；审计只读元数据，不授予模型调用、业务取数或取消他人请求。
+- appId/requestId/configVersion/templateId/resourceId/各versionId及Key引用按字符串处理，即使Java路径参数为long也不要在JavaScript中转Number。revision、draftRevision、schemaVersion、modelIndex和页码为整数，不能与ID互换；分页total等Long在JSON按项目序列化规则为字符串。
+- 新AI响应no-store；preview及模板/资源、日志含private限制。凭据只写不回显，日志不存提示词/输入/输出正文；业务调用的record正文由服务端重取，不能在inputs中伪造身份或授权。
+
+### JSON DTO与返回摘要
+
+下表补足Controller签名中 `HttpServletRequest`、泛型与嵌套DTO的实际含义。所有revision必须来自当前读取；这些是字段合同摘要，不是可直接用于任意环境的样本数据。
+
+| 接口族 | 请求JSON/查询 | 成功data与边界 |
+| --- | --- | --- |
+| 配置创建/草稿 | Create=`draft,legacyModelId`；DraftChange=`revision,name,environment,providerCode,endpointUrl,protocol,timeoutSeconds,models,keys`；ModelInput=`modelRef,modelCode,jsonObject`；KeyInput=`keyRef,label,mode,envName,apiKey` | View含id、revision、activeVersion、脱敏draft、activePairs/latestTestId等；apiKey为WRITE_ONLY，不回显 |
+| 配置测试/启用 | TestStart=`revision,configVersion,confirmedCosts`；Activate=`revision,configVersion,onlyAvailable`；disable/archive=`revision` | TestRun含id/configId/configVersion/status/total/finished/pairs；Pair测试结果带安全错误和脱敏Key标签，未测/失败搭配不能准入 |
+| 应用创建/草稿 | Draft=`name,purpose,entryKey,policy`；更新外层=`revision,draft` | create返回字符串appId；View含appId/ownerId/entryKey/draft/draftRevision/publishedVersionId/enabled/revision |
+| 应用policy | `modelMode,models,modelFallback,template,inputNames,requirements,scope,allowedSubjects,allowedAuthorities,formId,timeoutSeconds,maxAttempts,maxConcurrent,maxTokens` | FIXED或ROUND_ROBIN；template为精确templateId/templateVersionId；一期requirements.tools必须false；maxTokens为总输出Token预算，非费用或输入Token上限 |
+| 应用发布/启停/回滚 | publish=`revision,testRequestIds`；enabled=`revision,enabled`；rollback=`revision,appVersionId` | Version或当前View；测试证据需匹配草稿/精确模型版本，发布不改变在途请求；options/models只接outputFormat/streaming，不开放工具选项 |
+| 应用预览 | `revision,businessRef,inputs` | PublishedPreview：绑定的精确模板版本、脱敏原文/输入/资源/最终消息及安全元数据；不生成模型请求 |
+| 业务提交 | `businessRef:{type,id},inputs,idempotencyKey` | HTTP202、Result.code=200，data为Request元数据；低代码type=`lowcode.record`，id=`formId:recordId`，inputs使用声明变量（摘要要求为user_request），idempotencyKey为UUID格式；受理不等于生成成功 |
+| 应用测试请求 | 提交字段再加 `revision,modelIndex`（从0开始） | 同为HTTP202 Request，kind=TEST、绑定draftRevision；普通业务kind=BUSINESS、绑定appVersionId；输入与输出不在Request元数据中 |
+| 摘要入口查询 | query `formId` | Entry=`appId,appVersionId,name`，无匹配可为null；服务端按真实表单和允许主体选择，客户端不能指定任意发布应用 |
+| 请求状态/取消 | 路径requestId；cancel无JSON业务参数 | Request含requestId/appId/appVersionId/draftRevision/kind/businessType/businessId/status/stage/errorCode/outputStarted/attemptCount/nullable用量及时间；id非授权凭据 |
+| 请求事件 | GET events，使用同一原始JWT认证 | `text/event-stream`，不是Result JSON；短期事件暂存有界，断线/窗口过期查原请求，不能拼接新请求内容充作成功 |
+| 日志 | query `scope,appId,requestId,businessId,modelRef,status,tenantRef,subjectRef,from,to,pageNum,pageSize`；from/to为ISO Instant | Page(records/total/pageNum/pageSize)、Detail(request/attempts/stages)、Statistics或受限导出列表；实际模型/Key版本和nullable用量可追踪，无正文 |
+| 模板 | TemplateDefinition=`name,purpose,owner,messages,variables,resources,maxChars`；save外层=`revision,definition` | create返回字符串ID；messages分INSTRUCTION/INPUT/DATA；变量声明默认/敏感/长度策略；resources固定精确资源版本与parameters/outputs映射 |
+| 模板/资源测试 | Test=`revision,appId,businessRef,inputs`，这里businessRef是字符串 `formId:recordId`，不同于应用提交的对象 | TestResult含outcome/fields/schemaVersion及脱敏preview/details；模板preview不存测试证明，test记录测试结果；资源测试不回显业务原值 |
+| 资源定义/审批 | ResourceDefinition=`name,domain,owner,source,formId,fields,subjects,applications,timeoutMillis`；save外层=`revision,definition`；submit/publish=`revision`；approval=`revision,approved`；enabled=`revision,enabled` | source固定代码注册 `lowcode.record`；批准生成不可变版本，变更草稿清除当前测试/审批；版本/引用/检查返回安全元数据，不开放任意URL/SQL |
+
+嵌套schema以 `AiApplicationPolicy`、`AiProviderRuntime.ModelBinding`、`TemplateDefinition`、`ResourceDefinition` 和 `TemplateDataService` 的records为准。应用formId非空时entryKey必须是 `lowcode.record.summary/{formId}`。配置测试、应用模型测试会真实出网，草稿保存、模板预览和日志查询不会出网。
+
+### HTTP错误与业务码
+
+新AI局部错误合同与旧目录中的全局Result处理分开：400/413/415/422→业务码202，401→311，403→309，404→204，409→201，429/500/503/504→203；成功/受理业务码200。错误message为固定安全分类、data为空，不把HTTP503解释成业务码503。
+
+| 边界 | 具体HTTP规则 |
+| --- | --- |
+| Runtime提交/测试/预览及请求查询 | UNAUTHENTICATED401；FORBIDDEN/RESOURCE_FORBIDDEN403；NOT_FOUND404；VERSION_CONFLICT及不可用模型/Key/模板/资源409；INVALID_INPUT400；MISSING_VARIABLE/CAPABILITY_UNSUPPORTED422；RESOURCE_TIMEOUT/DEADLINE_EXCEEDED504；RATE_LIMITED429；其他503 |
+| 应用管理Controller | 身份401、权限403、不存在404、版本冲突409、依赖/内部不可用503；其余AiRuntimeException422；非法参数/JSON400 |
+| 配置Controller | 按配置异常的status映射；message以AI_CONFIG及安全分类开头；参数400、内容类型415、权限403、依赖错误503 |
+| 模板/资源局部Advice | JSON/参数400、内容类型415、上传超限413、未登录401、权限403；ServiceException按冲突409/不存在404/依赖503/参数422；AiRuntimeException422；DB不可用503、意外异常500 |
+| 日志Controller | FORBIDDEN403、NOT_FOUND404、INVALID_INPUT/绑定参数400，其余AiRuntimeException503 |
+
+Runtime的提交、测试和preview请求仅接受application/json及identity编码，最多32KiB，边界拒绝413/415并返回追踪ID。表内错误映射描述具体Controller/Advice，实际认证过滤器仍先执行；不把管理接口错误与业务运行错误混成同一套固定HTTP状态。SSE已提交后不能改写成HTTP错误JSON；查询Request终态定位失败，不能仅看初始202。
+
+源码补充：`ai/config/AiConfigurationDtos.java`、`ai/application/AiApplicationPolicy.java`、`AiApplicationStore.java`、`AiApplicationPreview.java`、`AiRuntimeService.java`、`AiRuntimeBoundaryFilter.java`、`AiRequestLogService.java`、`AiHttpFailures.java`，以及 `ai/template/TemplateDefinition.java`、`ResourceDefinition.java`、`TemplateDataService.java`、`TemplateResponsePolicy.java`（均位于 `system-admin/src/main/java/com/xinghuiTec/`）。
+
+### DataResourceAdminController
+
+源码：`system-admin/src/main/java/com/xinghuiTec/ai/template/DataResourceAdminController.java`。
+
+| 方法 | 后端路径 | 方法注解权限 | 注解行 |
+| --- | --- | --- | --- |
+| GET | `/system/ai/data-resources` | `@platformAccess.isPlatformIdentity() and hasAuthority('ai:data:list')` | 15 |
+| GET | `/system/ai/data-resources/sources` | `@platformAccess.isPlatformIdentity() and hasAuthority('ai:data:query')` | 17 |
+| GET | `/system/ai/data-resources/{id}` | `@platformAccess.isPlatformIdentity() and hasAuthority('ai:data:query')` | 20 |
+| POST | `/system/ai/data-resources` | `@platformAccess.isPlatformIdentity() and hasAuthority('ai:data:add')` | 22 |
+| PUT | `/system/ai/data-resources/{id}/draft` | `@platformAccess.isPlatformIdentity() and hasAuthority('ai:data:edit')` | 24 |
+| POST | `/system/ai/data-resources/{id}/test` | `@platformAccess.isPlatformIdentity() and hasAuthority('ai:data:test')` | 26 |
+| POST | `/system/ai/data-resources/{id}/submit` | `@platformAccess.isPlatformIdentity() and hasAuthority('ai:data:submit')` | 28 |
+| POST | `/system/ai/data-resources/{id}/approval` | `@platformAccess.isPlatformIdentity() and hasAuthority('ai:data:approve')` | 30 |
+| PATCH | `/system/ai/data-resources/{id}/enabled` | `@platformAccess.isPlatformIdentity() and hasAuthority('ai:data:disable')` | 32 |
+| GET | `/system/ai/data-resources/{id}/checks` | `@platformAccess.isPlatformIdentity() and hasAuthority('ai:data:query')` | 34 |
+| GET | `/system/ai/data-resources/{id}/versions/{version}` | `@platformAccess.isPlatformIdentity() and hasAuthority('ai:data:query')` | 36 |
+| GET | `/system/ai/data-resources/{id}/versions/{version}/references` | `@platformAccess.isPlatformIdentity() and hasAuthority('ai:data:query')` | 38 |
+
+::: details 请求参数与返回类型（该提交源码签名）
+
+```java
+public Result<Page> page(@RequestParam(defaultValue="1") int pageNum, @RequestParam(defaultValue="20") int pageSize)
+public Result<?> sources()
+public Result<?> get(@PathVariable long id)
+public Result<String> create(@RequestBody ResourceDefinition definition)
+public Result<?> save(@PathVariable long id, @RequestBody Draft<ResourceDefinition> request)
+public Result<?> test(@PathVariable long id, @RequestBody Test request)
+public Result<?> submit(@PathVariable long id, @RequestBody Revision request)
+public Result<?> approval(@PathVariable long id, @RequestBody Approval request)
+public Result<?> enabled(@PathVariable long id, @RequestBody Enabled request)
+public Result<?> checks(@PathVariable long id)
+public Result<?> version(@PathVariable long id, @PathVariable long version)
+public Result<?> references(@PathVariable long id, @PathVariable long version)
+```
+
+:::
+
+### TemplateAdminController
+
+源码：`system-admin/src/main/java/com/xinghuiTec/ai/template/TemplateAdminController.java`。
+
+| 方法 | 后端路径 | 方法注解权限 | 注解行 |
+| --- | --- | --- | --- |
+| GET | `/system/ai/templates` | `@platformAccess.isPlatformIdentity() and hasAuthority('ai:template:list')` | 14 |
+| GET | `/system/ai/templates/options` | `@platformAccess.isPlatformIdentity() and hasAnyAuthority('ai:template:query','ai:application:query','ai:application:add','ai:application:edit','ai:application:test')` | 16 |
+| GET | `/system/ai/templates/legacy-scenes` | `@platformAccess.isPlatformIdentity() and hasAuthority('ai:template:query')` | 22 |
+| GET | `/system/ai/templates/{id}` | `@platformAccess.isPlatformIdentity() and hasAuthority('ai:template:query')` | 24 |
+| POST | `/system/ai/templates` | `@platformAccess.isPlatformIdentity() and hasAuthority('ai:template:add')` | 26 |
+| PUT | `/system/ai/templates/{id}/draft` | `@platformAccess.isPlatformIdentity() and hasAuthority('ai:template:edit')` | 28 |
+| POST | `/system/ai/templates/{id}/preview` | `@platformAccess.isPlatformIdentity() and hasAuthority('ai:template:preview')` | 30 |
+| POST | `/system/ai/templates/{id}/test` | `@platformAccess.isPlatformIdentity() and hasAuthority('ai:template:test')` | 32 |
+| POST | `/system/ai/templates/{id}/publish` | `@platformAccess.isPlatformIdentity() and hasAuthority('ai:template:publish')` | 34 |
+| PATCH | `/system/ai/templates/{id}/enabled` | `@platformAccess.isPlatformIdentity() and hasAuthority('ai:template:disable')` | 36 |
+| GET | `/system/ai/templates/{id}/versions/{version}` | `@platformAccess.isPlatformIdentity() and hasAuthority('ai:template:query')` | 38 |
+| GET | `/system/ai/templates/{id}/versions/{version}/references` | `@platformAccess.isPlatformIdentity() and hasAuthority('ai:template:query')` | 40 |
+
+::: details 请求参数与返回类型（该提交源码签名）
+
+```java
+public Result<Page> page(@RequestParam(defaultValue="1") int pageNum, @RequestParam(defaultValue="20") int pageSize)
+public Result<OptionsPage> options(@RequestParam(defaultValue="1") int pageNum, @RequestParam(defaultValue="20") int pageSize, @RequestParam(required=false) String keyword, @RequestParam(required=false) String appId)
+public Result<Page> legacy(@RequestParam(defaultValue="1") int pageNum, @RequestParam(defaultValue="20") int pageSize)
+public Result<?> get(@PathVariable long id)
+public Result<String> create(@RequestBody TemplateDefinition definition)
+public Result<?> save(@PathVariable long id, @RequestBody Draft<TemplateDefinition> draft)
+public Result<?> preview(@PathVariable long id, @RequestBody Test request)
+public Result<?> test(@PathVariable long id, @RequestBody Test request)
+public Result<?> publish(@PathVariable long id, @RequestBody Revision request)
+public Result<?> enabled(@PathVariable long id, @RequestBody Enabled request)
+public Result<?> version(@PathVariable long id, @PathVariable long version)
+public Result<?> references(@PathVariable long id, @PathVariable long version)
+```
+
+:::
+
+### AiApplicationAdminController
+
+源码：`system-admin/src/main/java/com/xinghuiTec/controller/AiApplicationAdminController.java`。
+
+| 方法 | 后端路径 | 方法注解权限 | 注解行 |
+| --- | --- | --- | --- |
+| GET | `/system/ai/applications` | `@platformAccess.isPlatformIdentity() and hasAuthority('ai:application:list')` | 42 |
+| GET | `/system/ai/applications/{id}` | `@platformAccess.isPlatformIdentity() and hasAuthority('ai:application:query')` | 50 |
+| GET | `/system/ai/applications/{id}/health` | `@platformAccess.isPlatformIdentity() and hasAuthority('ai:application:query')` | 56 |
+| GET | `/system/ai/applications/options/models` | `@platformAccess.isPlatformIdentity() and (hasAuthority('ai:application:query') or hasAuthority('ai:application:add') or hasAuthority('ai:application:edit') or hasAuthority('ai:application:test'))` | 62 |
+| GET | `/system/ai/applications/options/keys` | `@platformAccess.isPlatformIdentity() and (hasAuthority('ai:application:query') or hasAuthority('ai:application:add') or hasAuthority('ai:application:edit') or hasAuthority('ai:application:test'))` | 72 |
+| GET | `/system/ai/applications/{id}/test-evidence` | `@platformAccess.isPlatformIdentity() and (hasAuthority('ai:application:query') or hasAuthority('ai:application:test') or hasAuthority('ai:application:publish'))` | 87 |
+| POST | `/system/ai/applications` | `@platformAccess.isPlatformIdentity() and hasAuthority('ai:application:add')` | 93 |
+| PUT | `/system/ai/applications/{id}/draft` | `@platformAccess.isPlatformIdentity() and hasAuthority('ai:application:edit')` | 99 |
+| POST | `/system/ai/applications/{id}/publish` | `@platformAccess.isPlatformIdentity() and hasAuthority('ai:application:publish')` | 106 |
+| GET | `/system/ai/applications/{id}/versions` | `@platformAccess.isPlatformIdentity() and hasAuthority('ai:application:query')` | 112 |
+| POST | `/system/ai/applications/{id}/enabled` | `@platformAccess.isPlatformIdentity() and hasAuthority('ai:application:enable')` | 118 |
+| POST | `/system/ai/applications/{id}/rollback` | `@platformAccess.isPlatformIdentity() and hasAuthority('ai:application:publish')` | 125 |
+
+::: details 请求参数与返回类型（该提交源码签名）
+
+```java
+public Result<AiApplicationStore.Page> page(@RequestParam(defaultValue = "1") int pageNum, @RequestParam(defaultValue = "20") int pageSize, @RequestParam(required = false) String search)
+public Result<AiApplicationStore.View> get(@PathVariable long id)
+public Result<AiApplicationService.Health> health(@PathVariable long id)
+public Result<List<AiProviderRuntime.AvailableModel>> models( @RequestParam(defaultValue = "TEXT") OutputFormat outputFormat, @RequestParam(defaultValue = "true") boolean streaming)
+public Result<List<AiProviderRuntime.Target>> keys(@RequestParam String modelRef, @RequestParam String configVersion)
+public Result<List<AiApplicationService.EvidenceView>> testEvidence(@PathVariable long id)
+public Result<String> create(@RequestBody AiApplicationStore.Draft draft)
+public Result<AiApplicationStore.View> draft(@PathVariable long id, @RequestBody DraftChange change)
+public Result<AiApplicationService.Version> publish(@PathVariable long id, @RequestBody Publish publish)
+public Result<List<AiApplicationService.Version>> versions(@PathVariable long id)
+public Result<AiApplicationStore.View> enabled(@PathVariable long id, @RequestBody Enabled enabled)
+public Result<AiApplicationStore.View> rollback(@PathVariable long id, @RequestBody Rollback rollback)
+```
+
+:::
+
+### AiConfigurationController
+
+源码：`system-admin/src/main/java/com/xinghuiTec/controller/AiConfigurationController.java`。
+
+| 方法 | 后端路径 | 方法注解权限 | 注解行 |
+| --- | --- | --- | --- |
+| GET | `/system/ai/configurations` | `@platformAccess.isPlatformIdentity() and (hasAuthority('ai:config:list') or hasAuthority('ai:model:list'))` | 23 |
+| GET | `/system/ai/configurations/{id}` | `@platformAccess.isPlatformIdentity() and (hasAuthority('ai:config:query') or hasAuthority('ai:model:query'))` | 30 |
+| POST | `/system/ai/configurations` | `@platformAccess.isPlatformIdentity() and (hasAuthority('ai:config:add') or hasAuthority('ai:model:add'))` | 33 |
+| PUT | `/system/ai/configurations/{id}/draft` | `@platformAccess.isPlatformIdentity() and (hasAuthority('ai:config:edit') or hasAuthority('ai:model:edit'))` | 36 |
+| GET | `/system/ai/configurations/{id}/versions` | `@platformAccess.isPlatformIdentity() and (hasAuthority('ai:config:query') or hasAuthority('ai:model:query'))` | 39 |
+| GET | `/system/ai/configurations/{id}/impact` | `@platformAccess.isPlatformIdentity() and (hasAuthority('ai:config:query') or hasAuthority('ai:model:query'))` | 42 |
+| POST | `/system/ai/configurations/{id}/test-runs` | `@platformAccess.isPlatformIdentity() and (hasAuthority('ai:config:test') or hasAuthority('ai:model:test'))` | 45 |
+| GET | `/system/ai/configurations/{id}/test-runs/{testId}` | `@platformAccess.isPlatformIdentity() and (hasAuthority('ai:config:test') or hasAuthority('ai:model:test'))` | 48 |
+| POST | `/system/ai/configurations/{id}/test-runs/{testId}/cancel` | `@platformAccess.isPlatformIdentity() and (hasAuthority('ai:config:test') or hasAuthority('ai:model:test'))` | 51 |
+| POST | `/system/ai/configurations/{id}/activate` | `@platformAccess.isPlatformIdentity() and hasAuthority('ai:config:enable')` | 54 |
+| POST | `/system/ai/configurations/{id}/disable` | `@platformAccess.isPlatformIdentity() and hasAuthority('ai:config:enable')` | 57 |
+| POST | `/system/ai/configurations/{id}/archive` | `@platformAccess.isPlatformIdentity() and hasAuthority('ai:config:archive')` | 60 |
+
+::: details 请求参数与返回类型（该提交源码签名）
+
+```java
+public Result<Page> page(@RequestParam(defaultValue="1") int pageNum,@RequestParam(defaultValue="20") int pageSize, @RequestParam(required=false) String name,@RequestParam(required=false) String providerCode, @RequestParam(required=false) String environment,@RequestParam(required=false) String status)
+public Result<View> get(@PathVariable String id)
+public Result<View> create(@RequestBody Create request)
+public Result<View> draft(@PathVariable String id,@RequestBody DraftChange request)
+public Result<java.util.List<Version>> versions(@PathVariable String id)
+public Result<?> impact(@PathVariable String id)
+public Result<TestRun> test(@PathVariable String id,@RequestBody TestStart request)
+public Result<TestRun> testResult(@PathVariable String id,@PathVariable String testId)
+public Result<TestRun> cancel(@PathVariable String id,@PathVariable String testId)
+public Result<View> activate(@PathVariable String id,@RequestBody Activate request)
+public Result<View> disable(@PathVariable String id,@RequestBody Revision request)
+public Result<View> archive(@PathVariable String id,@RequestBody Revision request)
+```
+
+:::
+
+### AiRequestLogController
+
+源码：`system-admin/src/main/java/com/xinghuiTec/controller/AiRequestLogController.java`。
+
+| 方法 | 后端路径 | 方法注解权限 | 注解行 |
+| --- | --- | --- | --- |
+| GET | `/system/ai/requests` | `hasAuthority('ai:request:list')` | 39 |
+| GET | `/system/ai/requests/{id}` | `hasAuthority('ai:request:query')` | 45 |
+| GET | `/system/ai/requests/statistics` | `hasAuthority('ai:request:list')` | 50 |
+| GET | `/system/ai/requests/export` | `hasAuthority('ai:request:export')` | 55 |
+
+::: details 请求参数与返回类型（该提交源码签名）
+
+```java
+public Result<AiRequestLogService.Page> list(@ModelAttribute Query query)
+public Result<AiRequestLogService.Detail> detail(@PathVariable long id, @ModelAttribute Query query)
+public Result<AiRequestLogService.Statistics> statistics(@ModelAttribute Query query)
+public Result<List<AiRequestLogService.Row>> export(@ModelAttribute Query query)
+```
+
+:::
+
+### AiRuntimeController
+
+源码：`system-admin/src/main/java/com/xinghuiTec/controller/AiRuntimeController.java`。
+
+| 方法 | 后端路径 | 方法注解权限 | 注解行 |
+| --- | --- | --- | --- |
+| POST | `/system/ai/applications/{appId}/preview` | `@platformAccess.isPlatformIdentity() and hasAuthority('ai:application:test')` | 34 |
+| POST | `/ai/applications/{appId}/requests` | `isAuthenticated()` | 42 |
+| POST | `/system/ai/applications/{appId}/test-requests` | `@platformAccess.isPlatformIdentity() and hasAuthority('ai:application:test')` | 51 |
+| GET | `/ai/applications/record-summary` | `isAuthenticated()` | 62 |
+| GET | `/ai/requests/{id}` | `isAuthenticated()` | 66 |
+| POST | `/ai/requests/{id}/cancel` | `isAuthenticated()` | 72 |
+| GET | `/ai/requests/{id}/events` | `isAuthenticated()` | 78 |
+
+::: details 请求参数与返回类型（该提交源码签名）
+
+```java
+public Result<com.xinghuiTec.ai.contract.AiTemplatePreviewRuntime.PublishedPreview> preview( @PathVariable long appId, HttpServletRequest request, HttpServletResponse response)
+public ResponseEntity<Result<AiRequestStore.Request>> submit(@PathVariable long appId, HttpServletRequest request, HttpServletResponse response)
+public ResponseEntity<Result<AiRequestStore.Request>> test(@PathVariable long appId, HttpServletRequest request, HttpServletResponse response)
+public Result<AiRuntimeService.Entry> entry(@RequestParam String formId)
+public Result<AiRequestStore.Request> status(@PathVariable long id, HttpServletResponse response)
+public Result<AiRequestStore.Request> cancel(@PathVariable long id, HttpServletResponse response)
+public SseEmitter events(@PathVariable long id, HttpServletResponse response)
 ```
 
 :::
