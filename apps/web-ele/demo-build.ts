@@ -14,6 +14,7 @@ export const DEMO_MANIFEST = {
   docsBase: '/xinghui-admin-vue3/docs/',
 };
 export const DEMO_MARKER = 'XINGHUI_STATIC_DEMO_LOCAL_ONLY_V1';
+export const DEMO_ICON_MODULE_ID = 'virtual:xinghui-demo-icons';
 export const DEMO_RUNTIME = {
   VITE_APP_DEMO: true,
   VITE_GLOB_API_URL: '/__static_demo_local_only__',
@@ -125,14 +126,14 @@ export function staticDemoPlugins(
   workspace: string,
 ): Plugin[] {
   if (!enabled) return [];
-  const id = '\0virtual:xinghui-demo-icons';
+  const id = `\0${DEMO_ICON_MODULE_ID}`;
   const iconEvidence: string[] = [];
   return [
     {
       name: 'xinghui-static-demo',
       enforce: 'post',
       resolveId(source) {
-        if (source === 'virtual:xinghui-demo-icons') return id;
+        if (source === DEMO_ICON_MODULE_ID) return id;
       },
       load(source) {
         if (source === id)
