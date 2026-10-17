@@ -25,7 +25,7 @@ function item(key = 'conversation-private-1'): ConversationItem {
     updatedAt: '2026-10-18T01:00:00Z',
   };
 }
-function render() {
+async function render() {
   const submit = vi.fn<
     (draft: ConversationDraft) => Promise<ConversationAcceptance>
   >(async () => ({ conversationKey: item().key }));
@@ -48,6 +48,8 @@ function render() {
     },
     slots: { details: '次要请求统计' },
   });
+  // Let Element Plus finish its queued textarea measurement before a test changes or disposes the view.
+  await flushPromises();
   return { submit, wrapper };
 }
 function deferred() {
@@ -62,7 +64,7 @@ function deferred() {
 }
 describe('conversation presentation and scoped draft state', () => {
   it('uses title-only search and read-only audit empty-state wording', async () => {
-    const { wrapper } = render();
+    const { wrapper } = await render();
     await wrapper.setProps({
       scope: 'AUDIT',
       selected: null,
@@ -76,10 +78,11 @@ describe('conversation presentation and scoped draft state', () => {
     expect(wrapper.find('input[placeholder="搜索对话标题"]').exists()).toBe(
       true,
     );
+    await flushPromises();
     wrapper.unmount();
   });
   it('renders readable continuous turns and incomplete failures without exposing internal IDs or claiming a complete answer', async () => {
-    const { wrapper } = render();
+    const { wrapper } = await render();
     await wrapper.setProps({
       messages: [
         {
@@ -125,10 +128,11 @@ describe('conversation presentation and scoped draft state', () => {
     expect(
       wrapper.get('details.conversation-details').attributes('open'),
     ).toBeUndefined();
+    await flushPromises();
     wrapper.unmount();
   });
   it('retains a follow-up draft until admission is confirmed and never invents an assistant reply', async () => {
-    const { wrapper, submit } = render();
+    const { wrapper, submit } = await render();
     const admission = deferred();
     submit.mockReturnValueOnce(admission.promise);
     await wrapper.get('textarea').setValue('继续解释原因');
@@ -147,10 +151,11 @@ describe('conversation presentation and scoped draft state', () => {
     admission.resolve({ conversationKey: item().key });
     await flushPromises();
     expect(wrapper.get('textarea').element).toHaveProperty('value', '');
+    await flushPromises();
     wrapper.unmount();
   });
   it('retries an uncertain send with its exact original token and content while preserving newly typed text', async () => {
-    const { wrapper, submit } = render();
+    const { wrapper, submit } = await render();
     submit.mockRejectedValueOnce(new Error('lost admission'));
     await wrapper.get('textarea').setValue('原追问');
     await wrapper.get('form.conversation-composer').trigger('submit');
@@ -163,10 +168,11 @@ describe('conversation presentation and scoped draft state', () => {
       'value',
       '下一条尚未发送的追问',
     );
+    await flushPromises();
     wrapper.unmount();
   });
   it('does not erase another conversation draft when an earlier send completes late', async () => {
-    const { wrapper, submit } = render();
+    const { wrapper, submit } = await render();
     const admission = deferred();
     submit.mockReturnValueOnce(admission.promise);
     await wrapper.get('textarea').setValue('第一段会话的问题');
@@ -182,10 +188,11 @@ describe('conversation presentation and scoped draft state', () => {
     );
     await wrapper.setProps({ selected: item() });
     expect(wrapper.get('textarea').element).toHaveProperty('value', '');
+    await flushPromises();
     wrapper.unmount();
   });
   it('starts with a named scene and carries a newer unsent draft into the accepted new conversation', async () => {
-    const { wrapper, submit } = render();
+    const { wrapper, submit } = await render();
     const admission = deferred();
     submit.mockReturnValueOnce(admission.promise);
     await wrapper.setProps({ selected: null });
@@ -205,10 +212,11 @@ describe('conversation presentation and scoped draft state', () => {
       conversationKey: null,
       text: '第一问',
     });
+    await flushPromises();
     wrapper.unmount();
   });
   it('blocks impersonated follow-ups in audit-only views while keeping the transcript visible', async () => {
-    const { wrapper, submit } = render();
+    const { wrapper, submit } = await render();
     await wrapper.setProps({
       canReply: false,
       readonlyReason: '审计查看不可代替会话主人续聊',
@@ -226,10 +234,11 @@ describe('conversation presentation and scoped draft state', () => {
     expect(wrapper.text()).toContain('审计查看不可代替会话主人续聊');
     expect(wrapper.find('textarea').exists()).toBe(false);
     expect(submit).not.toHaveBeenCalled();
+    await flushPromises();
     wrapper.unmount();
   });
   it('allows a corrected fresh send after a definitive rejection and marks old unrecorded history honestly', async () => {
-    const { wrapper, submit } = render();
+    const { wrapper, submit } = await render();
     submit.mockRejectedValueOnce(
       new ConversationSendFailure('rejected', '请补充问题'),
     );
@@ -244,6 +253,7 @@ describe('conversation presentation and scoped draft state', () => {
     );
     await wrapper.setProps({ historyUnavailable: true });
     expect(wrapper.text()).toContain('旧记录未保留对话');
+    await flushPromises();
     wrapper.unmount();
   });
 });
