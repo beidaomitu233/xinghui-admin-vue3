@@ -120,6 +120,40 @@ beforeEach(() => {
   ]);
 });
 describe('persisted conversation workspace', () => {
+  it.each([
+    { codes: ['ai:scene:invoke'], label: 'invoke only' },
+    {
+      codes: ['ai:scene:invoke', 'ai:request:audit'],
+      label: 'invoke and audit without list',
+    },
+  ])(
+    'loads only the own index for $label without gaining management actions',
+    async ({ codes }) => {
+      access.accessCodes = codes;
+      const wrapper = render();
+      await flushPromises();
+      expect(api.list).toHaveBeenCalledWith(
+        expect.objectContaining({ scope: 'OWN' }),
+      );
+      await click(wrapper, '订单讨论');
+      expect(api.detail).toHaveBeenCalledWith(summary.conversationId, 'OWN');
+      expect(wrapper.text()).toContain('已保存的完整回答');
+      expect(wrapper.find('textarea[aria-label="消息内容"]').exists()).toBe(
+        true,
+      );
+      expect(wrapper.find('select[aria-label="会话范围"]').exists()).toBe(
+        false,
+      );
+      expect(wrapper.text()).not.toContain('Key 与模型');
+      expect(api.scenes.mock.calls.every(([url]) => url === '/ai/scenes')).toBe(
+        true,
+      );
+      expect(
+        api.list.mock.calls.every(([query]) => query.scope === 'OWN'),
+      ).toBe(true);
+      wrapper.unmount();
+    },
+  );
   it('shows streamed deltas and reconciles them with the persisted answer', async () => {
     let receive:
       | ((event: { sequence: number; text?: string; type: string }) => void)

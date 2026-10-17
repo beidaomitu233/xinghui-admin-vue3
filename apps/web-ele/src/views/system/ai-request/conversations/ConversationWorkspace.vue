@@ -88,6 +88,14 @@ const canSettings = computed(() =>
     /^ai:(?:config|model):(?:list|query|add|edit|test|enable)$/.test(code),
   ),
 );
+const canAudit = computed(
+  () => can('ai:request:list') && can('ai:request:audit'),
+);
+const canListConversations = computed(() =>
+  scope.value === 'AUDIT'
+    ? canAudit.value
+    : can('ai:scene:invoke') || can('ai:request:list'),
+);
 const activeMessage = computed(() =>
   [...(detail.value?.messages ?? [])]
     .toReversed()
@@ -111,7 +119,7 @@ const canReply = computed(
     (selected.value?.kind !== 'TEST' || can('ai:scene:test')),
 );
 async function loadList() {
-  if (!can('ai:request:list')) return;
+  if (!canListConversations.value) return;
   const run = ++listGeneration;
   listLoading.value = true;
   const session = access.accessToken;
@@ -513,7 +521,7 @@ onBeforeUnmount(() => {
 <template>
   <div>
     <div class="conversation-toolbar">
-      <label v-if="can('ai:request:audit')">
+      <label v-if="canAudit">
         范围
         <select v-model="scope" aria-label="会话范围">
           <option value="OWN">我的对话</option>
