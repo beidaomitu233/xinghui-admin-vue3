@@ -29,7 +29,7 @@ sourceKey为 `db.<实际表名>` 或 `lowcode.<表单ID>`；它们由选择器�
 
 ## 绑定定义与主子查询
 
-EditorInput增加bindings，CompiledScene增加BindingSnapshot列表；旧构造器与缺失JSON字段按空列表兼容。新绑定编译标识为scene-data-v2。每个快照保存完整定义、所选字段元数据及schemaFingerprint，后续新增列不扩大原全字段引用。外层服务须完整持久化，不接受客户端编译快照。
+EditorInput增加bindings，CompiledScene增加BindingSnapshot列表；旧构造器与缺失JSON字段按空列表兼容。新绑定编译标识为scene-data-v2。每个快照保存完整定义、所选字段和查询依赖元数据及schemaFingerprint。依赖包括PK、过滤、租户/软删除与主子关联两侧，read/authorize在取值前共同复核存在、可读性和类型；后续新增列不扩大原全字段引用。外层服务须完整持久化，不接受客户端编译快照。
 
 DataBinding包含variable、label、sourceKey、mode、fields、filters、limit、row、relation。mode为FIELD（单值）、ROW（对象）、TABLE或CHILDREN（数组）；空fields表示该次编译固定所有可读字段。row.currentRecord使用本次真实业务引用，固定row.key按真实主键匹配；无可读主键时不允许ROW或行候选。
 
@@ -51,9 +51,9 @@ HTTP不接受actor/tenant/authorities。真实身份进入有界只读事务工�
 
 FIELD/ROW/TABLE/CHILDREN分别保留单值/对象/数组，数字与null保留实际类型。普通文本包括花括号保持字符串，结构化字段无法安全解析时明确拒绝。单次替换允许中文与点号别名，例如 <code v-pre>{{客户.名称}}</code>；值不会再次展开或进入SYSTEM指令。
 
-最多16绑定、64字段、每绑定200行，limit+1判断截断，不为预览扫描无界总数。读取受最多10秒、调用deadline、取消及256KiB结果上限约束；普通长文本读取最多8193字符并在8192截断提示，结构化JSON不能以截断原文绕过秘密过滤。停止等待不保证驱动语句即时终止。
+最多16绑定、64字段、每绑定200行，limit+1判断截断，不为预览扫描无界总数。读取受最多10秒、调用deadline及取消约束。选择器独立数据预览值上限256KiB，场景渲染与模型全部消息上限64KiB，历史问答也在该预算内；普通长文本读取最多8193字符并在8192截断提示，结构化JSON不能以截断原文绕过秘密过滤。停止等待不保证驱动语句即时终止。
 
-previewBindings返回实际values、每项ReadReceipt及安全notices；低代码旧记录缺少后来新增字段时，返回null及FIELD_NOT_IN_RECORD_SCHEMA。render将同一定义的有权投影用于USER消息和独立JSON数据消息；authorize只查询权限、行存在与schema元数据，不解析业务正文。DTO/toString和默认操作日志不输出数据正文，预览响应no-store/private。
+previewBindings返回实际values、每项ReadReceipt及安全notices；低代码旧记录缺少后来新增字段时，返回null及FIELD_NOT_IN_RECORD_SCHEMA。render从固定CompiledScene一次读取，将同一投影用于USER及独立JSON消息，并以RenderedScene.bindingPreview返回实际values/reads。已保存场景预览复用这个结果，不用原Definition再次编译或取数；authorize只查询权限、行存在与schema元数据，不解析业务正文。DTO/toString和默认操作日志不输出数据正文，预览响应no-store/private。
 
 ## 旧版本兼容
 

@@ -869,11 +869,11 @@ DataBinding为variable/label/sourceKey/mode/fields/filters/limit/row/relation。
 
 sourceKey为db.加真实表名或lowcode.加表单ID。filters为field/operator/value列表，operator为EQ/NE/GT/GE/LT/LE/CONTAINS/IS_NULL/NOT_NULL；最多16个AND条件，null操作value须null。表及字段只接受真实元数据，值参数化。没有任意SQL或动态表达式入口。
 
-Definition新增同型dataBindings，并映射EditorInput.bindings；CompiledScene.bindings保存完整BindingSnapshot。支持中文与点号的变量可由选择器一键插入，单次替换。原outputRequirement若非空先无损合并进promptText；新界面只编辑合并正文。
+Definition新增同型dataBindings，并映射EditorInput.bindings；CompiledScene.bindings保存完整BindingSnapshot及查询依赖指纹，未投影的过滤/PK/关联字段也复核。已保存场景预览使用同次渲染的RenderedScene.bindingPreview，不重新编译原Definition或二次查询。支持中文与点号的变量可由选择器一键插入，单次替换。原outputRequirement若非空先无损合并进promptText；新界面只编辑合并正文。
 
 候选返回的businessRef可直接用于预览与运行：低代码为lowcode.record及formId:recordId；通用数据库为database.record及db1.前缀base64url引用，承载sourceKey和主键映射，最长2048字符。服务端解析、核对权限与真实来源，引用本身不授予读取权；后续请求/会话持久化与重连须保留完整内容。
 
-最多16绑定、64字段和每绑定200行；两POST仅application/json及identity编码，128KiB正文上限。读取最多10秒且受调用deadline，整体结果256KiB；长文本字段8192字符截断有提示，结构化JSON解析失败或超限明确拒绝。response为no-store/private，values保留数字/null/数组；reads含variable/sourceKey/rowCount/truncated。低代码旧记录缺少后来新增字段时返回null及FIELD_NOT_IN_RECORD_SCHEMA。
+最多16绑定、64字段和每绑定200行；两POST仅application/json及identity编码，128KiB正文上限。读取最多10秒且受调用deadline，选择器独立数据预览值上限256KiB；已保存场景渲染与模型总消息（提示词、数据及历史）合计上限64KiB。长文本字段8192字符截断有提示，结构化JSON解析失败或超限明确拒绝。response为no-store/private，values保留数字/null/数组；reads含variable/sourceKey/rowCount/truncated。低代码旧记录缺少后来新增字段时返回null及FIELD_NOT_IN_RECORD_SCHEMA。
 
 通用目录排除认证/凭据/配置等基础设施和秘密字段；JSON/\_json列递归过滤秘密键。已知业务动作、实际tenant与软删条件继续执行。单列FK可直接发现，复合FK不按单列冒充；无可读主键的表仅支持有界TABLE。详细接缝见[数据绑定扩展](../development/ai-extension.md)。
 
