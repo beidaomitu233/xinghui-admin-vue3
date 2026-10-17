@@ -53,6 +53,9 @@ const total = ref(0);
 const pageNum = ref(1);
 const pageSize = 20;
 const editing = shallowRef<View>();
+const editorLocked = computed(
+  () => busy.value || !can(editing.value ? 'edit' : 'add'),
+);
 const visible = ref(false);
 const name = ref('');
 const owner = ref('');
@@ -636,7 +639,7 @@ onMounted(load);
       destroy-on-close
       :close-on-click-modal="false"
     >
-      <el-form label-width="110px">
+      <el-form label-width="110px" :disabled="editorLocked">
         <div class="grid gap-3 md:grid-cols-2">
           <el-form-item label="名称" required>
             <el-input v-model="name" maxlength="100" />
@@ -767,7 +770,7 @@ onMounted(load);
               </el-checkbox>
               <el-checkbox
                 v-model="binding.omitOnMissing"
-                :disabled="binding.required"
+                :disabled="editorLocked || binding.required"
               >
                 允许缺记录/空数据时省略
               </el-checkbox>

@@ -4,8 +4,8 @@ import { defaultResponseInterceptor, RequestClient } from '@vben/request';
 
 import { describe, expect, it, vi } from 'vitest';
 
-import { DEMO_LOGIN, DEMO_MENUS, DEMO_STORAGE_KEY } from './seed';
 import { AI_DEMO_IDS } from './ai-readonly';
+import { DEMO_LOGIN, DEMO_MENUS, DEMO_STORAGE_KEY } from './seed';
 import {
   createDemoTransport,
   DEMO_TRANSPORT_MARKER,
@@ -55,7 +55,7 @@ describe('public static demo contracts', () => {
     const ai = menus.find((menu: { path: string }) => menu.path === '/ai');
     expect(menus).toHaveLength(4);
     expect(
-      ai.children.map((menu: { path: string; component: string }) => [
+      ai.children.map((menu: { component: string; path: string }) => [
         menu.path,
         menu.component,
       ]),
@@ -84,7 +84,7 @@ describe('public static demo contracts', () => {
     );
     expect(
       info.permissions.some((permission: string) =>
-        /^ai:.*:(test|publish|approve|enable|edit|add|invoke|audit|export)$/.test(
+        /^ai:.*:(?:test|publish|approve|enable|edit|add|invoke|audit|export)$/.test(
           permission,
         ),
       ),
@@ -100,10 +100,10 @@ describe('public static demo contracts', () => {
     expect(config.draft.keys).toEqual([]);
     expect(config.activePairs).toEqual([]);
     expect(config.latestTestId).toBeNull();
-    expect(
-      (await f.call(`/system/ai/configurations/${ids.config}/versions`))[0]
-        .activated,
-    ).toBe(false);
+    const configurationVersions = await f.call(
+      `/system/ai/configurations/${ids.config}/versions`,
+    );
+    expect(configurationVersions[0].activated).toBe(false);
     const apps = await f.call('/system/ai/applications');
     expect(apps.records).toHaveLength(1);
     const app = await f.call(`/system/ai/applications/${ids.app}`);
@@ -131,16 +131,15 @@ describe('public static demo contracts', () => {
     const resource = await f.call(`/system/ai/data-resources/${ids.resource}`);
     expect(resource.definition.fields).toEqual(['subject']);
     expect(resource.enabled).toBe(false);
-    expect(
-      (await f.call(`/system/ai/templates/${ids.template}/versions/1`))
-        .definition,
-    ).toEqual(template.definition);
+    const templateVersion = await f.call(
+      `/system/ai/templates/${ids.template}/versions/1`,
+    );
+    expect(templateVersion.definition).toEqual(template.definition);
     expect(
       await f.call(`/system/ai/data-resources/${ids.resource}/checks`),
     ).toEqual([]);
-    expect(
-      (await f.call('/system/ai/templates/options')).records[0],
-    ).toMatchObject({
+    const templateOptions = await f.call('/system/ai/templates/options');
+    expect(templateOptions.records[0]).toMatchObject({
       available: false,
       unavailableReasons: ['TEMPLATE_DISABLED', 'RESOURCE_DISABLED'],
     });
@@ -162,13 +161,13 @@ describe('public static demo contracts', () => {
       knownInputTokens: null,
       knownOutputTokens: null,
     });
-    expect(
-      (
-        await f.call('/system/ai/requests', 'GET', undefined, {
-          status: 'SUCCEEDED',
-        })
-      ).records,
-    ).toEqual([]);
+    const successfulLogs = await f.call(
+      '/system/ai/requests',
+      'GET',
+      undefined,
+      { status: 'SUCCEEDED' },
+    );
+    expect(successfulLogs.records).toEqual([]);
     expect(
       await f.call('/system/ai/requests/statistics', 'GET', undefined, {
         status: 'SUCCEEDED',
@@ -181,7 +180,7 @@ describe('public static demo contracts', () => {
     const before = f.storage.getItem(DEMO_STORAGE_KEY);
     const network = vi.spyOn(globalThis, 'fetch');
     try {
-      for (const [url, method] of [
+      const rejectedActions: [string, string][] = [
         [`/system/ai/configurations/${AI_DEMO_IDS.config}/test-runs`, 'POST'],
         [`/system/ai/configurations/${AI_DEMO_IDS.config}/draft`, 'PUT'],
         [`/system/ai/applications/${AI_DEMO_IDS.app}/publish`, 'POST'],
@@ -190,9 +189,10 @@ describe('public static demo contracts', () => {
         [`/system/ai/data-resources/${AI_DEMO_IDS.resource}/approval`, 'POST'],
         [`/system/ai/templates/${AI_DEMO_IDS.template}/publish`, 'POST'],
         [`/ai/applications/${AI_DEMO_IDS.app}/requests`, 'POST'],
-      ])
+      ];
+      for (const [url, method] of rejectedActions)
         await expect(
-          f.call(url!, method!, {
+          f.call(url, method, {
             apiKey: 'never-persist-this-fictional-input',
           }),
         ).rejects.toMatchObject({ response: { status: 501 } });
@@ -209,9 +209,10 @@ describe('public static demo contracts', () => {
         `/system/ai/configurations/${AI_DEMO_IDS.config}`,
       );
       config.name = 'mutated';
-      expect(
-        (await f.call(`/system/ai/configurations/${AI_DEMO_IDS.config}`)).name,
-      ).toContain('虚构');
+      const unchangedConfiguration = await f.call(
+        `/system/ai/configurations/${AI_DEMO_IDS.config}`,
+      );
+      expect(unchangedConfiguration.name).toContain('虚构');
       expect(network).not.toHaveBeenCalled();
       expect(f.storage.getItem(DEMO_STORAGE_KEY)).toBe(before);
     } finally {

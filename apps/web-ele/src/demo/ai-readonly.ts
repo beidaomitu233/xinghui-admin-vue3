@@ -72,7 +72,7 @@ const template: TemplateDefinition = {
   name: '[虚构只读] 记录摘要模板',
   purpose: '仅展示模板和资源引用，不预览取数或生成',
   owner: '虚构演示负责人',
-  maxChars: 12000,
+  maxChars: 12_000,
   messages: [
     {
       section: 'INSTRUCTION',
@@ -177,7 +177,7 @@ const log: RequestLogRow = {
   },
 };
 type Params = Record<string, unknown>;
-type Reply = { handled: false } | { handled: true; data: unknown };
+type Reply = { data: unknown; handled: true } | { handled: false };
 export class AiDemoFailure extends Error {
   constructor(
     public status: number,
@@ -390,7 +390,7 @@ export function readOnlyAiDemo(
   if (path === '/system/ai/requests/export')
     throw new AiDemoFailure(501, '静态演示仅支持查看，未发送请求');
   if (path === `/system/ai/requests/${AI_DEMO_IDS.request}`) {
-    if (!filteredLogs(params).length)
+    if (filteredLogs(params).length === 0)
       throw new AiDemoFailure(404, '筛选范围内没有该虚构记录');
     const detail: RequestLogDetail = {
       request: log,
@@ -411,7 +411,7 @@ export function readOnlyAiDemo(
     return send(detail);
   }
   // Retain the old read-only metadata endpoints for existing local demonstrations and tests.
-  if (/^\/system\/ai\/(models|prompts)(?:\/|$)/.test(path))
+  if (/^\/system\/ai\/(?:models|prompts)(?:\/|$)/.test(path))
     return { handled: false };
   throw new AiDemoFailure(404, '该 AI 读取未提供本地示例，不会连接网络');
 }
