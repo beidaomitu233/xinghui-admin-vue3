@@ -48,6 +48,33 @@ function fixture() {
   return { storage, call, login };
 }
 describe('public static demo contracts', () => {
+  it('serves named multi-key read contracts and dynamic providers without claiming a tested connection', async () => {
+    const f = fixture();
+    await f.login();
+    const page = await f.call('/system/ai/settings');
+    const view = await f.call(`/system/ai/settings/${AI_DEMO_IDS.config}`);
+    expect(page.records[0]).toEqual(view);
+    expect(view.keys.map((key: { name: string }) => key.name)).toEqual([
+      '主账号示例',
+      '备用账号示例',
+    ]);
+    expect(
+      view.keys.every(
+        (key: { keyConfigured: boolean; status: string }) =>
+          !key.keyConfigured && key.status === 'NOT_TESTED',
+      ),
+    ).toBe(true);
+    expect(view.active).toBe(false);
+    expect(view.connection.status).toBe('NOT_TESTED');
+    const providers = await f.call('/system/ai/settings/providers');
+    expect(
+      providers.map((provider: { code: string }) => provider.code),
+    ).toEqual(['openrouter', 'deepseek']);
+    const empty = await f.call('/system/ai/settings', 'GET', undefined, {
+      search: '不存在的渠道',
+    });
+    expect(empty.records).toEqual([]);
+  });
   it('uses four real phase-one roots and keeps AI pages independent of generic capabilities', async () => {
     const f = fixture();
     await f.login();
@@ -60,6 +87,7 @@ describe('public static demo contracts', () => {
         menu.component,
       ]),
     ).toEqual([
+      ['/ai/configurations', 'system/ai-config/index'],
       ['/ai/templates', 'system/ai-template/index'],
       ['/ai/requests', 'system/ai-request/index'],
     ]);
@@ -179,6 +207,11 @@ describe('public static demo contracts', () => {
     const network = vi.spyOn(globalThis, 'fetch');
     try {
       const rejectedActions: [string, string][] = [
+        ['/system/ai/model-catalog/draft-scan', 'POST'],
+        ['/system/ai/model-catalog/scan', 'POST'],
+        ['/system/ai/settings', 'POST'],
+        [`/system/ai/settings/${AI_DEMO_IDS.config}`, 'PUT'],
+        [`/system/ai/settings/${AI_DEMO_IDS.config}/connection-tests`, 'POST'],
         [`/system/ai/configurations/${AI_DEMO_IDS.config}/test-runs`, 'POST'],
         [`/system/ai/configurations/${AI_DEMO_IDS.config}/draft`, 'PUT'],
         [`/system/ai/applications/${AI_DEMO_IDS.app}/publish`, 'POST'],
@@ -303,7 +336,7 @@ describe('public static demo contracts', () => {
     ];
     for (const url of reads) expect(await f.call(url)).toBeTruthy();
     const pages = DEMO_MENUS.flatMap((m) => m.children ?? []);
-    expect(pages).toHaveLength(18);
+    expect(pages).toHaveLength(19);
     expect(pages.map((m) => m.path)).toEqual(
       expect.arrayContaining([
         '/workspace',

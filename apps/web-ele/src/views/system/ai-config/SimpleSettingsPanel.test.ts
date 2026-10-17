@@ -14,6 +14,7 @@ import type {
 import { flushPromises, mount } from '@vue/test-utils';
 
 import ElementPlus, {
+  ElCheckbox,
   ElDrawer,
   ElMessageBox,
   ElOption,
@@ -255,7 +256,9 @@ beforeEach(() => {
   api.disable.mockResolvedValue({});
   api.draftScan.mockResolvedValue(catalog());
   api.savedScan.mockResolvedValue(catalog());
-  vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue('confirm');
+  vi.spyOn(ElMessageBox, 'confirm').mockImplementation(
+    vi.fn().mockResolvedValue('confirm'),
+  );
 });
 afterEach(() => {
   wrappers.splice(0).forEach((wrapper) => wrapper.unmount());
@@ -263,22 +266,75 @@ afterEach(() => {
   document.body.innerHTML = '';
 });
 describe('independent multi-key channel management', () => {
+  it('requires cost consent and reports partial per-key results without activating when enable permission is absent', async () => {
+    access.accessCodes = access.accessCodes.filter(
+      (code) => code !== 'ai:config:enable',
+    );
+    const first = channel();
+    api.test.mockResolvedValueOnce({
+      testId: '92',
+      configId: '101',
+      status: 'PARTIAL',
+      active: true,
+      message: '仅已通过组合可用',
+      models: [],
+      keys: [
+        {
+          ...first.keys[0],
+          keyId: '111',
+          name: '主账号',
+          status: 'SUCCEEDED',
+          message: '通过',
+          models: [{ code: 'vendor/a', status: 'SUCCEEDED', message: '通过' }],
+        },
+        {
+          ...first.keys[1],
+          keyId: '112',
+          name: '备用账号',
+          status: 'FAILED',
+          message: '认证失败',
+          models: [{ code: 'vendor/a', status: 'FAILED', message: '认证失败' }],
+        },
+      ],
+    });
+    const wrapper = render();
+    await flushPromises();
+    await click('编辑');
+    const testButton = [
+      ...document.querySelectorAll<HTMLButtonElement>('button'),
+    ].find((button) => button.textContent?.trim() === '测试连接');
+    expect(testButton?.disabled).toBe(true);
+    expect(api.test).not.toHaveBeenCalled();
+    wrapper.getComponent(ElCheckbox).vm.$emit('update:modelValue', true);
+    await flushPromises();
+    await click('测试连接');
+    expect(api.test).toHaveBeenCalledWith('101', {
+      confirmedCosts: true,
+      activateOnSuccess: false,
+    });
+    expect(document.body.textContent).toContain('仅已通过组合可用');
+    expect(document.body.textContent).toContain('认证失败');
+    expect(api.activate).not.toHaveBeenCalled();
+    expect(api.update).not.toHaveBeenCalled();
+  });
   it('lets a second key explicitly reuse selected channel models without another scan or a fabricated verification', async () => {
     const wrapper = render();
     await flushPromises();
     await click('新增渠道');
     await fill('渠道名称', '多账号渠道');
     await fill('Key 1 密钥', 'fictional-first-key');
+    const catalogModel = catalog().records[0];
+    if (!catalogModel) throw new Error('Missing catalog fixture');
     api.draftScan.mockResolvedValueOnce({
       ...catalog(),
       records: [
         {
-          ...catalog().records[0],
+          ...catalogModel,
           code: 'vendor/shared-a',
           name: '共享模型甲',
         },
         {
-          ...catalog().records[0],
+          ...catalogModel,
           code: 'vendor/shared-b',
           name: '共享模型乙',
         },

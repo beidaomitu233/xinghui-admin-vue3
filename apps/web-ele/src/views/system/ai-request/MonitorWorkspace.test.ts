@@ -1,8 +1,13 @@
 import { flushPromises, mount } from '@vue/test-utils';
 
+import { ElOption } from 'element-plus';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { selectControl, selectValue } from '#/test-utils/element-controls';
+
 import MonitorWorkspace from './MonitorWorkspace.vue';
+
+const router = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn() }));
 
 const access = vi.hoisted(() => ({
   accessCodes: [] as string[],
@@ -19,7 +24,10 @@ const api = vi.hoisted(() => ({
   stream: vi.fn(),
 }));
 vi.mock('@vben/stores', () => ({ useAccessStore: () => access }));
-vi.mock('vue-router', () => ({ useRoute: () => ({ query: {} }) }));
+vi.mock('vue-router', () => ({
+  useRoute: () => ({ query: {} }),
+  useRouter: () => router,
+}));
 vi.mock('#/api/request', () => ({ requestClient: { get: api.scenes } }));
 vi.mock('#/api/system/ai-conversation', () => ({
   listConversations: api.list,
@@ -223,7 +231,7 @@ describe('persisted conversation workspace', () => {
     });
     const wrapper = render();
     await flushPromises();
-    await wrapper.get('select[aria-label="对话场景"]').setValue('orders');
+    await selectValue(wrapper, '对话场景', 'orders');
     await flushPromises();
     await wrapper
       .get('textarea[aria-label="消息内容"]')
@@ -231,7 +239,7 @@ describe('persisted conversation workspace', () => {
     await wrapper.get('form.conversation-composer').trigger('submit');
     await flushPromises();
     expect(api.start).not.toHaveBeenCalled();
-    await wrapper.get('select[aria-label="业务记录"]').setValue('0');
+    await selectValue(wrapper, '业务记录', '0');
     await flushPromises();
     await wrapper.get('form.conversation-composer').trigger('submit');
     await flushPromises();
@@ -248,7 +256,8 @@ describe('persisted conversation workspace', () => {
     access.accessCodes = ['ai:config:list'];
     const wrapper = render(true);
     await flushPromises();
-    expect(wrapper.find('[data-keys]').exists()).toBe(true);
+    expect(router.replace).toHaveBeenCalledWith('/ai/configurations');
+    expect(wrapper.find('[data-keys]').exists()).toBe(false);
     expect(api.list).not.toHaveBeenCalled();
     expect(api.scenes).not.toHaveBeenCalled();
     wrapper.unmount();
@@ -281,7 +290,7 @@ describe('persisted conversation workspace', () => {
     access.accessCodes.push('ai:request:audit');
     const wrapper = render();
     await flushPromises();
-    await wrapper.get('select[aria-label="会话范围"]').setValue('AUDIT');
+    await selectValue(wrapper, '会话范围', 'AUDIT');
     await flushPromises();
     await click(wrapper, '订单讨论');
     expect(api.detail).toHaveBeenLastCalledWith(
@@ -310,8 +319,11 @@ describe('persisted conversation workspace', () => {
     ]);
     const wrapper = render();
     await flushPromises();
-    expect(wrapper.find('option[value="hidden"]').exists()).toBe(false);
-    expect(wrapper.find('option[value="safe"]').exists()).toBe(true);
+    const options = selectControl(wrapper, '对话场景')
+      .findAllComponents(ElOption)
+      .map((option) => option.props('value'));
+    expect(options).not.toContain('hidden');
+    expect(options).toContain('safe');
     wrapper.unmount();
   });
 });

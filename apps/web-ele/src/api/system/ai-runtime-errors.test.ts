@@ -3,6 +3,12 @@ import { describe, expect, it } from 'vitest';
 import { aiErrorMessage, aiFailureInfo } from './ai-runtime-errors';
 
 describe('ai safe failure metadata', () => {
+  it('translates the required-input preview failure into a short Chinese message', () => {
+    const failure = aiFailureInfo({
+      response: { data: { message: 'MISSING_VARIABLE' } },
+    });
+    expect(aiErrorMessage(failure.code)).toBe('缺少必填输入。');
+  });
   it('keeps long decimal ids as strings and accepts server admission UUID traces', () => {
     expect(
       aiFailureInfo({

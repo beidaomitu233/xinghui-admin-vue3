@@ -6,7 +6,7 @@ import { nextTick } from 'vue';
 import ElementPlus from 'element-plus';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import ConfigPage from '../views/system/ai-config/SimpleSettingsPanel.vue';
+import ConfigPage from '../views/system/ai-config/index.vue';
 import RequestPage from '../views/system/ai-request/index.vue';
 import ScenePage from '../views/system/ai-template/index.vue';
 import TemplatePage from '../views/system/ai-template/LegacyWorkspace.vue';
@@ -35,6 +35,7 @@ vi.mock('@vben/hooks', () => ({
 }));
 vi.mock('vue-router', () => ({
   useRoute: () => ({ query: {} }),
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
   onBeforeRouteLeave: vi.fn(),
 }));
 
@@ -203,43 +204,35 @@ describe('real AI pages with read-only local transport', () => {
       document.body.innerHTML = '';
     }
   });
-  it('locks direct Key settings for viewers and preserves edit and enable permissions independently', async () => {
-    const viewer = mount(ConfigPage);
+  it('shows named key associations in a locked viewer and keeps editing separate from enable permission', async () => {
+    const viewer = mount(ConfigPage, {
+      attachTo: document.body,
+      global: { plugins: [ElementPlus] },
+    });
     wrappers.push(viewer);
     await settle();
-    expect(
-      viewer.get('input[aria-label="API Key"]').attributes('readonly'),
-    ).toBeDefined();
-    expect(
-      viewer.get('input[type="url"]').attributes('readonly'),
-    ).toBeDefined();
-    expect(viewer.text()).toContain('Poolside Laguna S 2.1');
-    expect(viewer.text()).toContain('NVIDIA Nemotron 3.5 Lightning');
-    expect(viewer.text()).not.toContain('保存配置');
-    viewer.unmount();
-    permissions.codes = [...DEMO_PERMISSIONS, 'ai:config:edit'];
-    const editor = mount(ConfigPage);
-    wrappers.push(editor);
+    openButton('查看');
     await settle();
+    const key = document.querySelector<HTMLInputElement>(
+      'input[aria-label="Key 1 密钥"]',
+    );
+    expect(key?.disabled).toBe(true);
+    expect(key?.value).toBe('');
     expect(
-      editor.get('input[aria-label="API Key"]').attributes('readonly'),
-    ).toBeUndefined();
-    expect(editor.text()).toContain('保存配置');
-    editor.unmount();
-    permissions.codes = [...DEMO_PERMISSIONS, 'ai:config:enable'];
-    const enabler = mount(ConfigPage);
-    wrappers.push(enabler);
-    await settle();
+      document.querySelector<HTMLInputElement>('input[aria-label="Key 1 名称"]')
+        ?.value,
+    ).toBe('主账号示例');
     expect(
-      enabler.get('input[aria-label="API Key"]').attributes('readonly'),
-    ).toBeDefined();
-    expect(enabler.text()).toContain('启用已验证连接');
-    expect(enabler.text()).not.toContain('保存配置');
+      document.querySelector<HTMLInputElement>('input[aria-label="Key 2 名称"]')
+        ?.value,
+    ).toBe('备用账号示例');
+    expect(document.body.textContent).not.toContain('保存渠道');
+    expect(document.body.textContent).not.toContain('启用已验证项');
     expect(client.post).not.toHaveBeenCalled();
     expect(client.put).not.toHaveBeenCalled();
   });
   it.each([
-    ['configuration', ConfigPage, '', '/system/ai/settings/'],
+    ['configuration', ConfigPage, '查看', '/system/ai/settings/'],
     ['scene', ScenePage, '[虚构只读] 记录摘要场景', '/system/ai/scenes/'],
     ['template', TemplatePage, '查看 / 编辑', '/system/ai/templates/'],
     [

@@ -1,6 +1,9 @@
 import { flushPromises, mount } from '@vue/test-utils';
 
+import { ElCollapse } from 'element-plus';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { radioValue, selectValue } from '#/test-utils/element-controls';
 
 import DatabaseBindingEditor from './DatabaseBindingEditor.vue';
 import DatabaseRecordPicker from './DatabaseRecordPicker.vue';
@@ -95,13 +98,43 @@ beforeEach(() => {
   ]);
 });
 describe('actual database bindings', () => {
+  it('clears table filters when switching to an exact row and keeps a valid Unicode alias', async () => {
+    const wrapper = render();
+    await flushPromises();
+    await click(wrapper, '添加引用');
+    await selectValue(wrapper, '业务表', 'db.orders');
+    await radioValue(wrapper, '取数方式', 'TABLE');
+    wrapper.getComponent(ElCollapse).vm.$emit('update:modelValue', ['filters']);
+    await flushPromises();
+    await click(wrapper, '增加条件');
+    await wrapper.get('input[aria-label="筛选值"]').setValue('42');
+    await radioValue(wrapper, '取数方式', 'ROW');
+    expect(wrapper.findComponent(ElCollapse).exists()).toBe(false);
+    wrapper.getComponent(DatabaseRecordPicker).vm.$emit('update:modelValue', {
+      key: { id: '19' },
+      label: '订单十九',
+      values: {},
+      businessRef: null,
+    });
+    await flushPromises();
+    await wrapper.get('input[aria-label="引用名称"]').setValue('2026.订单');
+    await click(wrapper, '保存并插入提示词');
+    const saved = wrapper.emitted('change')?.at(-1)?.[0] as {
+      filters: unknown[];
+      variable: string;
+    }[];
+    expect(saved[0]?.filters).toEqual([]);
+    expect(saved[0]?.variable).toMatch(/^[\p{L}_][\p{L}\p{N}_.]{0,63}$/u);
+    expect(saved[0]?.variable).not.toBe('user_request');
+    wrapper.unmount();
+  });
   it('preserves the exact server key when fixing a record with a nineteen digit ID', async () => {
     const wrapper = render();
     await flushPromises();
-    await click(wrapper, '添加数据引用');
-    await wrapper.get('select[aria-label="业务表"]').setValue('db.orders');
+    await click(wrapper, '添加引用');
+    await selectValue(wrapper, '业务表', 'db.orders');
     await flushPromises();
-    await wrapper.get('select[aria-label="引用字段"]').setValue('id');
+    await selectValue(wrapper, '引用字段', ['id']);
     wrapper.getComponent(DatabaseRecordPicker).vm.$emit('update:modelValue', {
       key: { id: '2026101801234567890' },
       label: '十月订单',
@@ -109,7 +142,7 @@ describe('actual database bindings', () => {
       businessRef: { type: 'database.record', id: 'opaque-server-token' },
     });
     await flushPromises();
-    await click(wrapper, '添加并插入提示词');
+    await click(wrapper, '保存并插入提示词');
     expect(wrapper.emitted('change')?.[0]?.[0]).toEqual([
       expect.objectContaining({
         row: { currentRecord: false, key: { id: '2026101801234567890' } },
@@ -120,14 +153,16 @@ describe('actual database bindings', () => {
   it('saves whole-table bindings with typed numeric AND filters and an explicit row limit', async () => {
     const wrapper = render();
     await flushPromises();
-    await click(wrapper, '添加数据引用');
-    await wrapper.get('select[aria-label="业务表"]').setValue('db.orders');
+    await click(wrapper, '添加引用');
+    await selectValue(wrapper, '业务表', 'db.orders');
     await flushPromises();
-    await wrapper.get('select[aria-label="取数方式"]').setValue('TABLE');
+    await radioValue(wrapper, '取数方式', 'TABLE');
+    wrapper.getComponent(ElCollapse).vm.$emit('update:modelValue', ['filters']);
+    await flushPromises();
     await click(wrapper, '增加条件');
     await wrapper.get('input[aria-label="筛选值"]').setValue('42');
     await wrapper.get('input[aria-label="最多取数行数"]').setValue('35');
-    await click(wrapper, '添加并插入提示词');
+    await click(wrapper, '保存并插入提示词');
     expect(wrapper.emitted('change')?.[0]?.[0]).toEqual([
       expect.objectContaining({
         mode: 'TABLE',
@@ -143,14 +178,14 @@ describe('actual database bindings', () => {
   it('binds children to a preceding parent row through actual selected relation fields', async () => {
     const wrapper = render([binding]);
     await flushPromises();
-    await click(wrapper, '添加数据引用');
-    await wrapper.get('select[aria-label="业务表"]').setValue('db.lines');
+    await click(wrapper, '添加引用');
+    await selectValue(wrapper, '业务表', 'db.lines');
     await flushPromises();
-    await wrapper.get('select[aria-label="取数方式"]').setValue('CHILDREN');
-    await wrapper.get('select[aria-label="主记录引用"]').setValue('订单');
+    await radioValue(wrapper, '取数方式', 'CHILDREN');
+    await selectValue(wrapper, '主记录引用', '订单');
     await flushPromises();
-    await wrapper.get('select[aria-label="数据库关联"]').setValue('0');
-    await click(wrapper, '添加并插入提示词');
+    await selectValue(wrapper, '数据库关联', '0');
+    await click(wrapper, '保存并插入提示词');
     expect(wrapper.emitted('change')?.[0]?.[0]).toEqual([
       binding,
       expect.objectContaining({
@@ -189,7 +224,7 @@ describe('actual database bindings', () => {
     });
     expect(wrapper.text()).toContain('真实订单名称');
     expect(wrapper.text()).toContain('null');
-    expect(wrapper.text()).toContain('已按上限截断');
+    expect(wrapper.text()).toContain('截断');
     wrapper.unmount();
   });
 });

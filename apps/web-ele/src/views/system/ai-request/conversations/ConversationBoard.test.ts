@@ -8,6 +8,8 @@ import { flushPromises, mount } from '@vue/test-utils';
 
 import { describe, expect, it, vi } from 'vitest';
 
+import { selectValue } from '#/test-utils/element-controls';
+
 import ConversationBoard from './ConversationBoard.vue';
 import { ConversationSendFailure } from './view-model';
 
@@ -59,6 +61,23 @@ function deferred() {
   };
 }
 describe('conversation presentation and scoped draft state', () => {
+  it('uses title-only search and read-only audit empty-state wording', async () => {
+    const { wrapper } = render();
+    await wrapper.setProps({
+      scope: 'AUDIT',
+      selected: null,
+      canReply: false,
+      canCreate: false,
+    });
+    expect(wrapper.text()).toContain('审计对话');
+    expect(wrapper.text()).toContain('请选择会话');
+    expect(wrapper.text()).not.toContain('开始新对话');
+    expect(wrapper.find('textarea').exists()).toBe(false);
+    expect(wrapper.find('input[placeholder="搜索对话标题"]').exists()).toBe(
+      true,
+    );
+    wrapper.unmount();
+  });
   it('renders readable continuous turns and incomplete failures without exposing internal IDs or claiming a complete answer', async () => {
     const { wrapper } = render();
     await wrapper.setProps({
@@ -99,7 +118,8 @@ describe('conversation presentation and scoped draft state', () => {
     );
     expect(wrapper.text()).toContain('订单总量增加。');
     expect(wrapper.text()).toContain('继续按地区分析');
-    expect(wrapper.text()).toContain('未完成的回答，不会作为完整回答使用');
+    expect(wrapper.text()).toContain('未完成的回答');
+    expect(wrapper.text()).toContain('不会作为完整回答使用');
     expect(wrapper.text()).not.toContain('conversation-private-1');
     expect(wrapper.text()).not.toContain('scene-internal-1');
     expect(
@@ -169,9 +189,7 @@ describe('conversation presentation and scoped draft state', () => {
     const admission = deferred();
     submit.mockReturnValueOnce(admission.promise);
     await wrapper.setProps({ selected: null });
-    await wrapper
-      .get('select[aria-label="对话场景"]')
-      .setValue('scene-internal-1');
+    await selectValue(wrapper, '对话场景', 'scene-internal-1');
     await wrapper.get('textarea').setValue('第一问');
     await wrapper.get('form.conversation-composer').trigger('submit');
     await flushPromises();

@@ -14,14 +14,13 @@ import type {
   RequestLogStatistics,
 } from '../api/system/ai-request-log';
 import type { SceneDetail, SceneMonitor } from '../api/system/ai-scene';
+import type { AiSettingsView } from '../api/system/ai-settings';
 import type {
   ResourceDefinition,
   TemplateDefinition,
   Version,
   View,
 } from '../api/system/ai-template';
-
-import { OPENROUTER_SUGGESTED_MODELS } from '../api/system/ai-settings';
 
 // Entirely fictional local data. No key material, provider attempts, test success or executable publication.
 export const AI_DEMO_IDS = {
@@ -48,7 +47,7 @@ const conversation: ConversationSummary = {
   history: 'COMPLETE',
   canContinue: false,
 };
-const settings = {
+const settings: AiSettingsView = {
   configId: AI_DEMO_IDS.config,
   revision: 0,
   name: '[虚构只读] 未连接的 AI 配置',
@@ -56,7 +55,29 @@ const settings = {
   endpointUrl: 'https://openrouter.ai/api/v1/chat/completions',
   keyConfigured: false,
   maskedKey: '',
-  models: OPENROUTER_SUGGESTED_MODELS,
+  models: [{ code: 'fictional/local-only', name: '虚构目录模型（未连接）' }],
+  keys: [
+    {
+      keyId: 'fictional-primary',
+      name: '主账号示例',
+      keyConfigured: false,
+      maskedKey: '',
+      modelCodes: ['fictional/local-only'],
+      status: 'NOT_TESTED',
+      message: '未配置凭据',
+      models: [],
+    },
+    {
+      keyId: 'fictional-backup',
+      name: '备用账号示例',
+      keyConfigured: false,
+      maskedKey: '',
+      modelCodes: ['fictional/local-only'],
+      status: 'NOT_TESTED',
+      message: '未配置凭据',
+      models: [],
+    },
+  ],
   active: false,
   pendingChanges: false,
   connection: {
@@ -363,10 +384,25 @@ export function readOnlyAiDemo(
         code: 'openrouter',
         name: 'OpenRouter',
         defaultEndpoint: settings.endpointUrl,
-        suggestedModels: OPENROUTER_SUGGESTED_MODELS,
+        suggestedModels: [],
+      },
+      {
+        code: 'deepseek',
+        name: 'DeepSeek 官方',
+        defaultEndpoint: 'https://api.deepseek.com/chat/completions',
+        suggestedModels: [],
       },
     ]);
-  if (path === '/system/ai/settings') return send(paged([settings], params));
+  if (path === '/system/ai/settings')
+    return send(
+      paged(
+        [settings].filter(
+          (value) =>
+            !params.search || value.name.includes(String(params.search)),
+        ),
+        params,
+      ),
+    );
   if (path === `/system/ai/settings/${settings.configId}`)
     return send(settings);
   if (path === '/ai/scenes/record-summary') return send(null);
