@@ -823,9 +823,54 @@ public Result<String> demo()
 
 :::
 
+## 场景工作区与直接保存接口
+
+本节描述一期工作区改造合同，尚待组合验收及正式发布。sceneKey由服务端生成，sceneVersionId为不可变执行版本，均与旧appId不同；所有ID及分页total为字符串。旧版接口在下一节按原源码保留，不能把旧发布操作当作新场景的保存前置。
+
+| 方法与路径 | 请求/查询 | 成功data与限制 |
+| --- | --- | --- |
+| GET `/system/ai/scenes` | `pageNum,pageSize,search` | Page；需平台身份及ai:scene:list |
+| GET `/system/ai/scenes/workspace` | 分页、search、selectedSceneKey | Workspace；选中详情另受查询动作约束 |
+| GET `/system/ai/scenes/{sceneKey}` | 无正文 | Detail；平台+ai:scene:query |
+| POST `/system/ai/scenes` | `name,purpose,kind,formId,clientMutationId` | 创建稳定身份，初始无有效配置；平台+ai:scene:add |
+| PUT `/system/ai/scenes/{sceneKey}` | `expectedRevision,clientMutationId,definition` | SaveResult；平台+ai:scene:edit，CAS保存即供新调用使用 |
+| POST `/system/ai/scenes/{sceneKey}/enabled` | `expectedRevision,clientMutationId,enabled` | 保持配置与启停独立；平台+ai:scene:enable |
+| GET `/system/ai/scenes/options/models` | `outputFormat` | 安全模型候选，无供应商调用 |
+| GET `/system/ai/scenes/options/keys` | `modelRef,configVersion` | Key候选，不含凭据/envName |
+| POST `/system/ai/scenes/{sceneKey}/preview` | `expectedRevision,businessRef,inputs` | 固定已保存版本的授权脱敏预览，不调用模型；平台+ai:scene:test |
+| POST `/system/ai/scenes/{sceneKey}/test-requests` | `expectedRevision,modelIndex,confirmedCosts,submission`，confirmedCosts须true | HTTP202 Request；平台+ai:scene:test，主动模型调用 |
+| GET `/ai/scenes` | `kind,formId` | 有权业务Entry候选，最多100条；ai:scene:invoke及实际范围 |
+| GET `/ai/scenes/record-summary` | `formId` | Entry或null，不返回内部appId |
+| POST `/ai/scenes/{sceneKey}/requests` | `businessRef,inputs,idempotencyKey` | HTTP202 Request；固定当前版本，受理不等于生成成功 |
+| GET `/ai/scenes/requests/{requestId}` | 无正文 | 原请求状态，严格owner+tenant+当前访问 |
+| POST `/ai/scenes/requests/{requestId}/cancel` | 无正文 | 原请求状态；不撤回已输出内容 |
+| GET `/ai/requests/{requestId}/events` | 原JWT及Last-Event-ID | 既有有界SSE；断线查原请求，不自动补发 |
+| GET `/system/ai/monitor/summary` | `scope,requestKind,from,to,sceneKey,modelRef,result` | 真实窗口监控，默认OWN/最近24h，最长31天；AUDIT另需审计动作 |
+
+Definition含name、purpose、promptText、outputRequirement、dataObjects及modelPolicy。dataObjects每项仅objectKey/fields，formId固定在场景头；modelPolicy按SceneDtos声明提交，模型/Key来自候选。SaveResult含detail、clientMutationId、effectiveFrom。没有有效配置时不可运行；合法保存不读记录、不测试Key、不调用模型，模型暂不可用不阻止保存。无效配置400不切换旧有效版本，409保留本地输入处理冲突。
+
+### 数据对象与有权候选
+
+以下均为GET `/system/ai/scene-data` 下接口。要求平台身份及ai:scene:query/add/edit/test任一动作；forms/fields另需lowcode:record:query，samples再需lowcode:record:list。管理动作不替代业务权限。
+
+| 子路径 | 查询 | data |
+| --- | --- | --- |
+| `/catalog` | 无 | objects及inputVariables；无记录查询权时objects为空 |
+| `/forms` | `keyword,pageNum,pageSize` | Page，记录为formId/name/schemaVersion |
+| `/fields` | `objectKey,formId` | objectKey/formId/schemaVersion/fields；仅subject/summary白名单与schema交集 |
+| `/samples` | `objectKey,formId,keyword,pageNum,pageSize` | Page，记录为recordId/label/schemaVersion/revision；当前tenant范围 |
+
+页码1–100000，pageSize1–100，keyword最多100字符并按字面搜索。样本仅以记录原schema中存在的subject最多80字符或编号作标签，不返回整行或internal_note。候选不可替代实际调用授权。
+
+### 身份、错误与旧版兼容
+
+实际业务只传类型化记录引用和声明输入，身份、租户、授权和版本由服务端确定；无数据通用场景省略businessRef。HTTP400/413/415/422→Result.code202，401→311，403→309，404→204，409→201，429/500/503/504→203；成功与受理业务码200。局部字段错误仅白名单路径/固定分类，安全失败data=null，不返回SQL、供应商正文、密钥或实际字段值。响应no-store，含敏感配置/预览时private。
+
+被场景接管的旧应用/模板写操作返回409 SCENE_MANAGED。旧映射每次保存都使用原精确模板与原应用基线compileEdited，保留legacyScopes；旧共享模板、批准范围和历史请求不被新编辑改写。技术细节见[场景与数据扩展](../development/ai-extension.md)。
+
 ## 当前源码一期新增 AI 接口
 
-以下六个 Controller 按后端 `79b4655b56621fbcdafe48eb858d312bd76eb465` 核对。表内为实际方法注解，服务端范围约束见本节说明；这些接口不属于 v1.2.0 的旧静态 API 快照。
+本节为工作区改造前的v0.4兼容参考，不是新界面的日常操作。以下六个 Controller 按后端 `79b4655b56621fbcdafe48eb858d312bd76eb465` 核对。表内为实际方法注解，服务端范围约束见本节说明；这些接口不属于 v1.2.0 的旧静态 API 快照。
 
 ### 身份、范围与ID
 
