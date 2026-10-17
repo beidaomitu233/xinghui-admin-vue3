@@ -28,9 +28,9 @@ const required = [
   '/src/demo/ai-pages.test.ts',
 ];
 const minimumAssertions = new Map([
+  ['/src/demo/ai-pages.test.ts', 7],
   ['/src/router/menu-cleanup.test.ts', 4],
   ['/src/styles/workspace-theme.test.ts', 5],
-  ['/src/demo/ai-pages.test.ts', 7],
 ]);
 const authSuites = [
   '/src/api/core/session-info.test.mjs',
