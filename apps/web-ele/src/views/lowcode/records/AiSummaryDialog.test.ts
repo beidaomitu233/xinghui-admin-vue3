@@ -191,6 +191,8 @@ describe('record summary interaction', () => {
     const wrapper = mountDialog();
     await button(wrapper, '生成摘要').trigger('click');
     await flushPromises();
+    expect(wrapper.text()).toContain('场景版本：11');
+    expect(wrapper.text()).not.toContain('应用版本');
     await button(wrapper, '取消生成').trigger('click');
     await flushPromises();
     receive?.({

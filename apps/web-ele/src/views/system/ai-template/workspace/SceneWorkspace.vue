@@ -55,6 +55,38 @@ const pendingCreate = ref<SceneCreate>();
 const toggling = ref(false);
 const conflict = ref<SceneDetail>();
 const legacy = ref<null | SceneLegacy>(null);
+const legacyReasonLabels: Record<string, string> = {
+  CUSTOM_INPUT_VARIABLE: '原配置含自定义输入变量，暂不支持转换。',
+  EDITOR_LENGTH_EXCEEDED: '合并后的提示词过长，暂不能转换。',
+  INPUT_LENGTH_POLICY_CHANGED: '输入长度限制与新格式不一致。',
+  INPUT_REQUIRED_POLICY_CHANGED: '必填输入规则与新格式不一致。',
+  MULTIPLE_RESOURCES: '原配置引用了多个数据对象，暂不支持转换。',
+  RESOURCE_FIELDS_NOT_APPROVED: '引用字段未通过原资源审批。',
+  RESOURCE_SCHEMA_UNAVAILABLE: '无法读取原数据对象的字段定义。',
+  RESOURCE_SCOPE_DENIED: '原资源授权范围与当前场景或账号不匹配。',
+  RESOURCE_UNAVAILABLE: '原数据资源暂不可用。',
+  RESOURCE_VARIABLE_LENGTH_POLICY_CHANGED: '数据字段的长度限制与新格式不一致。',
+  RESOURCE_VARIABLE_TYPE_POLICY_CHANGED: '数据字段的类型规则与新格式不一致。',
+  SPECIAL_RESOURCE_MAPPING: '原数据引用含特殊映射，暂不支持转换。',
+  SPECIAL_VARIABLE_SCHEMA: '原输入变量含特殊类型或默认值，暂不支持转换。',
+  TEMPLATE_DISABLED: '原提示词模板已停用。',
+  UNSUPPORTED_RESOURCE_FIELDS: '原数据来源或字段暂不支持转换。',
+  VARIABLE_TRUNCATION_UNSUPPORTED: '原变量使用了截断规则，暂不支持转换。',
+};
+const legacyConversionLabels: Record<string, string> = {
+  MESSAGE_SECTIONS_COMBINED_AS_USER: '原消息分区将合并为用户消息。',
+  NULLS_PRESERVED_BY_BUILTIN_READER: '读取业务数据时保留原有空值。',
+};
+function legacyReasonLabel(code: string) {
+  return Object.hasOwn(legacyReasonLabels, code)
+    ? legacyReasonLabels[code]
+    : '存在未说明的兼容性信息，请查看原内容。';
+}
+function legacyConversionLabel(code: string) {
+  return Object.hasOwn(legacyConversionLabels, code)
+    ? legacyConversionLabels[code]
+    : '另有一项转换说明暂未提供详情，请查看原内容。';
+}
 const converted = ref(false);
 const legacyByScene = new Map<string, null | SceneLegacy>();
 const conversionConsent = new Set<string>();
@@ -455,8 +487,12 @@ onBeforeUnmount(() => {
                 : '旧配置格式转换'
             }}
           </h2>
-          <p v-for="reason in legacy.reasons" :key="reason">{{ reason }}</p>
-          <p v-for="note in legacy.conversionNotes" :key="note">{{ note }}</p>
+          <p v-for="reason in legacy.reasons" :key="reason">
+            {{ legacyReasonLabel(reason) }}
+          </p>
+          <p v-for="note in legacy.conversionNotes" :key="note">
+            {{ legacyConversionLabel(note) }}
+          </p>
           <p>原版本继续保留；首次读取不会保存或转换。</p>
           <button
             v-if="

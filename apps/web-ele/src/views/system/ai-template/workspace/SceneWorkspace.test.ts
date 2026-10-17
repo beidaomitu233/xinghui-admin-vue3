@@ -373,7 +373,7 @@ describe('scene workspace actual editing and autosave', () => {
       legacy: {
         compatibility: 'READ_ONLY',
         requiresConfirmation: false,
-        reasons: ['UNSUPPORTED_LEGACY_STRUCTURE'],
+        reasons: ['TEMPLATE_DISABLED', 'FUTURE_COMPATIBILITY_REASON'],
         conversionNotes: [],
         editor: null,
         originalMessages: [{ section: 'INSTRUCTION', text: '原始有效提示词' }],
@@ -383,6 +383,15 @@ describe('scene workspace actual editing and autosave', () => {
     const wrapper = await open();
     await vi.advanceTimersByTimeAsync(1000);
     expect(wrapper.text()).toContain('原始有效提示词');
+    expect(wrapper.get('.legacy-notice').text()).toContain(
+      '原提示词模板已停用。',
+    );
+    expect(wrapper.get('.legacy-notice').text()).toContain(
+      '存在未说明的兼容性信息，请查看原内容。',
+    );
+    expect(wrapper.get('.legacy-notice').text()).not.toMatch(
+      /TEMPLATE_DISABLED|FUTURE_COMPATIBILITY_REASON/,
+    );
     expect(wrapper.find('textarea[aria-label="提示词"]').exists()).toBe(false);
     expect(api.saveScene).not.toHaveBeenCalled();
   });
@@ -393,7 +402,11 @@ describe('scene workspace actual editing and autosave', () => {
         compatibility: 'CONVERTIBLE',
         requiresConfirmation: true,
         reasons: [],
-        conversionNotes: ['原分区将转换为完整编辑指令，保留旧版本'],
+        conversionNotes: [
+          'MESSAGE_SECTIONS_COMBINED_AS_USER',
+          'NULLS_PRESERVED_BY_BUILTIN_READER',
+          'FUTURE_CONVERSION_NOTE',
+        ],
         editor: {
           promptText: definition('first').promptText,
           outputRequirement: '',
@@ -405,6 +418,18 @@ describe('scene workspace actual editing and autosave', () => {
     });
     const wrapper = await open();
     await vi.advanceTimersByTimeAsync(1000);
+    expect(wrapper.get('.legacy-notice').text()).toContain(
+      '原消息分区将合并为用户消息。',
+    );
+    expect(wrapper.get('.legacy-notice').text()).toContain(
+      '读取业务数据时保留原有空值。',
+    );
+    expect(wrapper.get('.legacy-notice').text()).toContain(
+      '另有一项转换说明暂未提供详情，请查看原内容。',
+    );
+    expect(wrapper.get('.legacy-notice').text()).not.toMatch(
+      /MESSAGE_SECTIONS_COMBINED_AS_USER|NULLS_PRESERVED_BY_BUILTIN_READER|FUTURE_CONVERSION_NOTE/,
+    );
     expect(api.saveScene).not.toHaveBeenCalled();
     expect(
       wrapper.get('textarea[aria-label="提示词"]').attributes('readonly'),

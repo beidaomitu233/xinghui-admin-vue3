@@ -329,7 +329,7 @@ onBeforeUnmount(() => {
       @close="error = ''"
     />
     <p v-if="request" class="mb-2 break-all text-sm">
-      请求 ID：{{ request.requestId }} · 应用版本：{{ request.sceneVersionId }}
+      请求 ID：{{ request.requestId }} · 场景版本：{{ request.sceneVersionId }}
     </p>
     <p v-else-if="traceId" class="mb-2 break-all text-sm">
       追踪 ID：{{ traceId }}
