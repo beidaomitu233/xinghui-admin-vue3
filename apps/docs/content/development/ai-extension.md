@@ -36,6 +36,8 @@ AiModelCatalogTransport只对共享预设发GET，区分OpenRouter公共/models�
 
 响应仅白名单可读名称、代码、上下文/输出上限、模态及声明参数；搜索分页在本次有界目录内完成，不混用其他Key缓存。source/refreshedAt明确目录来源与时间，generationVerified始终false。OpenRouter用户目录仅按服务端用户偏好/隐私/防护规则过滤，不证明余额和实际调用可用；DeepSeek可选元数据缺失时保留未知。上游401/403转为502加固定安全分类，避免触发本系统重新登录；原始错误、Key和异常原因不出响应。精确DTO、权限和错误见[模型扫描HTTP](../reference/api-catalog.md#模型目录与-key-扫描)。
 
+目录允许逐条兼容演进：不符合实际配置/执行code规则的`~`等路由别名、显式非text输出、无效元数据及重复code过滤并报告scannedCount/filteredCount/filterReasons，不让单条新ID使全部聊天模型不可用。total仍按过滤后的搜索匹配计算；不因扫描放行而扩展执行端别名支持。严格JSON、控制字符、秘密回显和有界响应仍整体失败关闭。
+
 ## 数据目录与唯一共享接口
 
 `com.xinghuiTec.ai.contract.AiSceneDataRuntime`由SceneDataService实现，DatabaseBindingReader负责动态元数据与只读查询。目录来自当前应用数据库JDBC DatabaseMetaData，显示真实表/字段名、备注及类型；通用业务表无需逐表编写注册代码。

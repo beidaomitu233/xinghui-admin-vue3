@@ -904,6 +904,8 @@ Controller为`controller/AiModelCatalogController.java`，Java请求/响应为`a
 
 pageNum至少1，pageSize为1..100（GET默认1/20，POST显式提供），search可省略、最多128字符；在本次有界目录内按模型名称/代码搜索与分页。Page字段为records/total/pageNum/pageSize/refreshedAt/source/provider/configId/keyId/revision/generationVerified，其中total为整数；records每项为code/name/contextLength/maxCompletionTokens/inputModalities/outputModalities/supportedParameters。未提供的元数据为null或空数组，缺少名称回退code，不猜测工具或JSON能力。
 
+Page另含scannedCount/filteredCount/filterReasons，统计整个上游有界目录，不受搜索与分页影响；total仍是可选模型中按当前搜索匹配的数量。与配置/执行代码规则不兼容的路由别名（例如以`~`开头）、显式无text输出的模型、不支持的元数据形状及重复code按条过滤，原因分别为UNSUPPORTED_MODEL_CODE/NON_TEXT_OUTPUT/INVALID_METADATA/DUPLICATE_MODEL_CODE。一条新别名不导致其他合法聊天模型丢失；返回列表中的代码仍须能通过实际配置校验，不扩大生成适配器支持范围。秘密回显、非法控制字符、严格JSON解析及响应大小限制继续失败关闭，不以条目兼容为由放宽。
+
 source为PUBLIC（无Key OpenRouter公共目录）、USER_FILTERED（OpenRouter带Key）或PROVIDER_KEY（DeepSeek带Key）。公共与草稿扫描的configId/keyId/revision均null，保存Key扫描返回这三项。refreshedAt为本次目录读取完成时间；不缓存跨Key结果，每次重新请求会刷新目录，不承诺分页间快照相同。generationVerified固定false。
 
 官方端点来自唯一`AiProviderPresets`：OpenRouter公共`GET /api/v1/models`，带Key`GET /api/v1/models/user`；DeepSeek带Key`GET /models`。OpenRouter带Key结果按用户供应商偏好、隐私和防护规则过滤；DeepSeek采用id/name/context_window/max_output_tokens及声明的输入输出模态。目录可选性不保证余额、额度、推理时服务可用或生成成功。依据：[OpenRouter目录](https://openrouter.ai/docs/api/api-reference/models/list-models-filtered-by-user-provider-preferences-privacy-settings-and-guardrails)、[DeepSeek模型列表](https://api-docs.deepseek.com/api/list-models/)。
