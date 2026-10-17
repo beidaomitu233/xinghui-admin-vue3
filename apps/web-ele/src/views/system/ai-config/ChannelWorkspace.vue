@@ -127,6 +127,19 @@ function modelChoices(key: ChannelKeyDraft): CatalogModel[] {
   const state = getCatalog(key);
   const choices = new Map<string, string>();
   for (const model of state.records) choices.set(model.code, model.name);
+  const search = state.search.trim().toLocaleLowerCase();
+  for (const sibling of form.keys) {
+    if (sibling.localId === key.localId) continue;
+    const catalog = getCatalog(sibling);
+    for (const code of sibling.modelCodes) {
+      const name =
+        catalog.labels[code]?.name ??
+        current.value?.models.find((model) => model.code === code)?.name ??
+        code;
+      if (!search || `${code} ${name}`.toLocaleLowerCase().includes(search))
+        choices.set(code, name);
+    }
+  }
   for (const code of key.modelCodes)
     if (!choices.has(code))
       choices.set(
@@ -834,6 +847,7 @@ onBeforeUnmount(() => {
             <h2>Key 与模型</h2>
             <p class="channel-secondary">
               每个 Key 可选择多个模型，同一模型也可使用不同 Key。
+              可复用本渠道已选模型，新关联仍需独立测试。
             </p>
           </div>
           <ElButton
