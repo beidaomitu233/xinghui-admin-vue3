@@ -835,7 +835,7 @@ public Result<String> demo()
 
 | 方法路径 | 请求/权限 | 成功data |
 | --- | --- | --- |
-| GET `/ai/conversations` | scope默认OWN，sceneKey/requestKind/search/pageNum/pageSize；ai:request:list，AUDIT另需平台+ai:request:audit | Page，total字符串 |
+| GET `/ai/conversations` | scope默认OWN，sceneKey/requestKind/search/pageNum/pageSize；本人invoke或request:list，AUDIT须平台+request:list+request:audit | Page，total字符串 |
 | GET `/ai/conversations/{id}` | 本人ai:scene:invoke或ai:request:query；他人AUDIT另需平台+audit+query | Detail，完整持久化messages |
 | POST `/ai/conversations` | sceneKey/kind/businessRef/message/clientMutationId/test；本人invoke，TEST另需平台+scene:test与确认 | HTTP202 Accepted |
 | POST `/ai/conversations/{id}/messages` | expectedRevision/message/clientMutationId/test；仅本人续聊及当前调用/数据权限 | HTTP202 Accepted |
@@ -935,7 +935,7 @@ Definition含name、purpose、promptText、outputRequirement、dataObjects及mod
 
 ### 监控摘要的分项权限
 
-`GET /system/ai/monitor/summary` 的方法注解为 `@aiWorkspaceAccess.canEnterMonitor()`：平台身份且拥有ai:request:list或ai:config:list/query/add/edit/test/enable任一真实动作。ai:monitor:enter仅表示导航，不单独授予统计或配置权限。
+`GET /system/ai/monitor/summary` 的方法注解为 `@aiWorkspaceAccess.canEnterMonitor()`：平台身份且拥有ai:scene:invoke、ai:request:list或ai:config:list/query/add/edit/test/enable任一真实动作。仅invoke可使用本人对话索引，调用统计仍单独授权。ai:monitor:enter仅表示导航，不单独授予统计或配置权限。
 
 调用统计calls和未归属尝试数另需ai:request:list，否则为null；当前启用Key统计另需ai:config:list或ai:config:query，否则为null并说明CONFIG_QUERY_REQUIRED。AUDIT范围额外要求ai:request:audit；调用统计仍受日志list权限限制。OWN不展示全局“异常Key为0”，recentlyFailedKeyVersions保持null/AUDIT_REQUIRED；全局异常交集需AUDIT及日志list与配置查询权限。没有相应动作时不把未知写成0，也不扩大详情/导出权限。
 
