@@ -4,6 +4,7 @@ import { defaultResponseInterceptor, RequestClient } from '@vben/request';
 
 import { describe, expect, it, vi } from 'vitest';
 
+import { AI_DEMO_IDS } from './ai-readonly';
 import { DEMO_LOGIN, DEMO_MENUS, DEMO_STORAGE_KEY } from './seed';
 import {
   createDemoTransport,
@@ -47,6 +48,177 @@ function fixture() {
   return { storage, call, login };
 }
 describe('public static demo contracts', () => {
+  it('uses four real phase-one roots and keeps AI pages independent of generic capabilities', async () => {
+    const f = fixture();
+    await f.login();
+    const menus = await f.call('/user/router');
+    const ai = menus.find((menu: { path: string }) => menu.path === '/ai');
+    expect(menus).toHaveLength(4);
+    expect(
+      ai.children.map((menu: { component: string; path: string }) => [
+        menu.path,
+        menu.component,
+      ]),
+    ).toEqual([
+      ['/ai/configurations', 'system/ai-config/index'],
+      ['/ai/applications', 'system/ai-application/index'],
+      ['/ai/templates', 'system/ai-template/index'],
+      ['/ai/requests', 'system/ai-request/index'],
+    ]);
+    expect(
+      menus
+        .find((menu: { path: string }) => menu.path === '/infra')
+        .children.every(
+          (menu: { path: string }) => !menu.path.startsWith('/ai/'),
+        ),
+    ).toBe(true);
+    const info = await f.call('/user/info');
+    expect(info.permissions).toEqual(
+      expect.arrayContaining([
+        'ai:config:query',
+        'ai:application:query',
+        'ai:template:query',
+        'ai:data:query',
+        'ai:request:query',
+      ]),
+    );
+    expect(
+      info.permissions.some((permission: string) =>
+        /^ai:.*:(?:test|publish|approve|enable|edit|add|invoke|audit|export)$/.test(
+          permission,
+        ),
+      ),
+    ).toBe(false);
+  });
+  it('serves complete fictional AI list/detail/version/reference contracts without successful provider evidence', async () => {
+    const f = fixture();
+    await f.login();
+    const ids = AI_DEMO_IDS;
+    const configPage = await f.call('/system/ai/configurations');
+    expect(configPage.records[0].usableKeyCount).toBe(0);
+    const config = await f.call(`/system/ai/configurations/${ids.config}`);
+    expect(config.draft.keys).toEqual([]);
+    expect(config.activePairs).toEqual([]);
+    expect(config.latestTestId).toBeNull();
+    const configurationVersions = await f.call(
+      `/system/ai/configurations/${ids.config}/versions`,
+    );
+    expect(configurationVersions[0].activated).toBe(false);
+    const apps = await f.call('/system/ai/applications');
+    expect(apps.records).toHaveLength(1);
+    const app = await f.call(`/system/ai/applications/${ids.app}`);
+    expect(app.enabled).toBe(false);
+    expect(app.publishedVersionId).toBeNull();
+    expect(
+      await f.call(`/system/ai/applications/${ids.app}/test-evidence`),
+    ).toEqual([]);
+    expect(await f.call(`/system/ai/applications/${ids.app}/versions`)).toEqual(
+      [],
+    );
+    expect(await f.call('/system/ai/applications/options/models')).toEqual([]);
+    expect(
+      await f.call(`/system/ai/applications/${ids.app}/health`),
+    ).toMatchObject({ state: 'DISABLED' });
+    const templates = await f.call('/system/ai/templates');
+    expect(templates.records[0].id).toBe(ids.template);
+    const template = await f.call(`/system/ai/templates/${ids.template}`);
+    expect(template.definition.messages).toHaveLength(3);
+    expect(template.definition.resources[0]).toMatchObject({
+      resourceId: ids.resource,
+      resourceVersionId: '1',
+      outputs: { subject: 'record_subject' },
+    });
+    const resource = await f.call(`/system/ai/data-resources/${ids.resource}`);
+    expect(resource.definition.fields).toEqual(['subject']);
+    expect(resource.enabled).toBe(false);
+    const templateVersion = await f.call(
+      `/system/ai/templates/${ids.template}/versions/1`,
+    );
+    expect(templateVersion.definition).toEqual(template.definition);
+    expect(
+      await f.call(`/system/ai/data-resources/${ids.resource}/checks`),
+    ).toEqual([]);
+    const templateOptions = await f.call('/system/ai/templates/options');
+    expect(templateOptions.records[0]).toMatchObject({
+      available: false,
+      unavailableReasons: ['TEMPLATE_DISABLED', 'RESOURCE_DISABLED'],
+    });
+    expect(await f.call('/ai/applications/record-summary')).toBeNull();
+    const logs = await f.call('/system/ai/requests');
+    expect(logs.records[0].request).toMatchObject({
+      status: 'FAILED',
+      attemptCount: 0,
+      outputStarted: false,
+      inputTokens: null,
+      outputTokens: null,
+    });
+    const detail = await f.call(`/system/ai/requests/${ids.request}`);
+    expect(detail.attempts).toEqual([]);
+    expect(detail.stages[0].outcome).toBe('REJECTED');
+    expect(await f.call('/system/ai/requests/statistics')).toMatchObject({
+      requests: 1,
+      modelAttempts: 0,
+      knownInputTokens: null,
+      knownOutputTokens: null,
+    });
+    const successfulLogs = await f.call(
+      '/system/ai/requests',
+      'GET',
+      undefined,
+      { status: 'SUCCEEDED' },
+    );
+    expect(successfulLogs.records).toEqual([]);
+    expect(
+      await f.call('/system/ai/requests/statistics', 'GET', undefined, {
+        status: 'SUCCEEDED',
+      }),
+    ).toMatchObject({ requests: 0 });
+  });
+  it('rejects every AI action, audit and unknown read without network, persistent mutations or a fabricated success', async () => {
+    const f = fixture();
+    await f.login();
+    const before = f.storage.getItem(DEMO_STORAGE_KEY);
+    const network = vi.spyOn(globalThis, 'fetch');
+    try {
+      const rejectedActions: [string, string][] = [
+        [`/system/ai/configurations/${AI_DEMO_IDS.config}/test-runs`, 'POST'],
+        [`/system/ai/configurations/${AI_DEMO_IDS.config}/draft`, 'PUT'],
+        [`/system/ai/applications/${AI_DEMO_IDS.app}/publish`, 'POST'],
+        [`/system/ai/applications/${AI_DEMO_IDS.app}/test-requests`, 'POST'],
+        [`/system/ai/applications/${AI_DEMO_IDS.app}/preview`, 'POST'],
+        [`/system/ai/data-resources/${AI_DEMO_IDS.resource}/approval`, 'POST'],
+        [`/system/ai/templates/${AI_DEMO_IDS.template}/publish`, 'POST'],
+        [`/ai/applications/${AI_DEMO_IDS.app}/requests`, 'POST'],
+      ];
+      for (const [url, method] of rejectedActions)
+        await expect(
+          f.call(url, method, {
+            apiKey: 'never-persist-this-fictional-input',
+          }),
+        ).rejects.toMatchObject({ response: { status: 501 } });
+      await expect(
+        f.call('/system/ai/requests', 'GET', undefined, { scope: 'AUDIT' }),
+      ).rejects.toMatchObject({ response: { status: 403 } });
+      await expect(f.call('/system/ai/requests/export')).rejects.toMatchObject({
+        response: { status: 501 },
+      });
+      await expect(
+        f.call('/system/ai/applications/9999'),
+      ).rejects.toMatchObject({ response: { status: 404 } });
+      const config = await f.call(
+        `/system/ai/configurations/${AI_DEMO_IDS.config}`,
+      );
+      config.name = 'mutated';
+      const unchangedConfiguration = await f.call(
+        `/system/ai/configurations/${AI_DEMO_IDS.config}`,
+      );
+      expect(unchangedConfiguration.name).toContain('虚构');
+      expect(network).not.toHaveBeenCalled();
+      expect(f.storage.getItem(DEMO_STORAGE_KEY)).toBe(before);
+    } finally {
+      network.mockRestore();
+    }
+  });
   it('requires the fictional account, restores a local session on refresh and invalidates logout', async () => {
     const f = fixture();
     await expect(f.call('/user/info')).rejects.toMatchObject({
@@ -76,6 +248,7 @@ describe('public static demo contracts', () => {
       '系统管理',
       '通用能力',
       '运行维护',
+      'AI管理',
     ]);
     await f.call('/user/logout', 'POST');
     await expect(f.call('/user/info')).rejects.toMatchObject({
@@ -132,7 +305,7 @@ describe('public static demo contracts', () => {
     ];
     for (const url of reads) expect(await f.call(url)).toBeTruthy();
     const pages = DEMO_MENUS.flatMap((m) => m.children ?? []);
-    expect(pages).toHaveLength(18);
+    expect(pages).toHaveLength(20);
     expect(pages.map((m) => m.path)).toEqual(
       expect.arrayContaining([
         '/workspace',

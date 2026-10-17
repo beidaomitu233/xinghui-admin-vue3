@@ -24,7 +24,7 @@
 | 前端 `packages`、`internal` | Vben 派生组件、适配、工程配置 | 每个包的实际导出与本项目使用位置 |
 | 前端 `apps/docs/content` | 统一公开文档正文 | 本站所有章节，不复制维护旧后端教程 |
 
-当前三个一级菜单是“系统管理、通用能力、运行维护”，同组直接列出已授权功能；仍有效页面沿用原地址。个人收件箱是已认证的个人入口，没有通用配置权限的用户也可看到只含个人入口的通用组。详见[菜单](../features/menus.md)和[授权](../features/authorization.md)。
+当前源码四个一级菜单是“系统管理、通用能力、运行维护、AI管理”，同组直接列出已授权功能；仍有效页面沿用原地址。v1.2.0静态旧快照的三组布局属于旧基线，不用于判断当前源码缺少AI入口。个人收件箱是已认证的个人入口，没有通用配置权限的用户也可看到只含个人入口的通用组。详见[菜单](../features/menus.md)和[授权](../features/authorization.md)。
 
 ## 第一次接手时做什么
 
@@ -72,6 +72,6 @@ pnpm --filter @xinghui/docs preview
 
 - 后端 `pom.xml`：模块和 JDK/Spring Boot 版本。
 - 后端 `system-admin/src/main/resources/application.yml`：数据库、Flyway、租户默认配置。
-- 后端 `system-admin/src/main/resources/db/migration/V20261013_170__menu_consolidation.sql`：三个分组和旧地址保留。
+- 后端 `system-admin/src/main/resources/db/migration/V20261013_170__menu_consolidation.sql`：旧基线三个分组和旧地址保留；`V20261016_180__ai_config_v04.sql` 增加独立AI管理，`V20261016_210__ai_access_actions.sql` 补齐相关动作权限。
 - 前端 `apps/web-ele/src/router/routes-helper.ts`：动态菜单与受保护个人入口。
 - 前端 `apps/web-ele/src/preferences.ts`：后端动态路由模式、默认首页。

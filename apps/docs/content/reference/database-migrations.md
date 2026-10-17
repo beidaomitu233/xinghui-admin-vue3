@@ -18,7 +18,7 @@
 
 ## 版本与 repeatable
 
-当前目录有 **22 个 versioned SQL**，从 V1/V2 到 `V20261013_170__menu_consolidation.sql`。版本按 Flyway 数值段比较，不以字符串排序或文件修改时间判断先后。新增脚本前核对当前分支所有版本，不能复用已存在的版本号。
+当前配对后端目录有 **27个versioned SQL**，从V1/V2到 `V20261016_220__ai_attempt_trace.sql`；v1.2.0静态旧快照的教程基线为22个、截止V170。版本按Flyway数值段比较，不以字符串排序或文件修改时间判断先后。新增脚本前核对当前分支所有版本，不能复用已存在的版本号。
 
 | 迁移阶段 | 作用 |
 | --- | --- |
@@ -26,11 +26,16 @@
 | 20260726 系列 | 文件权限、旧结构对齐、字符集/排序规则 |
 | 20260926 系列 | 参数运行态、字典、受控调度、通知、AI模型/场景、微信授权 |
 | 20261012.120–160 | 内容权限、历史网站管理建立与退役、菜单清理、加密业务配置、低代码 |
-| 20261013.170 | 三个一级组、叶子归并与权限关联迁移 |
+| 20261013.170 | 旧基线三个一级组、叶子归并与权限关联迁移 |
+| 20261016.180 | `V20261016_180__ai_config_v04.sql`：独立AI管理导航、配置/不可变版本、多模型/Key与测试准入 |
+| 20261016.190 | `V20261016_190__ai_template_data_v04.sql`：模板、资源、版本与测试/审批证据 |
+| 20261016.200 | `V20261016_200__ai_app_runtime_v04.sql`：应用发布版本、业务请求、尝试与阶段日志 |
+| 20261016.210 | `V20261016_210__ai_access_actions.sql`：补齐模板/数据动作及AI平台日志审计权限 |
+| 20261016.220 | `V20261016_220__ai_attempt_trace.sql`：尝试历史追加实际provider/model/Key版本、供应商追踪ID与输出上限，旧未知值保留NULL |
 
 V130 曾建立网站内容表；V140 已退役这些表/菜单。应保留历史版本链，不删除旧脚本来假装模块从未存在。optional 下同名 R 脚本用于历史资料示例清理，不再创建示例表。曾使用该 location 的库，后续必须保留，才能校验已应用 repeatable 历史。
 
-当前质量验证环境启用了两个 location，实测 `history=23`（22 versioned + 清理 R）。默认仅 versioned 的新库不应机械要求23行；判断依据是每条 script/version/type/success 与本环境 location 匹配。
+旧教程基线曾启用两个location，实测history=23（22 versioned + 清理R），属于历史记录。当前源码默认新库应匹配27个versioned脚本；启用该optional清理R时通常为28条history。不能只凭总数验收，判断依据是每条script/version/type/checksum/success与本环境location及当前源码一致。
 
 ## 空库启动
 
@@ -66,6 +71,6 @@ baseline=2 表示将 V1/V2 视为已有，并非自动补齐这两份 SQL 的所
 
 ## 已验证与源码依据
 
-当前开发候选在隔离 MySQL8.0.12 空库完成含 V170 的23条 history、重启 strict validate、真实认证/SQL/MinIO和夹具清理。MySQL5.7/8.0容器矩阵及独立机器未运行；这些本地结果不替代目标环境升级演练。
+旧教程基线曾在隔离MySQL8.0.12空库完成含V170的23条history、重启strict validate及真实服务验证。当前配对源码的正式CI已通过MySQL5.7与8.0两组服务矩阵，覆盖空库迁移、严格校验和认证服务检查，并包含AI配置经Druid Wall的HTTP回归。当前一期另有真实记录摘要组合验收；这些结果不等于独立机器或读者目标库的升级演练，不授权修改已应用迁移。
 
-源码：后端 `system-admin/src/main/resources/application.yml`、`application-datasource.yml`、`db/migration/*.sql`、`db/optional-migration/*.sql`、`system-admin/src/test/java/com/xinghuiTec/quality/ReleaseServicesIT.java`；版本组合见[版本页](../releases/versions.md)。
+源码：后端 `system-admin/src/main/resources/application.yml`、`application-datasource.yml`、`db/migration/*.sql`、`db/optional-migration/*.sql`、`system-admin/src/test/java/com/xinghuiTec/quality/ReleaseServicesIT.java`及 `.github/workflows/ci.yml` 的MySQL服务矩阵；版本组合见[版本页](../releases/versions.md)。
