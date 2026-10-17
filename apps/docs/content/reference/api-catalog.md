@@ -827,7 +827,7 @@ public Result<String> demo()
 
 ## 实用改造接口
 
-本轮增加对话持久化、围绕Key的模型设置和实际数据库引用，仍待整体组合验收。新对话保存完整用户/助手正文，技术请求日志与旧无正文记录保持区别；普通授权数据预览不统一掩码。旧应用发布流程保留为兼容参考。
+本轮增加对话持久化、独立AI配置页的多渠道/命名多Key与模型扫描，以及实际数据库引用，仍待整体组合验收。新对话保存完整用户/助手正文，技术请求日志与旧无正文记录保持区别；普通授权数据预览不统一掩码。旧应用发布流程保留为兼容参考。
 
 ### 对话与模型设置
 
@@ -840,18 +840,75 @@ public Result<String> demo()
 | POST `/ai/conversations` | sceneKey/kind/businessRef/message/clientMutationId/test；本人invoke，TEST另需平台+scene:test与确认 | HTTP202 Accepted |
 | POST `/ai/conversations/{id}/messages` | expectedRevision/message/clientMutationId/test；仅本人续聊及当前调用/数据权限 | HTTP202 Accepted |
 | GET `/system/ai/settings/providers` | 平台+config:list/query/add/edit/test任一或对应旧model动作 | Provider候选、默认地址与模型建议 |
-| GET `/system/ai/settings` | 平台+config:list或model:list，pageNum/pageSize | Page |
+| GET `/system/ai/settings` | 平台+config:list或model:list，pageNum/pageSize/search | Page |
 | GET `/system/ai/settings/{id}` | 平台+config:query或model:query | View |
 | POST `/system/ai/settings` | 平台+config:add或model:add；Change | View |
 | PUT `/system/ai/settings/{id}` | 平台+config:edit或model:edit；Change含expectedRevision | View |
 | POST `/system/ai/settings/{id}/connection-tests` | 平台+config:test或model:test；confirmedCosts/activateOnSuccess；启用另需config:enable | HTTP202 TestRun |
 | GET `/system/ai/settings/{id}/connection-tests/{testId}` | 平台+config:test或model:test | TestRun |
 
-Change为expectedRevision/name/provider/endpointUrl/apiKey/modelCodes；新建expectedRevision=null，已有Key空/null保留，新建空Key拒绝。View只给configured及尾号，不回显Key、密文、ENV或内部版本搭配。保存不调用供应商；连接测试完整成功且仍匹配当前草稿才可启用，失败保留原active配置。
+Change为expectedRevision/name/provider/endpointUrl/apiKey/modelCodes/keys/clientMutationId；新增expectedRevision=null，编辑必须提供当前revision。provider为openrouter或deepseek，endpointUrl可省略使用所选服务商官方地址，不允许自定义供应商地址。Provider候选为可读名称、官方地址及建议模型；建议不能代替实时扫描或连接测试。
+
+更新时provider/endpointUrl省略保留原渠道；已被使用的配置不能更换服务商或地址，需新增独立渠道再调整场景。场景仍使用的模型不能删除全部声明关联，运行维护无法安全完成时返回409并保留原连接。
+
+keys为完整目标集合：每项`{keyId?,name,apiKey?,modelCodes?}`，省略keyId是新增且必须填Key，已有keyId必须属于本配置，apiKey空/null保留材料。keys提供时，未包含的旧Key会从目标草稿移除；1..16项，name非空且最多80字符，无重复Key。每Key可关联多个模型，同模型可关联多个Key；modelCodes省略表示渠道全部模型，显式列表必须非空且属于渠道模型。顶层modelCodes可由显式Key关联并集推导；最多16模型、64组关联，不允许重复模型。
+
+keys省略兼容原单Key格式并保留原Key集合及关联。旧顶层apiKey非空只允许当前恰好一个Key时更换；多Key配置必须明确具体Key，不能默改第一项。keys和非空顶层apiKey同时提供为400。示例中的模型代码均应来自扫描结果：
+
+```json
+{
+  "expectedRevision": 3,
+  "clientMutationId": "12345678-1234-4234-8234-123456789abc",
+  "name": "日常问答主渠道",
+  "provider": "openrouter",
+  "modelCodes": ["vendor/model-a", "vendor/model-b"],
+  "keys": [
+    {
+      "keyId": "11",
+      "name": "主账号",
+      "apiKey": null,
+      "modelCodes": ["vendor/model-a", "vendor/model-b"]
+    },
+    {
+      "name": "备用账号",
+      "apiKey": "仅密码框输入的新Key",
+      "modelCodes": ["vendor/model-a"]
+    }
+  ]
+}
+```
+
+clientMutationId可省略；提供时必须为规范UUID。同一主体/租户及mutation的同内容重放不会重复创建或保存，返回该配置当前可读结果；同标识不同内容409。重试必须保留原标识和内容，确认成功后下一次编辑使用新标识。响应未确认时先查询原结果，不把重新点击变成新建重复渠道。
+
+View包含configId/revision/name/provider/endpointUrl/models/active/connection/pendingChanges及keys。keys每项为keyId/name/keyConfigured/maskedKey/modelCodes/status/message/models，模型结果含code/status/message；只给尾号与安全状态，不回显Key、密文、ENV或内部版本搭配。pendingChanges表示修改待测试，原active仍可继续使用；原成功结果不冒充新材料成功。
+
+TestRun新增keys逐Key结果，models仍提供逐模型聚合；同模型任一实际关联Key通过即可用，失败Key仍显示原因。只有声明的关联进入测试，未变且有效的证明可复用。具备启用权限且仍匹配当前草稿时，可自动启用真实通过的关联；PARTIAL说明部分成功，零通过/取消/草稿变化保留原active。保存不发生成请求，连接测试才会实际调用。
+
+多个渠道可同时active；场景模型候选包含configId/configName/providerCode/modelCode。运行先尝试当前模型合格Key，再按场景允许的备用模型/渠道顺序执行，总尝试/时限/令牌预算共享。Key材料401后隔离并需重新验证；已输出部分内容、取消、当前授权失败或不可重试错误不切换，不拼接其他模型回答。技术执行细节见[扩展说明](../development/ai-extension.md#多-key-配置与运行切换)。
 
 会话message最长2048字符。TEST的test为expectedSceneRevision/modelIndex/confirmedCosts；同mutation同内容重放原结果，不同内容409，同会话已有在途返回CONVERSATION_BUSY。Accepted含conversationId/revision/requestId/sceneVersionId/userMessageId/assistantMessageId/status/contextTruncated/contextStartMessageId。Detail.messages按sequence排列，含role/content/status/errorCode/partial/时间，失败不伪造成功回答。只有成对成功轮参与后续上下文，最近最多20个成功轮次并受容量上限约束；截断明确说明，不删除展示历史。
 
 旧请求标记LEGACY_NO_BODY，提示“旧记录未保留对话”。原SSE与取消路径继续使用，仍检查owner、tenant及当前数据权限；审计查看不是本人续聊授权。
+
+### 模型目录与 Key 扫描
+
+Controller为`controller/AiModelCatalogController.java`，Java请求/响应为`ai.config.AiModelCatalogDtos`。以下接口均需平台身份，响应`Cache-Control:no-store`，沿用Result外层；扫描不保存配置、不启用模型、不调用生成接口。
+
+| 方法路径 | 输入与最小动作 | 成功data |
+| --- | --- | --- |
+| GET `/system/ai/model-catalog` | search/pageNum/pageSize；config:query或model:query | OpenRouter公共Page，不发送Key |
+| POST `/system/ai/model-catalog/scan` | configId/keyId/expectedRevision/search/pageNum/pageSize；config:test或model:test | 已保存当前草稿中选定Key的Page |
+| POST `/system/ai/model-catalog/draft-scan` | provider/apiKey/search/pageNum/pageSize；config:add/edit/test或对应model动作任一 | 未保存Key的Page，可先扫描、选择模型再保存 |
+
+草稿扫描`provider`仅openrouter/deepseek，apiKey为WRITE_ONLY且toString脱敏；只在内存用于本次认证，不入库/操作日志或响应。仅接收application/json，正文最多16KiB，严格拒绝未知/重复字段、过深JSON及尾随内容。完整Key最多8192字符，不能包含控制字符；模型扫描不允许指定endpointUrl。保存Key扫描不接收Key材料或keyVersion，只在当前配置草稿内按keyId映射读取；请求前后核对revision，发生更改409，不能把旧Key结果标成新Key结果。
+
+pageNum至少1，pageSize为1..100（GET默认1/20，POST显式提供），search可省略、最多128字符；在本次有界目录内按模型名称/代码搜索与分页。Page字段为records/total/pageNum/pageSize/refreshedAt/source/provider/configId/keyId/revision/generationVerified，其中total为整数；records每项为code/name/contextLength/maxCompletionTokens/inputModalities/outputModalities/supportedParameters。未提供的元数据为null或空数组，缺少名称回退code，不猜测工具或JSON能力。
+
+source为PUBLIC（无Key OpenRouter公共目录）、USER_FILTERED（OpenRouter带Key）或PROVIDER_KEY（DeepSeek带Key）。公共与草稿扫描的configId/keyId/revision均null，保存Key扫描返回这三项。refreshedAt为本次目录读取完成时间；不缓存跨Key结果，每次重新请求会刷新目录，不承诺分页间快照相同。generationVerified固定false。
+
+官方端点来自唯一`AiProviderPresets`：OpenRouter公共`GET /api/v1/models`，带Key`GET /api/v1/models/user`；DeepSeek带Key`GET /models`。OpenRouter带Key结果按用户供应商偏好、隐私和防护规则过滤；DeepSeek采用id/name/context_window/max_output_tokens及声明的输入输出模态。目录可选性不保证余额、额度、推理时服务可用或生成成功。依据：[OpenRouter目录](https://openrouter.ai/docs/api/api-reference/models/list-models-filtered-by-user-provider-preferences-privacy-settings-and-guardrails)、[DeepSeek模型列表](https://api-docs.deepseek.com/api/list-models/)。
+
+单次出站最多15秒、响应最多4MiB/5000条模型、并发4；仅官方HTTPS固定地址，禁止重定向及调用者URL，沿用公网地址规则与运维代理配置。错误message为固定`AI_MODEL_CATALOG:`前缀，无供应商原始正文/Key/堆栈：400 INVALID_INPUT/KEY_REQUIRED；413 REQUEST_LIMIT；404 KEY_NOT_FOUND；409 CONFIG_CHANGED/CONFIG_UNAVAILABLE；422 PROVIDER_UNSUPPORTED；429 RATE_LIMITED；502 UPSTREAM_UNAUTHORIZED/UPSTREAM_FORBIDDEN/UPSTREAM_FAILED/UPSTREAM_REDIRECT/UPSTREAM_INVALID/RESPONSE_LIMIT；503 CREDENTIAL_UNAVAILABLE/NETWORK_UNAVAILABLE/BUSY；504 TIMEOUT。上游401/403映射502，不能据此清除本系统登录态；本地动作拒绝仍403。扫描Controller失败Result.code为202，权限处理为309，HTTP状态和安全message同时保留。
 
 ### 数据库引用与实际值预览
 

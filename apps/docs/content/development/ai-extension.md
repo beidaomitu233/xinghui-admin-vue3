@@ -12,6 +12,30 @@
 
 每次受理固定场景版本、模型与取数定义；在途不随保存变化。同mutation同内容重放原结果，不重复消息或供应商调用。SSE重连和每次尝试重新核对当前授权，不能用可读旧会话替代当前业务读取权。审计查看他人对话不授予续聊权。
 
+## 多 Key 配置与运行切换
+
+独立AI配置页对应`/ai/configurations`，普通管理使用`/system/ai/settings`，不让使用者填写配置版本或Key配对ID。AiSettingsDtos.Change增加keys及可选clientMutationId；keys是完整目标集合，KeyChange使用keyId/name/apiKey/modelCodes，keyId只在本配置内映射。Key与模型关联实际保存在不可变快照中，运行不能退回所有Key与所有模型的任意组合。上限为每渠道16个Key、16个模型、64组关联。
+
+新增Key需明文材料，已有Key留空保留；keys省略兼容原单Key请求，多Key时顶层apiKey不允许含糊替换首项。Change、KeyChange的apiKey为WRITE_ONLY且toString脱敏。普通View.keys及TestRun.keys提供每Key/每模型的安全结果，原models保持聚合；同模型任一明确关联Key通过即可用，不能把某Key的成功转算给另一个Key。
+
+设置保存可传规范UUID clientMutationId，在主体/租户范围防止结果未知时重复创建；同内容重放返回当前可读配置，内容改变409。只修改名称不产生新连接测试；更换Key或模型保留原active，pendingChanges明确新内容待测。当前使用的模型必须有合法验证关联才能维护执行指针，受限旧场景无法安全维护时保留原连接并给出原因。
+
+`AiProviderPresets`是设置、聊天适配器与扫描共同的官方地址白名单。Preset提供code/name/chatEndpoint/modelsEndpoint/publicModelsEndpoint/suggestedModels，require(code,chatEndpoint)核对完全相同的官方地址；当前只有OpenRouter和DeepSeek，不接受任意兼容URL或以建议模型代替实时目录。
+
+AiConfiguredProviderRuntime只提供仍启用、关联匹配且证明有效的目标；失效Key材料不会被后续候选重新取回。AiRequestExecutor按场景允许的模型/渠道顺序，先消耗当前模型合格Key，再尝试下一候选。预算依据实际剩余目标数分配，总maxAttempts、deadline和token不因切换重置；仅一个目标时不预留不存在的备用份额。网络错误、408/504、429及可重试供应商错误在没有输出时可继续；实际取消、授权/内容拒绝及非重试错误终止。
+
+一旦流已输出，失败结果保留INCOMPLETE/partial，输出触达标志阻止切换与拼接另一模型正文；取消保留真实已收内容。只有完整成功轮次参与后续对话上下文。日志尝试记录实际服务商、模型及Key版本，不存明文凭据，也不将失败用量未知计为0。跨服务商备用需要场景确实选择该独立渠道，多个同OpenRouter Key并不解决其入口整体故障。
+
+## 模型发现与凭据边界
+
+`AiModelCatalogService`与配置同包，保存Key扫描复用AiConfigurationService.head/snapshot/resolveSecret：限定当前已保存草稿的configId/keyId成员，取Key前后和返回前核对revision。公开HTTP不接受keyVersion、密文、ENV名或任意URL；不会另建凭据库或改变启用状态。
+
+首次配置可走POST `/system/ai/model-catalog/draft-scan`，输入provider/apiKey后先扫描再选模型，避免保存必须先有模型的循环。DraftScan.apiKey为WRITE_ONLY、toString为REDACTED，原始JSON有16KiB、深度、未知/重复字段和尾随内容限制；明文仅本次内存使用，不进入默认操作日志、数据库、浏览器持久化或响应。仅有add/edit/test动作可草稿扫描，不因此取得配置query权限；已保存Key扫描独立要求test。
+
+AiModelCatalogTransport只对共享预设发GET，区分OpenRouter公共/models和认证/models/user、DeepSeek认证/models，后两者都不发推理请求。生产固定HTTPS、公网地址检查、禁止重定向，并复用运维代理配置；本地测试接缝只允许127.0.0.1随机端口，不注册生产mock。请求总限时15秒，响应4MiB、最多5000模型、并发4及有界DNS队列。
+
+响应仅白名单可读名称、代码、上下文/输出上限、模态及声明参数；搜索分页在本次有界目录内完成，不混用其他Key缓存。source/refreshedAt明确目录来源与时间，generationVerified始终false。OpenRouter用户目录仅按服务端用户偏好/隐私/防护规则过滤，不证明余额和实际调用可用；DeepSeek可选元数据缺失时保留未知。上游401/403转为502加固定安全分类，避免触发本系统重新登录；原始错误、Key和异常原因不出响应。精确DTO、权限和错误见[模型扫描HTTP](../reference/api-catalog.md#模型目录与-key-扫描)。
+
 ## 数据目录与唯一共享接口
 
 `com.xinghuiTec.ai.contract.AiSceneDataRuntime`由SceneDataService实现，DatabaseBindingReader负责动态元数据与只读查询。目录来自当前应用数据库JDBC DatabaseMetaData，显示真实表/字段名、备注及类型；通用业务表无需逐表编写注册代码。
@@ -20,12 +44,14 @@
 | --- | --- |
 | tables / databaseFields | 当前实际表、字段与可读主键；按权限过滤，秘密列不作输出 |
 | relations | 实际单列FK关系；复合FK不伪装为单列完整关系 |
-| records | 有界真实行候选，返回key、label、实际values及可提交businessRef |
+| records | 有界真实行候选，返回精确key、业务名称label、实际values及可提交businessRef |
 | compile | 静态语法、标识符、字段、模式和关系校验，不读取样本值 |
 | previewBindings | 真实授权取数，返回values、reads条数/截断与notices，不调用模型 |
 | render / authorize | 固定快照实际渲染／仅复核当前授权与行/schema元数据 |
 
 sourceKey为 `db.<实际表名>` 或 `lowcode.<表单ID>`；它们由选择器提供。低代码虚拟来源识别所有实际可读业务字段，按记录原schema校验类型及读取，不再以两个字段名注册白名单。
+
+候选label优先可读name/title/subject，再取首个非主键、非租户/软删且非秘密的非空字符串业务值；没有名称时回退精确主键，最长80个Unicode码点。不硬编码某张表的名称列，key始终保持原精度字符串，不将显示名称当作执行引用。
 
 ## 绑定定义与主子查询
 

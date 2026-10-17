@@ -2,7 +2,7 @@
 
 菜单管理位于 **系统管理 → 菜单管理**。当前源码默认导航按 **系统管理、通用能力、运行维护、AI管理** 四个一级目录组织。页面的可见集合来自用户实际授权，不保证每个身份都能看到四组中的全部子项。v1.2.0静态旧快照沿用原三组布局，不能据此推断当前源码的菜单结构。
 
-AI管理的日常入口为调用监控（`/ai/requests`）和提示词配置（`/ai/templates`），Key设置从监控进入。新工作区改造待组合验收；旧配置、应用深链用于兼容。工作区入口可见不授予场景编辑、业务调用、记录读取或日志审计权限，各动作仍独立检查。
+AI管理的日常入口为独立AI配置（`/ai/configurations`）、提示词配置（`/ai/templates`）和调用监控（`/ai/requests`）。AI配置管理渠道、命名Key、模型扫描与连接测试；提示词页编辑场景和数据引用；调用监控查看完整对话及续聊。本轮仍待组合验收，入口可见不授予配置读写、场景编辑、业务调用、记录读取或日志审计权限，各动作独立检查。
 
 ## 菜单字段
 
@@ -34,3 +34,4 @@ AI管理的日常入口为调用监控（`/ai/requests`）和提示词配置（`
 - 路由加载：`apps/web-ele/src/router/routes-helper.ts`；核心入口：`apps/web-ele/src/router/routes/core.ts`。
 - 后端：`system-admin/src/main/java/com/xinghuiTec/controller/SysMenuController.java`。
 - 旧三组层级：`system-admin/src/main/resources/db/migration/V20261013_170__menu_consolidation.sql`；当前独立AI组与动作：`V20261016_180__ai_config_v04.sql`、`V20261016_210__ai_access_actions.sql`（同目录）。
+- 独立AI配置二级页：`V20261018_244__restore_standalone_ai_configuration.sql`复用原菜单与动作授权，恢复`system/ai-config/index`，不新增角色数据权限；迁移后重新登录核对真实导航和API动作。
