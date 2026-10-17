@@ -859,7 +859,7 @@ Change为expectedRevision/name/provider/endpointUrl/apiKey/modelCodes；新建ex
 
 | 方法路径 | 输入 | data |
 | --- | --- | --- |
-| GET `/system/ai/scene-data/database/tables` | keyword/pageNum/pageSize | Page<DatabaseTable>：sourceKey/tableName/label/comment/primaryKey |
+| GET `/system/ai/scene-data/database/tables` | keyword/pageNum/pageSize | `Page<DatabaseTable>`：sourceKey/tableName/label/comment/primaryKey |
 | GET `/system/ai/scene-data/database/fields` | sourceKey | DatabaseFields：fields含field/label/comment/type/nullable/primaryKey |
 | GET `/system/ai/scene-data/database/relations` | sourceKey | DatabaseRelation[]：name/parentSourceKey/parentField/childSourceKey/childField/foreignKey |
 | POST `/system/ai/scene-data/database/records` | sourceKey/filters/limit | DatabaseRecords：records含key/label/values/businessRef，另含truncated |
