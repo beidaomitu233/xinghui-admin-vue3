@@ -23,10 +23,14 @@ const required = [
   '/src/router/menu-cleanup.test.ts',
   '/src/styles/workspace-theme.test.ts',
   '/src/router/guard.test.ts',
+  '/src/demo/build.test.ts',
+  '/src/demo/transport.test.ts',
+  '/src/demo/ai-pages.test.ts',
 ];
 const minimumAssertions = new Map([
   ['/src/router/menu-cleanup.test.ts', 4],
   ['/src/styles/workspace-theme.test.ts', 5],
+  ['/src/demo/ai-pages.test.ts', 7],
 ]);
 const authSuites = [
   '/src/api/core/session-info.test.mjs',
