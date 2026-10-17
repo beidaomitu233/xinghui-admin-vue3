@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
-  "date": "2026-10-17",
-  "scope": "AI scene workspace, direct save and call monitoring",
-  "frontendSource": "c1646632ecf6d5ec864d6cb15c9287f9ba214964",
-  "backendSource": "033891da78f618c3aef3095cd69fbb071caff22f",
-  "documentationSource": "c1646632ecf6d5ec864d6cb15c9287f9ba214964",
+  "date": "2026-10-18",
+  "scope": "Standalone AI channels, multi-key model associations and discovery, durable conversations, database prompt references",
+  "frontendSource": "e22022ad51f72777960244f085c7637be898ecdb",
+  "backendSource": "3f992848752ac167bdb014851af501e2c0471fcf",
+  "documentationSource": "24be2ea13ba3a5f9be9220a7cd023bbe885e7aee",
   "runtime": "browser-local-only",
   "realModelCalls": false,
   "newReleaseTag": false
