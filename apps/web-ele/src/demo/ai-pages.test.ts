@@ -33,7 +33,10 @@ vi.mock('@vben/stores', () => ({
 vi.mock('@vben/hooks', () => ({
   useAppConfig: () => ({ apiURL: '/__static_demo_local_only__' }),
 }));
-vi.mock('vue-router', () => ({ useRoute: () => ({ query: {} }) }));
+vi.mock('vue-router', () => ({
+  useRoute: () => ({ query: {} }),
+  onBeforeRouteLeave: vi.fn(),
+}));
 
 const wrappers: ReturnType<typeof mount>[] = [];
 beforeEach(async () => {

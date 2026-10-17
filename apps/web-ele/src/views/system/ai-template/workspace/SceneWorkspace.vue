@@ -11,6 +11,7 @@ import type {
 } from '#/api/system/ai-scene';
 
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { onBeforeRouteLeave } from 'vue-router';
 
 import { useAccessStore } from '@vben/stores';
 
@@ -59,6 +60,9 @@ const legacyByScene = new Map<string, null | SceneLegacy>();
 const conversionConsent = new Set<string>();
 const mutationConsent = new Map<string, boolean>();
 const variables = ref<{ label: string; name: string }[]>([]);
+const leaveState = ref<'blocked' | 'saving' | null>(null);
+let finishLeave: ((allowed: boolean) => void) | undefined;
+let leaveGeneration = 0;
 let loadGeneration = 0;
 let detailGeneration = 0;
 let searchTimer: ReturnType<typeof setTimeout> | undefined;
@@ -122,6 +126,52 @@ function updateSummary(summary: SceneSummary) {
   if (index !== -1) scenes.value[index] = summary;
   if (selected.value?.sceneKey === summary.sceneKey) selected.value = summary;
 }
+function leaveRisk() {
+  return (
+    autosave.hasUnconfirmedChanges() ||
+    Boolean(pendingCreate.value) ||
+    creating.value ||
+    (createOpen.value &&
+      Boolean(
+        newName.value ||
+        newPurpose.value ||
+        newFormId.value ||
+        newKind.value !== 'GENERAL',
+      ))
+  );
+}
+function beforeUnload(event: BeforeUnloadEvent) {
+  if (!leaveRisk()) return;
+  event.preventDefault();
+  event.returnValue = '';
+}
+function chooseLeave(allowed: boolean) {
+  leaveGeneration++;
+  leaveState.value = null;
+  const finish = finishLeave;
+  finishLeave = undefined;
+  finish?.(allowed);
+}
+onBeforeRouteLeave(() => {
+  if (finishLeave) chooseLeave(false);
+  if (!leaveRisk()) return true;
+  const run = ++leaveGeneration;
+  leaveState.value = 'saving';
+  const decision = new Promise<boolean>((resolve) => {
+    finishLeave = resolve;
+  });
+  void autosave.flushAll().then(
+    (saved) => {
+      if (disposed || run !== leaveGeneration) return;
+      if (saved && !leaveRisk()) chooseLeave(true);
+      else leaveState.value = 'blocked';
+    },
+    () => {
+      if (!disposed && run === leaveGeneration) leaveState.value = 'blocked';
+    },
+  );
+  return decision;
+});
 function emptyDefinition(scene: SceneSummary): SceneDefinition {
   return {
     name: scene.name,
@@ -307,6 +357,7 @@ async function resolve(choice: 'keep-local' | 'use-server') {
   if (choice === 'keep-local') await autosave.retry(key);
 }
 onMounted(async () => {
+  window.addEventListener('beforeunload', beforeUnload);
   if (can('list')) await loadList();
   if (can('query'))
     try {
@@ -317,6 +368,8 @@ onMounted(async () => {
     }
 });
 onBeforeUnmount(() => {
+  window.removeEventListener('beforeunload', beforeUnload);
+  chooseLeave(false);
   disposed = true;
   loadGeneration++;
   detailGeneration++;
@@ -468,6 +521,27 @@ onBeforeUnmount(() => {
         <button type="button" @click="loadList">重新读取</button>
       </section>
     </main>
+    <div v-if="leaveState" class="dialog-backdrop leave-dialog-backdrop">
+      <section
+        class="create-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-label="离开前处理未确认内容"
+      >
+        <h2>
+          {{ leaveState === 'saving' ? '正在保存后离开…' : '仍有未确认内容' }}
+        </h2>
+        <p>
+          本地输入仅保留在本页会话中。离开、刷新或关闭页面可能丢失未确认内容；已经发出的请求仍可能在服务端完成。
+        </p>
+        <div>
+          <button type="button" @click="chooseLeave(false)">留在当前页</button>
+          <button type="button" @click="chooseLeave(true)">
+            放弃未确认内容并离开
+          </button>
+        </div>
+      </section>
+    </div>
     <div v-if="createOpen" class="dialog-backdrop">
       <form
         class="create-dialog"
@@ -651,6 +725,9 @@ summary {
   display: grid;
   place-items: center;
   background: #0005;
+}
+.leave-dialog-backdrop {
+  z-index: 1100;
 }
 .create-dialog {
   display: grid;

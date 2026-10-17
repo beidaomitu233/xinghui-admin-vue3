@@ -93,6 +93,7 @@ function outputFormat(event: Event) {
           maxlength="120"
           @input="update('name', ($event.target as HTMLInputElement).value)"
         />
+        <span v-if="fields.name" class="field-error">{{ fields.name }}</span>
       </label>
       <label>
         用途
@@ -101,6 +102,9 @@ function outputFormat(event: Event) {
           :readonly="readonly"
           @input="update('purpose', ($event.target as HTMLInputElement).value)"
         />
+        <span v-if="fields.purpose" class="field-error">
+          {{ fields.purpose }}
+        </span>
       </label>
       <label>
         模型
@@ -201,6 +205,20 @@ function outputFormat(event: Event) {
       </p>
     </details>
     <slot name="data"></slot>
+    <p
+      v-if="fields.dataObjects"
+      class="field-error"
+      data-field-error="dataObjects"
+    >
+      {{ fields.dataObjects }}
+    </p>
+    <p
+      v-if="fields.modelPolicy"
+      class="field-error"
+      data-field-error="modelPolicy"
+    >
+      {{ fields.modelPolicy }}
+    </p>
     <div class="variables">
       <span>插入变量</span>
       <button
@@ -243,8 +261,8 @@ function outputFormat(event: Event) {
         "
       ></textarea>
     </details>
-    <p v-for="(message, field) in fields" :key="field" class="field-error">
-      {{ field === 'promptText' ? '' : message }}
+    <p v-if="fields.outputRequirement" class="field-error">
+      {{ fields.outputRequirement }}
     </p>
   </div>
 </template>

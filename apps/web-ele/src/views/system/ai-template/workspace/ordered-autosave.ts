@@ -145,6 +145,22 @@ export class OrderedSceneAutosave<T> {
     this.start(sceneKey);
     return completion;
   }
+  async flushAll(): Promise<boolean> {
+    if (this.disposed) return false;
+    for (const key of this.entries.keys())
+      if (!(await this.flush(key))) return false;
+    return !this.hasUnconfirmedChanges();
+  }
+  hasUnconfirmedChanges() {
+    return [...this.entries.values()].some(
+      (entry) =>
+        this.dirty(entry) ||
+        Boolean(entry.pending) ||
+        Boolean(entry.failed) ||
+        entry.phase === 'conflict' ||
+        entry.phase === 'error',
+    );
+  }
   register(sceneKey: string, revision: number, value: T, editable: boolean) {
     if (this.disposed) return;
     if (!sceneKey || !Number.isSafeInteger(revision) || revision < 0)

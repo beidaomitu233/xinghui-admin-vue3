@@ -44,14 +44,26 @@ export function sceneSaveProblem(error: unknown) {
     const fields: Record<string, string> = {};
     if (Array.isArray(data.fields))
       for (const field of data.fields) {
-        const name = object(field).field;
+        const path = object(field).field;
+        const name =
+          typeof path === 'string' ? path.replace(/^definition\./, '') : path;
         if (
           typeof name === 'string' &&
-          /^(?:name|purpose|promptText|outputRequirement|dataObjects|modelPolicy)(?:\.[\w.]+)?$/.test(
+          /^(?:name|purpose|promptText|outputRequirement|dataObjects|modelPolicy)(?:\.\w+|\[\d{1,3}\])*$/.test(
             name,
           )
-        )
-          fields[name] = '此项配置不符合要求，请检查。';
+        ) {
+          const root = name.split(/[.[]/, 1)[0];
+          const labels: Record<string, string> = {
+            name: '场景名称',
+            purpose: '用途',
+            promptText: '提示词',
+            outputRequirement: '输出规则',
+            dataObjects: '数据对象或允许字段',
+            modelPolicy: '模型及调用设置',
+          };
+          if (root) fields[root] = `${labels[root]}配置不符合要求，请检查。`;
+        }
       }
     return new SaveProblem(
       'validation',

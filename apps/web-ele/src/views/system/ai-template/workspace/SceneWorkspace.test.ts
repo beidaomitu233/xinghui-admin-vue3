@@ -5,6 +5,7 @@ import type {
 } from '#/api/system/ai-scene';
 
 import { flushPromises, mount } from '@vue/test-utils';
+import { h, KeepAlive, ref } from 'vue';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -19,6 +20,14 @@ const api = vi.hoisted(() => ({
   setSceneEnabled: vi.fn(),
 }));
 const access = vi.hoisted(() => ({ accessCodes: [] as string[] }));
+const navigation = vi.hoisted(() => ({
+  guard: undefined as (() => boolean | Promise<boolean>) | undefined,
+}));
+vi.mock('vue-router', () => ({
+  onBeforeRouteLeave: (guard: () => boolean | Promise<boolean>) => {
+    navigation.guard = guard;
+  },
+}));
 vi.mock('#/api/system/ai-scene', () => api);
 vi.mock('#/api/system/ai-application', () => ({ subscribeAiRequest: vi.fn() }));
 vi.mock('#/api/system/ai-scene-data', () => ({
@@ -123,6 +132,7 @@ async function open() {
   return wrapper;
 }
 beforeEach(() => {
+  navigation.guard = undefined;
   vi.useFakeTimers();
   vi.clearAllMocks();
   access.accessCodes = ['list', 'query', 'edit', 'add', 'enable'].map(
@@ -147,6 +157,146 @@ afterEach(() => {
 });
 
 describe('scene workspace actual editing and autosave', () => {
+  it('maps whitelisted definition and array field diagnostics into local editor errors', async () => {
+    api.saveScene.mockRejectedValue({
+      response: {
+        status: 400,
+        data: {
+          data: {
+            fields: [
+              { field: 'definition.promptText', code: 'MISSING_VARIABLE' },
+              {
+                field: 'definition.dataObjects[0].fields',
+                code: 'FIELD_FORBIDDEN',
+              },
+              { field: 'stack.trace', code: 'do-not-display' },
+            ],
+          },
+        },
+      },
+    });
+    const wrapper = await open();
+    await wrapper.get('textarea[aria-label="提示词"]').setValue('无效输入保留');
+    await vi.advanceTimersByTimeAsync(600);
+    await flushPromises();
+    expect(wrapper.text()).toContain('提示词配置不符合要求');
+    expect(wrapper.text()).toContain('数据对象或允许字段配置不符合要求');
+    expect(wrapper.text()).not.toContain('do-not-display');
+    expect(wrapper.get('textarea[aria-label="提示词"]').element).toHaveProperty(
+      'value',
+      '无效输入保留',
+    );
+  });
+  it('flushes legal pending textarea edits before allowing route leave', async () => {
+    const wrapper = await open();
+    await wrapper.get('textarea[aria-label="提示词"]').setValue('离开前保存');
+    const leaving = navigation.guard?.();
+    await flushPromises();
+    expect(await leaving).toBe(true);
+    expect(api.saveScene.mock.calls[0]?.[1].definition.promptText).toBe(
+      '离开前保存',
+    );
+    expect(wrapper.find('[data-phase="saved"]').exists()).toBe(true);
+    const unload = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(unload);
+    expect(unload.defaultPrevented).toBe(false);
+  });
+  it.each([409, 503])(
+    'blocks leaving after HTTP %s, warns on refresh, and requires an explicit discard decision',
+    async (status) => {
+      api.saveScene.mockRejectedValue({ response: { status } });
+      const wrapper = await open();
+      await wrapper
+        .get('textarea[aria-label="提示词"]')
+        .setValue('不能静默丢失');
+      await vi.advanceTimersByTimeAsync(600);
+      await flushPromises();
+      const leaving = navigation.guard?.();
+      await flushPromises();
+      expect(wrapper.find('[aria-label="离开前处理未确认内容"]').exists()).toBe(
+        true,
+      );
+      const unload = new Event('beforeunload', { cancelable: true });
+      window.dispatchEvent(unload);
+      expect(unload.defaultPrevented).toBe(true);
+      await wrapper
+        .findAll('button')
+        .find((button) => button.text() === '留在当前页')
+        ?.trigger('click');
+      expect(await leaving).toBe(false);
+      expect(
+        wrapper.get('textarea[aria-label="提示词"]').element,
+      ).toHaveProperty('value', '不能静默丢失');
+      const discarding = navigation.guard?.();
+      await flushPromises();
+      await wrapper
+        .findAll('button')
+        .find((button) => button.text() === '放弃未确认内容并离开')
+        ?.trigger('click');
+      expect(await discarding).toBe(true);
+    },
+  );
+  it('protects unknown creation outcomes and lets clean unconfigured scenes leave directly', async () => {
+    api.getScene.mockResolvedValue({
+      ...detail('first', 0),
+      definition: null,
+      scene: { ...detail('first', 0).scene, currentVersionId: null },
+    });
+    const wrapper = await open();
+    expect(navigation.guard?.()).toBe(true);
+    const cleanUnload = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(cleanUnload);
+    expect(cleanUnload.defaultPrevented).toBe(false);
+    api.createScene.mockRejectedValue(new Error('unknown acceptance'));
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '新建场景')
+      ?.trigger('click');
+    await wrapper.get('.create-dialog input').setValue('结果未知的新建');
+    await wrapper.get('form.create-dialog').trigger('submit');
+    await flushPromises();
+    const leaving = navigation.guard?.();
+    await flushPromises();
+    expect(wrapper.get('[aria-label="离开前处理未确认内容"]').text()).toContain(
+      '未确认',
+    );
+    const unload = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(unload);
+    expect(unload.defaultPrevented).toBe(true);
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '留在当前页')
+      ?.trigger('click');
+    expect(await leaving).toBe(false);
+  });
+  it('preserves the same failed editor instance across KeepAlive deactivation and activation', async () => {
+    api.saveScene.mockRejectedValue(new Error('offline'));
+    const shown = ref(true);
+    const wrapper = mount({
+      setup: () => () =>
+        h(KeepAlive, () => (shown.value ? h(SceneWorkspace) : h('div'))),
+    });
+    wrappers.push(wrapper);
+    await flushPromises();
+    await wrapper.get('.scene-item').trigger('click');
+    await flushPromises();
+    const original = wrapper.getComponent(SceneWorkspace).vm.$.uid;
+    await wrapper
+      .get('textarea[aria-label="提示词"]')
+      .setValue('缓存回切保留的输入');
+    await vi.advanceTimersByTimeAsync(600);
+    await flushPromises();
+    shown.value = false;
+    await flushPromises();
+    shown.value = true;
+    await flushPromises();
+    expect(wrapper.getComponent(SceneWorkspace).vm.$.uid).toBe(original);
+    expect(wrapper.get('textarea[aria-label="提示词"]').element).toHaveProperty(
+      'value',
+      '缓存回切保留的输入',
+    );
+    expect(wrapper.find('[data-phase="error"]').exists()).toBe(true);
+  });
   it('creates an unconfigured identity with optional purpose without auto-saving a definition', async () => {
     api.createScene.mockResolvedValue({
       ...detail('new-scene', 0),
