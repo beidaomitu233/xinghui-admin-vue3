@@ -2,9 +2,9 @@
   "schemaVersion": 1,
   "date": "2026-10-17",
   "scope": "AI scene workspace, direct save and call monitoring",
-  "frontendSource": "4d06d92d59a8a4308fa193444966dcf1809df9b8",
-  "backendSource": "9337e3a137da066578ef591c657aa956856d37bc",
-  "documentationSource": "4d06d92d59a8a4308fa193444966dcf1809df9b8",
+  "frontendSource": "c1646632ecf6d5ec864d6cb15c9287f9ba214964",
+  "backendSource": "033891da78f618c3aef3095cd69fbb071caff22f",
+  "documentationSource": "c1646632ecf6d5ec864d6cb15c9287f9ba214964",
   "runtime": "browser-local-only",
   "realModelCalls": false,
   "newReleaseTag": false
