@@ -263,50 +263,59 @@ onBeforeUnmount(() => {
   border: 1px solid hsl(var(--border));
   border-radius: 10px;
 }
+
 h2 {
-  font-weight: 600;
   font-size: 13px;
+  font-weight: 600;
 }
+
 .hint,
 small,
 .pages {
-  color: hsl(var(--muted-foreground));
-  font-size: 12px;
   margin: 10px 0;
+  font-size: 12px;
+  color: hsl(var(--muted-foreground));
 }
+
 .form-search,
 .pages,
 .fields {
   display: flex;
-  align-items: center;
   flex-wrap: wrap;
   gap: 16px;
+  align-items: center;
   margin: 12px 0;
 }
+
 input:not([type='checkbox']),
 select {
+  padding: 8px 12px;
+  background: hsl(var(--background));
   border: 1px solid hsl(var(--border));
   border-radius: 6px;
-  background: hsl(var(--background));
-  padding: 8px 12px;
 }
+
 select {
-  margin-left: 12px;
   max-width: 100%;
+  margin-left: 12px;
 }
+
 .fields label {
   display: flex;
   gap: 8px;
   align-items: center;
 }
+
 button {
   color: hsl(var(--primary));
 }
+
 button:disabled {
   opacity: 0.45;
 }
+
 [role='alert'] {
-  color: #b66a19;
   font-size: 12px;
+  color: #b66a19;
 }
 </style>

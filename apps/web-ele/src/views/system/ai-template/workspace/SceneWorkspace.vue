@@ -651,109 +651,129 @@ onBeforeUnmount(() => {
   display: flex;
   min-height: calc(100vh - 150px);
   margin: 16px;
+  color: hsl(var(--foreground));
+  background: hsl(var(--background));
   border: 1px solid hsl(var(--border));
   border-radius: 12px;
-  background: hsl(var(--background));
-  color: hsl(var(--foreground));
 }
+
 main {
-  min-width: 0;
   flex: 1;
+  min-width: 0;
   padding: 28px 36px;
 }
+
 header {
   display: flex;
-  justify-content: space-between;
-  align-items: start;
   gap: 16px;
+  align-items: start;
+  justify-content: space-between;
   margin-bottom: 24px;
 }
+
 h1 {
+  margin-bottom: 8px;
   font-size: 22px;
   font-weight: 600;
-  margin-bottom: 8px;
   overflow-wrap: anywhere;
 }
+
 h2 {
   font-weight: 600;
 }
+
 button {
   color: hsl(var(--primary));
 }
+
 button:disabled {
-  opacity: 0.5;
   cursor: not-allowed;
+  opacity: 0.5;
 }
+
 .message {
   display: flex;
-  justify-content: space-between;
   gap: 16px;
-  margin-bottom: 20px;
+  justify-content: space-between;
   padding: 10px 14px;
+  margin-bottom: 20px;
   border: 1px solid hsl(var(--border));
   border-radius: 8px;
 }
+
 .availability,
 .data-objects p,
 .trial p {
-  color: hsl(var(--muted-foreground));
-  font-size: 13px;
   margin: 10px 0 20px;
+  font-size: 13px;
+  color: hsl(var(--muted-foreground));
 }
+
 .data-objects {
   padding: 16px;
   border: 1px solid hsl(var(--border));
   border-radius: 8px;
 }
+
 .trial {
-  border-top: 1px solid hsl(var(--border));
-  margin-top: 28px;
   padding-top: 20px;
+  margin-top: 28px;
+  border-top: 1px solid hsl(var(--border));
 }
+
 summary {
   cursor: pointer;
 }
+
 .empty {
-  text-align: center;
   padding-top: 160px;
   color: hsl(var(--muted-foreground));
+  text-align: center;
 }
+
 .empty p {
   margin: 16px 0;
 }
+
 .conflict {
   padding: 16px;
+  margin-bottom: 20px;
   border: 1px solid #b66a19;
   border-radius: 8px;
-  margin-bottom: 20px;
 }
+
 .legacy-notice {
-  border: 1px solid hsl(var(--border));
-  border-radius: 8px;
   padding: 16px;
   margin-bottom: 20px;
   font-size: 13px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
 }
+
 .legacy-notice p {
   margin: 8px 0;
   color: hsl(var(--muted-foreground));
 }
+
 .legacy-notice pre {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
   max-height: 240px;
-  overflow: auto;
   margin: 12px 0;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
+
 .conflict pre {
   max-height: 160px;
+  margin: 12px 0;
   overflow: auto;
   white-space: pre-wrap;
-  margin: 12px 0;
 }
+
 .conflict button {
   margin-right: 20px;
 }
+
 .dialog-backdrop {
   position: fixed;
   inset: 0;
@@ -762,43 +782,51 @@ summary {
   place-items: center;
   background: #0005;
 }
+
 .leave-dialog-backdrop {
   z-index: 1100;
 }
+
 .create-dialog {
   display: grid;
   gap: 20px;
   width: min(480px, 90vw);
   padding: 28px;
+  background: hsl(var(--background));
   border: 1px solid hsl(var(--border));
   border-radius: 12px;
-  background: hsl(var(--background));
 }
+
 .create-dialog label {
   display: grid;
   gap: 8px;
 }
+
 .create-dialog input {
   padding: 10px;
+  background: transparent;
   border: 1px solid hsl(var(--border));
   border-radius: 6px;
-  background: transparent;
 }
+
 .create-dialog form,
 .create-dialog div {
   display: flex;
-  justify-content: flex-end;
   gap: 24px;
+  justify-content: flex-end;
 }
+
 @media (max-width: 1100px) {
   main {
     padding: 24px;
   }
 }
+
 @media (max-width: 720px) {
   .scene-workspace {
     flex-direction: column;
   }
+
   main {
     padding: 20px;
   }

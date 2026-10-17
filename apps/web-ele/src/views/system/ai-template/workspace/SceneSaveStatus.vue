@@ -37,19 +37,22 @@ const labels: Record<SavePhase, string> = {
 .save-status {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
   gap: 10px;
+  align-items: center;
   font-size: 12px;
   color: hsl(var(--muted-foreground));
 }
+
 .save-status[data-phase='saved'] {
   color: #16805b;
 }
+
 .save-status[data-phase='error'],
 .save-status[data-phase='conflict'],
 .save-status[data-phase='invalid'] {
   color: #b66a19;
 }
+
 button {
   color: hsl(var(--primary));
   text-decoration: underline;

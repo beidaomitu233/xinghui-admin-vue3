@@ -271,73 +271,87 @@ function outputFormat(event: Event) {
   display: grid;
   gap: 24px;
 }
+
 .variables {
   display: flex;
+  flex-wrap: wrap;
   gap: 12px;
   align-items: center;
-  flex-wrap: wrap;
   font-size: 12px;
 }
+
 .variables button {
   color: hsl(var(--primary));
 }
+
 .policy {
   margin-top: 16px;
 }
+
 .policy-hint {
+  margin-top: 12px;
   font-size: 12px;
   color: hsl(var(--muted-foreground));
-  margin-top: 12px;
 }
+
 .editor-meta {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 16px;
 }
+
 label {
   display: grid;
   gap: 8px;
   font-size: 13px;
   font-weight: 500;
 }
+
 input,
 select,
 textarea {
   width: 100%;
   padding: 11px 14px;
+  font-weight: 400;
+  color: inherit;
+  background: hsl(var(--background));
   border: 1px solid hsl(var(--border));
   border-radius: 8px;
-  background: hsl(var(--background));
-  color: inherit;
-  font-weight: 400;
 }
+
 textarea {
   min-height: 420px;
   line-height: 1.8;
   resize: vertical;
 }
+
 textarea:focus,
 input:focus,
 select:focus {
   outline: 2px solid hsl(var(--primary) / 30%);
   outline-offset: 1px;
 }
+
 textarea.output {
   min-height: 120px;
   margin-top: 12px;
 }
+
 summary {
-  cursor: pointer;
   font-size: 13px;
+  cursor: pointer;
 }
+
 .field-error {
-  color: #b66a19;
   font-size: 12px;
+  color: #b66a19;
 }
+
 [readonly],
 [disabled] {
   opacity: 0.75;
 }
+
 @media (max-width: 960px) {
   .editor-meta {
     grid-template-columns: 1fr;

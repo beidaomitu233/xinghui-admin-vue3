@@ -103,25 +103,29 @@ onBeforeUnmount(() => {
 .search,
 .pages {
   display: flex;
-  align-items: center;
   gap: 12px;
+  align-items: center;
   margin: 10px 0;
 }
+
 input,
 select {
   width: 100%;
   padding: 9px;
+  background: hsl(var(--background));
   border: 1px solid hsl(var(--border));
   border-radius: 6px;
-  background: hsl(var(--background));
 }
+
 button {
   color: hsl(var(--primary));
   white-space: nowrap;
 }
+
 button:disabled {
   opacity: 0.45;
 }
+
 .pages,
 [role='alert'] {
   font-size: 12px;

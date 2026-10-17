@@ -65,6 +65,7 @@ describe('explicit scene trial', () => {
         versionId: 'version-4',
       },
     });
+    expect(wrapper.get('textarea').attributes('maxlength')).toBe('2048');
     await button(wrapper, '查看授权预览').trigger('click');
     await flushPromises();
     expect(api.previewScene).toHaveBeenCalledWith('scene.a', {

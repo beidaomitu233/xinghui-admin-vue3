@@ -339,7 +339,7 @@ onBeforeUnmount(() => {
         <textarea
           v-model="requirement"
           :disabled="busy || Boolean(active) || Boolean(pending)"
-          maxlength="8000"
+          maxlength="2048"
         ></textarea>
       </label>
       <div class="actions">
@@ -388,64 +388,75 @@ onBeforeUnmount(() => {
 </template>
 <style scoped>
 .trial-panel {
-  border-top: 1px solid hsl(var(--border));
-  margin-top: 28px;
   padding-top: 20px;
+  margin-top: 28px;
+  border-top: 1px solid hsl(var(--border));
 }
+
 summary {
-  cursor: pointer;
   font-weight: 600;
+  cursor: pointer;
 }
+
 .hint {
-  color: hsl(var(--muted-foreground));
-  font-size: 12px;
   margin: 14px 0;
+  font-size: 12px;
+  color: hsl(var(--muted-foreground));
 }
+
 label {
   display: grid;
   gap: 8px;
   margin: 12px 0;
 }
+
 textarea,
 select,
 input:not([type='checkbox']) {
   width: 100%;
   padding: 10px;
+  background: hsl(var(--background));
   border: 1px solid hsl(var(--border));
   border-radius: 6px;
-  background: hsl(var(--background));
 }
+
 textarea {
   min-height: 90px;
 }
+
 .actions {
   display: flex;
-  align-items: center;
   flex-wrap: wrap;
   gap: 18px;
+  align-items: center;
   margin: 14px 0;
 }
+
 .actions label {
   display: flex;
   align-items: center;
   font-size: 12px;
 }
+
 button {
   color: hsl(var(--primary));
 }
+
 button:disabled {
   opacity: 0.45;
 }
+
 pre {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  padding: 14px;
   max-height: 360px;
+  padding: 14px;
+  margin: 10px 0;
   overflow: auto;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
   background: hsl(var(--accent));
   border-radius: 8px;
-  margin: 10px 0;
 }
+
 [role='alert'] {
   color: #b66a19;
 }

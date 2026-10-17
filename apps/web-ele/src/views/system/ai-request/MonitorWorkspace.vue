@@ -267,72 +267,86 @@ const count = (value: null | number | string | undefined) =>
 .monitor-workspace {
   padding: 24px;
 }
+
 header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  justify-content: space-between;
   margin-bottom: 28px;
 }
+
 h1 {
   font-size: 22px;
   font-weight: 600;
 }
+
 header p,
 .window,
 .empty {
-  color: hsl(var(--muted-foreground));
-  font-size: 13px;
   margin-top: 8px;
+  font-size: 13px;
+  color: hsl(var(--muted-foreground));
 }
+
 button {
   color: hsl(var(--primary));
 }
+
 .filters {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
   gap: 24px;
+  align-items: center;
   margin-bottom: 20px;
 }
+
 label {
   display: flex;
-  align-items: center;
   gap: 10px;
+  align-items: center;
 }
+
 select,
 input {
-  border: 1px solid hsl(var(--border));
-  background: hsl(var(--background));
-  border-radius: 6px;
   padding: 6px 12px;
+  background: hsl(var(--background));
+  border: 1px solid hsl(var(--border));
+  border-radius: 6px;
 }
+
 .cards {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 16px;
   margin: 16px 0;
 }
+
 article,
 .logs {
   padding: 20px;
+  background: hsl(var(--background));
   border: 1px solid hsl(var(--border));
   border-radius: 10px;
-  background: hsl(var(--background));
 }
+
 article {
   display: grid;
   gap: 16px;
 }
+
 article span {
   font-size: 13px;
   color: hsl(var(--muted-foreground));
 }
+
 strong {
   font-size: 28px;
 }
+
 .logs {
   margin-top: 24px;
 }
+
 @media (max-width: 1024px) {
   .cards {
     grid-template-columns: repeat(2, minmax(0, 1fr));

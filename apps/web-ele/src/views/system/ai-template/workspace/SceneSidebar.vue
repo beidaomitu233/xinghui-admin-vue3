@@ -84,11 +84,12 @@ defineEmits<{
 
 <style scoped>
 .scene-sidebar {
-  width: 260px;
   flex-shrink: 0;
+  width: 260px;
   padding: 20px;
   border-right: 1px solid hsl(var(--border));
 }
+
 .pages {
   display: flex;
   justify-content: space-between;
@@ -96,75 +97,90 @@ defineEmits<{
   font-size: 12px;
   color: hsl(var(--muted-foreground));
 }
+
 .pages button:disabled {
   opacity: 0.45;
 }
+
 .sidebar-heading {
   display: flex;
+  gap: 8px;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
   margin-bottom: 20px;
 }
+
 h2 {
   font-size: 16px;
   font-weight: 600;
 }
+
 input {
   width: 100%;
   padding: 9px 12px;
+  background: transparent;
   border: 1px solid hsl(var(--border));
   border-radius: 8px;
-  background: transparent;
 }
+
 nav {
-  margin-top: 16px;
   display: grid;
   gap: 8px;
+  margin-top: 16px;
 }
+
 button {
   text-align: left;
 }
+
 .sidebar-heading button {
-  color: hsl(var(--primary));
   font-size: 12px;
+  color: hsl(var(--primary));
 }
+
 .scene-item {
   display: grid;
   gap: 6px;
   padding: 14px;
+  overflow-wrap: anywhere;
   border: 1px solid transparent;
   border-radius: 10px;
-  overflow-wrap: anywhere;
 }
+
 .scene-item:hover {
   background: hsl(var(--accent));
 }
+
 .scene-item[aria-current='page'] {
-  border-color: hsl(var(--primary));
   background: hsl(var(--accent));
+  border-color: hsl(var(--primary));
 }
+
 .scene-item span,
 .scene-item small,
 .empty {
   font-size: 12px;
   color: hsl(var(--muted-foreground));
 }
+
 .empty {
   margin: 24px 0;
 }
+
 @media (max-width: 1100px) {
   .scene-sidebar {
     width: 220px;
     padding: 16px;
   }
 }
+
 @media (max-width: 720px) {
   .scene-sidebar {
     width: 100%;
     border-right: 0;
     border-bottom: 1px solid hsl(var(--border));
   }
+
   nav {
     max-height: 200px;
     overflow: auto;
