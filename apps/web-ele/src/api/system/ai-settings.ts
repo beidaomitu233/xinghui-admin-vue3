@@ -27,6 +27,7 @@ export interface SettingsConnection {
   testId: null | string;
 }
 export interface AiSettingsView {
+  keys: SettingsKeyView[];
   pendingChanges?: boolean;
   active: boolean;
   configId: string;
@@ -40,10 +41,12 @@ export interface AiSettingsView {
   revision: number;
 }
 export interface AiSettingsChange {
-  apiKey: null | string;
+  clientMutationId?: string;
+  apiKey?: null | string;
+  keys?: SettingsKeyChange[];
   endpointUrl: string;
   expectedRevision: null | number;
-  modelCodes: string[];
+  modelCodes?: string[];
   name: string;
   provider: string;
 }
@@ -54,12 +57,36 @@ export interface AiSettingsPage {
   total: string;
 }
 export interface SettingsTestRun {
+  keys: SettingsKeyResult[];
   active: boolean;
   configId: string;
   message: string;
   models: { code: string; message: string; status: ConnectionStatus }[];
   status: ConnectionStatus;
   testId: string;
+}
+export interface SettingsKeyChange {
+  apiKey?: null | string;
+  keyId?: string;
+  modelCodes?: string[];
+  name: string;
+}
+export interface SettingsModelResult {
+  code: string;
+  message: string;
+  status: ConnectionStatus;
+}
+export interface SettingsKeyResult {
+  keyId: string;
+  message: string;
+  models: SettingsModelResult[];
+  name: string;
+  status: ConnectionStatus;
+}
+export interface SettingsKeyView extends SettingsKeyResult {
+  keyConfigured: boolean;
+  maskedKey: string;
+  modelCodes: string[];
 }
 export const OPENROUTER_SUGGESTED_MODELS: SettingsModel[] = [
   { code: 'poolside/laguna-s-2.1:free', name: 'Poolside Laguna S 2.1' },
@@ -71,8 +98,11 @@ export const OPENROUTER_SUGGESTED_MODELS: SettingsModel[] = [
 const base = '/system/ai/settings';
 export const settingsProviders = () =>
   requestClient.get<SettingsProvider[]>(`${base}/providers`);
-export const listAiSettings = (params: { pageNum: number; pageSize: number }) =>
-  requestClient.get<AiSettingsPage>(base, { params });
+export const listAiSettings = (params: {
+  pageNum: number;
+  pageSize: number;
+  search?: string;
+}) => requestClient.get<AiSettingsPage>(base, { params });
 export const getAiSettings = (configId: string) =>
   requestClient.get<AiSettingsView>(`${base}/${encodeURIComponent(configId)}`);
 export const createAiSettings = (input: AiSettingsChange) =>

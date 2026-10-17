@@ -9,6 +9,18 @@ import type {
 
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
 
+import {
+  ElAlert,
+  ElButton,
+  ElCheckbox,
+  ElEmpty,
+  ElInput,
+  ElOption,
+  ElSelect,
+  ElSkeleton,
+  ElTag,
+} from 'element-plus';
+
 import ConversationTimeline from './ConversationTimeline.vue';
 import { ConversationSendFailure, conversationTime } from './view-model';
 
@@ -135,60 +147,80 @@ const labels: Record<ConversationItem['state'], string> = {
 <template>
   <div class="conversation-board">
     <aside class="conversation-sidebar">
-      <header>
-        <h1>对话记录</h1>
-        <button v-if="canCreate" type="button" @click="emit('create')">
+      <header class="sidebar-heading">
+        <h1>我的对话</h1>
+        <ElButton v-if="canCreate" type="primary" @click="emit('create')">
           新对话
-        </button>
+        </ElButton>
       </header>
       <form
         class="conversation-search"
         @submit.prevent="emit('search', search)"
       >
-        <input
+        <ElInput
           v-model="search"
           aria-label="搜索对话"
           placeholder="搜索标题或内容"
+          clearable
+          @clear="emit('search', '')"
         />
-        <button type="submit">搜索</button>
+        <ElButton native-type="submit">搜索</ElButton>
       </form>
-      <p v-if="listLoading" role="status">正在读取会话…</p>
-      <p v-else-if="conversations.length === 0" class="muted">暂无对话记录</p>
-      <nav aria-label="会话列表">
-        <button
+      <ElSkeleton
+        v-if="listLoading"
+        :rows="4"
+        animated
+        aria-label="正在读取会话"
+      />
+      <ElEmpty
+        v-else-if="conversations.length === 0"
+        description="暂无对话记录"
+        :image-size="52"
+      />
+      <nav v-else aria-label="会话列表" class="conversation-list">
+        <ElButton
           v-for="item in conversations"
           :key="item.key"
-          type="button"
+          text
           class="conversation-item"
+          :class="{ 'is-selected': selected?.key === item.key }"
           :aria-current="selected?.key === item.key ? 'page' : undefined"
           @click="emit('select', item.key)"
         >
           <strong>{{ item.title }}</strong>
-          <span>
+          <span class="conversation-source">
             {{ item.sceneLabel
             }}{{ item.sourceLabel ? ` · ${item.sourceLabel}` : '' }}
           </span>
           <p>{{ item.excerpt || '暂无消息摘要' }}</p>
-          <small>
-            {{ conversationTime(item.updatedAt) }} {{ labels[item.state] }}
-          </small>
-        </button>
+          <span class="conversation-meta">
+            <time>{{ conversationTime(item.updatedAt) }}</time>
+            <ElTag
+              v-if="labels[item.state]"
+              :type="item.state === 'failed' ? 'danger' : 'info'"
+              size="small"
+              effect="plain"
+            >
+              {{ labels[item.state] }}
+            </ElTag>
+          </span>
+        </ElButton>
       </nav>
     </aside>
     <main class="conversation-main">
       <header class="conversation-heading">
         <div>
-          <h2>{{ selected?.title || '新对话' }}</h2>
-          <p class="muted">
-            {{ selected?.sceneLabel || '选择场景，开始第一轮问答'
+          <h2>{{ selected?.title || '开始新对话' }}</h2>
+          <p>
+            {{ selected?.sceneLabel || '选择场景，发送第一条消息'
             }}{{ selected?.sourceLabel ? ` · ${selected.sourceLabel}` : '' }}
           </p>
         </div>
         <div class="heading-actions">
-          <button type="button" @click="emit('refresh')">刷新记录</button>
-          <button v-if="canSettings" type="button" @click="emit('settings')">
-            Key 与模型
-          </button>
+          <ElButton @click="emit('refresh')">刷新</ElButton>
+          <ElButton v-if="canSettings" @click="emit('settings')">
+            AI 配置
+          </ElButton>
         </div>
       </header>
       <ConversationTimeline
@@ -201,67 +233,77 @@ const labels: Record<ConversationItem['state'], string> = {
         class="conversation-composer"
         @submit.prevent="send"
       >
-        <label v-if="!selected">
-          对话场景
-          <select
+        <div v-if="!selected" class="conversation-context">
+          <ElSelect
             v-model="newSceneKey"
             aria-label="对话场景"
+            placeholder="选择对话场景"
+            filterable
             :disabled="sending.has(context) || unconfirmed.has(context)"
             @change="emit('scene', newSceneKey)"
           >
-            <option value="" disabled>选择场景</option>
-            <option v-for="scene in scenes" :key="scene.key" :value="scene.key">
-              {{ scene.label }}
-            </option>
-          </select>
-        </label>
-        <slot
-          v-if="!selected"
-          name="context"
-          :locked="sending.has(context) || unconfirmed.has(context)"
-        ></slot>
-        <label>
-          {{ selected ? '继续提问' : '你的问题' }}
-          <textarea
-            v-model="text"
-            aria-label="消息内容"
-            :readonly="messageLoading"
-            placeholder="输入问题或继续追问…"
-            maxlength="2048"
-            @keydown.ctrl.enter.prevent="send"
-          ></textarea>
-        </label>
-        <label v-if="requiresCostConfirmation" class="trial-confirmation">
-          <input v-model="confirmedCosts" type="checkbox" />
+            <ElOption
+              v-for="scene in scenes"
+              :key="scene.key"
+              :value="scene.key"
+              :label="scene.label"
+            />
+          </ElSelect>
+          <slot
+            name="context"
+            :locked="sending.has(context) || unconfirmed.has(context)"
+          ></slot>
+        </div>
+        <ElInput
+          v-model="text"
+          type="textarea"
+          :autosize="{ minRows: 3, maxRows: 8 }"
+          aria-label="消息内容"
+          :readonly="messageLoading"
+          :placeholder="selected ? '继续提问…' : '输入你的问题…'"
+          maxlength="2048"
+          resize="none"
+          @keydown.ctrl.enter.prevent="send"
+        />
+        <ElCheckbox
+          v-if="requiresCostConfirmation"
+          v-model="confirmedCosts"
+          class="trial-confirmation"
+        >
           我确认本轮试运行可能产生模型费用
-        </label>
-        <p v-if="errors.get(context)" class="composer-error" role="alert">
-          {{ errors.get(context) }}
-        </p>
+        </ElCheckbox>
+        <ElAlert
+          v-if="errors.get(context)"
+          :title="errors.get(context)"
+          type="error"
+          show-icon
+          closable
+          @close="errors.delete(context)"
+        />
         <p
           v-if="unconfirmed.has(context) && !sending.has(context)"
-          class="muted"
+          class="composer-hint"
         >
           重试使用原消息；此后编辑的内容仍保留在输入框中。
         </p>
         <div class="composer-actions">
-          <span class="muted">Ctrl + Enter 发送</span>
-          <button
-            v-if="working && canCancel"
-            type="button"
-            @click="emit('cancel')"
-          >
-            取消生成
-          </button>
-          <button
-            type="submit"
-            :disabled="
-              blocked ||
-              (!unconfirmed.has(context) && (!text.trim() || !sceneKey))
-            "
-          >
-            {{ sendLabel }}
-          </button>
+          <span class="composer-hint">Ctrl + Enter 发送</span>
+          <div>
+            <ElButton v-if="working && canCancel" @click="emit('cancel')">
+              取消生成
+            </ElButton>
+            <ElButton
+              native-type="submit"
+              type="primary"
+              :loading="sending.has(context)"
+              :disabled="
+                blocked ||
+                (!unconfirmed.has(context) && (!text.trim() || !sceneKey))
+              "
+            >
+              {{ sendLabel }}
+            </ElButton>
+          </div>
         </div>
       </form>
       <p v-else class="readonly-message">
@@ -272,7 +314,7 @@ const labels: Record<ConversationItem['state'], string> = {
         class="conversation-details"
         @toggle.self="detailsOpen = ($event.target as HTMLDetailsElement).open"
       >
-        <summary>调用详情与统计</summary>
+        <summary>对话信息</summary>
         <slot v-if="detailsOpen" name="details"></slot>
       </details>
     </main>
@@ -280,184 +322,202 @@ const labels: Record<ConversationItem['state'], string> = {
 </template>
 <style scoped>
 .conversation-board {
-  display: flex;
-  min-height: calc(100vh - 150px);
-  margin: 16px;
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  height: min(80vh, 1000px);
+  min-height: 600px;
+  overflow: hidden;
+  color: hsl(var(--foreground));
   background: hsl(var(--background));
-  border: 1px solid hsl(var(--border));
-  border-radius: 12px;
+  border-radius: 10px;
 }
 
 .conversation-sidebar {
-  flex-shrink: 0;
-  width: 290px;
-  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+  padding: 20px 12px;
+  background: hsl(var(--muted) / 35%);
   border-right: 1px solid hsl(var(--border));
 }
 
-.conversation-sidebar header,
+.sidebar-heading,
 .conversation-heading,
-.heading-actions,
-.composer-actions {
+.composer-actions,
+.conversation-meta {
   display: flex;
-  gap: 16px;
+  gap: 12px;
   align-items: center;
   justify-content: space-between;
 }
 
+.sidebar-heading,
+.conversation-search {
+  padding: 0 8px;
+}
+
 h1,
 h2 {
-  font-size: 18px;
+  font-size: 17px;
   font-weight: 600;
-}
-
-button {
-  color: hsl(var(--primary));
-}
-
-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.5;
 }
 
 .conversation-search {
   display: flex;
-  gap: 12px;
-  margin: 20px 0;
-}
-
-input,
-select,
-textarea {
-  width: 100%;
-  padding: 10px 12px;
-  color: inherit;
-  background: hsl(var(--background));
-  border: 1px solid hsl(var(--border));
-  border-radius: 8px;
-}
-
-nav {
-  display: grid;
   gap: 8px;
 }
 
+.conversation-list {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+  overflow: auto;
+}
+
 .conversation-item {
+  height: auto;
+  padding: 14px 12px;
+  margin: 0;
+  text-align: left;
+  white-space: normal;
+}
+
+.conversation-item :deep(> span) {
   display: grid;
   gap: 7px;
-  padding: 14px;
-  color: inherit;
-  text-align: left;
-  border: 1px solid transparent;
-  border-radius: 9px;
+  width: 100%;
 }
 
-.conversation-item[aria-current='page'] {
-  background: hsl(var(--accent));
-  border-color: hsl(var(--primary));
-}
-
-.conversation-item p {
+.conversation-item strong {
   overflow: hidden;
   text-overflow: ellipsis;
+  font-weight: 600;
   white-space: nowrap;
 }
 
-.conversation-item span,
+.conversation-item.is-selected {
+  color: hsl(var(--primary));
+  background: hsl(var(--primary) / 10%);
+}
+
+.conversation-source,
 .conversation-item p,
-.conversation-item small,
-.muted {
+.conversation-meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-size: 12px;
+  line-height: 1.5;
   color: hsl(var(--muted-foreground));
+  white-space: nowrap;
 }
 
 .conversation-main {
   display: flex;
-  flex: 1;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
 }
 
 .conversation-heading {
-  padding: 22px 28px;
+  flex-shrink: 0;
+  padding: 20px 24px;
   border-bottom: 1px solid hsl(var(--border));
 }
 
 .conversation-heading p {
-  margin-top: 8px;
+  margin-top: 6px;
+  font-size: 13px;
+  color: hsl(var(--muted-foreground));
+}
+
+.heading-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 8px;
 }
 
 .conversation-composer {
   display: grid;
+  flex-shrink: 0;
   gap: 12px;
-  padding: 20px 28px;
-  border-top: 1px solid hsl(var(--border));
+  padding: 16px 24px 20px;
 }
 
-label {
-  display: grid;
-  gap: 8px;
-  font-size: 13px;
+.conversation-context {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
 }
 
-textarea {
-  min-height: 100px;
-  resize: vertical;
+.conversation-context > :deep(.el-select) {
+  max-width: 260px;
 }
 
-.composer-error {
-  font-size: 13px;
-  color: hsl(var(--destructive));
-}
-
-.readonly-message,
-.conversation-details {
-  padding: 18px 28px;
-  font-size: 13px;
+.composer-hint {
+  font-size: 12px;
   color: hsl(var(--muted-foreground));
-  border-top: 1px solid hsl(var(--border));
 }
 
-summary {
+.readonly-message {
+  flex-shrink: 0;
+  width: auto;
+  margin: 12px 24px 20px;
+}
+
+.conversation-details {
+  flex-shrink: 0;
+  padding: 0 24px 16px;
+  font-size: 12px;
+  color: hsl(var(--muted-foreground));
+}
+
+.conversation-details summary {
   cursor: pointer;
 }
 
-@media (max-width: 1100px) {
-  .conversation-sidebar {
-    width: 235px;
-    padding: 16px;
-  }
-
-  .conversation-heading {
-    align-items: flex-start;
-    padding: 18px;
-  }
-
-  .heading-actions {
-    flex-wrap: wrap;
-    justify-content: flex-end;
-  }
-}
-
-@media (max-width: 760px) {
+@media (max-width: 850px) {
   .conversation-board {
-    flex-direction: column;
+    grid-template-columns: minmax(0, 1fr);
+    height: auto;
+    min-height: 75vh;
   }
 
   .conversation-sidebar {
-    width: 100%;
+    gap: 12px;
+    padding: 14px 12px;
     border-right: 0;
     border-bottom: 1px solid hsl(var(--border));
   }
 
-  nav {
-    max-height: 240px;
-    overflow: auto;
+  .conversation-list {
+    flex-direction: row;
+    max-height: 112px;
   }
 
-  .conversation-heading,
+  .conversation-item {
+    flex-shrink: 0;
+    width: 220px;
+  }
+
+  .conversation-main {
+    min-height: 560px;
+  }
+
+  .conversation-heading {
+    flex-wrap: wrap;
+    padding: 16px;
+  }
+
   .conversation-composer {
     padding: 16px;
+  }
+
+  .composer-hint {
+    max-width: 55%;
   }
 }
 </style>

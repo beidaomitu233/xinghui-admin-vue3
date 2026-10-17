@@ -19,9 +19,11 @@ import {
   shallowReactive,
   watch,
 } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 
 import { useAccessStore } from '@vben/stores';
+
+import { ElAlert, ElOption, ElPagination, ElSelect } from 'element-plus';
 
 import { requestClient } from '#/api/request';
 import { subscribeAiRequest } from '#/api/system/ai-application';
@@ -34,7 +36,6 @@ import {
 import { aiFailureInfo } from '#/api/system/ai-runtime-errors';
 import { cancelSceneRequest } from '#/api/system/ai-scene';
 
-import SimpleSettingsPanel from '../../ai-config/SimpleSettingsPanel.vue';
 import DatabaseRecordPicker from '../../ai-template/workspace/DatabaseRecordPicker.vue';
 import { conversationItem, conversationMessage } from './adapter';
 import ConversationBoard from './ConversationBoard.vue';
@@ -43,6 +44,7 @@ import { ConversationSendFailure } from './view-model';
 const props = defineProps<{ initialKeySettings?: boolean }>();
 const access = useAccessStore();
 const route = useRoute();
+const router = useRouter();
 const can = (code: string) => access.accessCodes.includes(code);
 const scope = ref<'AUDIT' | 'OWN'>('OWN');
 const page = ref(1);
@@ -56,9 +58,6 @@ const listLoading = ref(false);
 const messageLoading = ref(false);
 const error = ref('');
 const notice = ref('');
-const settingsOpen = ref(
-  Boolean(props.initialKeySettings || route.query.settings === 'keys'),
-);
 const businessRef = ref<SceneSubmission['businessRef']>(null);
 const newSceneKey = ref('');
 const contextSource = ref('');
@@ -222,7 +221,7 @@ async function track(conversationId: string, requestId: string) {
               message.requestId === requestId && message.role === 'ASSISTANT',
           );
           if (assistant && event.type === 'delta') {
-            if (streamed.length + (event.text?.length ?? 0) > 131_072)
+            if (streamed.length + (event.text?.length ?? 0) > 262_144)
               throw new Error('OUTPUT_LIMIT');
             streamed += event.text ?? '';
             if (streamed.length >= assistant.content.length)
@@ -459,7 +458,6 @@ watch(
   () => access.accessToken,
   () => {
     identityVersion.value++;
-    settingsOpen.value = false;
     scope.value = 'OWN';
     page.value = 1;
     search.value = '';
@@ -500,10 +498,18 @@ watch(scope, () => {
 watch(
   () => route.query.settings,
   (value) => {
-    if (value === 'keys') settingsOpen.value = true;
+    if (value === 'keys' && canSettings.value)
+      void router.replace('/ai/configurations');
   },
 );
 onMounted(async () => {
+  if (
+    (props.initialKeySettings || route.query.settings === 'keys') &&
+    canSettings.value
+  ) {
+    await router.replace('/ai/configurations');
+    return;
+  }
   await loadList();
   await loadScenes();
   if (alive && typeof route.query.conversation === 'string')
@@ -519,24 +525,29 @@ onBeforeUnmount(() => {
 });
 </script>
 <template>
-  <div>
-    <div class="conversation-toolbar">
-      <label v-if="canAudit">
-        范围
-        <select v-model="scope" aria-label="会话范围">
-          <option value="OWN">我的对话</option>
-          <option value="AUDIT">审计查看</option>
-        </select>
-      </label>
-      <p v-if="error" role="alert">
-        {{ error }}
-        <button type="button" @click="error = ''">关闭</button>
-      </p>
-      <p v-if="notice" role="status">
-        {{ notice }}
-        <button type="button" @click="notice = ''">关闭</button>
-      </p>
+  <div class="conversation-workspace">
+    <div v-if="canAudit" class="conversation-toolbar">
+      <ElSelect v-model="scope" aria-label="会话范围">
+        <ElOption label="我的对话" value="OWN" />
+        <ElOption label="审计查看（只读）" value="AUDIT" />
+      </ElSelect>
     </div>
+    <ElAlert
+      v-if="error"
+      :title="error"
+      type="error"
+      show-icon
+      closable
+      @close="error = ''"
+    />
+    <ElAlert
+      v-if="notice"
+      :title="notice"
+      type="info"
+      show-icon
+      closable
+      @close="notice = ''"
+    />
     <ConversationBoard
       :key="identityVersion"
       :conversations="rows.map(conversationItem)"
@@ -583,15 +594,14 @@ onBeforeUnmount(() => {
         selected ? selectConversation(selected.conversationId) : loadList()
       "
       @cancel="cancel"
-      @settings="settingsOpen = true"
+      @settings="router.push('/ai/configurations')"
     >
       <template #context="{ locked }">
-        <p v-if="selected">
-          沿用原会话的业务关联{{
-            selected.sourceLabel ? `：${selected.sourceLabel}` : ''
-          }}
-        </p>
-        <p v-if="!selected && contextLoading" role="status">
+        <p
+          v-if="!selected && contextLoading"
+          class="context-hint"
+          role="status"
+        >
           正在读取业务记录来源…
         </p>
         <DatabaseRecordPicker
@@ -608,81 +618,49 @@ onBeforeUnmount(() => {
         <p v-if="activeMessage">当前请求 {{ activeMessage.requestId }}</p>
       </template>
     </ConversationBoard>
-    <div class="conversation-paging">
-      <button
-        type="button"
-        :disabled="page <= 1 || listLoading"
-        @click="
-          page--;
-          loadList();
-        "
-      >
-        上一页
-      </button>
-      <span>第 {{ page }} 页</span>
-      <button
-        type="button"
-        :disabled="BigInt(page * 20) >= BigInt(total) || listLoading"
-        @click="
-          page++;
-          loadList();
-        "
-      >
-        下一页
-      </button>
-    </div>
-    <el-drawer
-      v-if="canSettings"
-      v-model="settingsOpen"
-      title="Key 与模型"
-      size="min(760px, 96vw)"
-      destroy-on-close
-      :close-on-click-modal="false"
-    >
-      <SimpleSettingsPanel
-        v-if="settingsOpen"
-        @close="settingsOpen = false"
-        @changed="loadScenes"
-      />
-    </el-drawer>
+    <ElPagination
+      :current-page="page"
+      :page-size="20"
+      :total="Number(total)"
+      layout="total, prev, pager, next"
+      class="conversation-paging"
+      :disabled="listLoading"
+      @current-change="
+        page = $event;
+        loadList();
+      "
+    />
   </div>
 </template>
 <style scoped>
+.conversation-workspace {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  padding: 16px;
+}
+
 .conversation-toolbar {
   display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  align-items: center;
-  padding: 12px 20px 0;
-  font-size: 13px;
+  justify-content: flex-end;
 }
 
-.conversation-toolbar label {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-.conversation-toolbar select {
-  padding: 6px;
-  background: hsl(var(--background));
-  border: 1px solid hsl(var(--border));
-  border-radius: 6px;
+.conversation-toolbar :deep(.el-select) {
+  width: 180px;
 }
 
 .conversation-paging {
-  display: flex;
-  gap: 20px;
-  justify-content: center;
-  padding: 12px;
-  font-size: 13px;
+  justify-content: flex-end;
 }
 
-button {
-  color: hsl(var(--primary));
+.context-hint {
+  font-size: 12px;
+  color: hsl(var(--muted-foreground));
 }
 
-button:disabled {
-  opacity: 0.5;
+@media (max-width: 700px) {
+  .conversation-workspace {
+    padding: 8px;
+  }
 }
 </style>

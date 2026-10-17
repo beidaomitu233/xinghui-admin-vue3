@@ -5,7 +5,7 @@ import type {
   ModelReference,
   RequestStatus,
 } from './ai-application';
-import type { DataBinding } from './ai-database';
+import type { BindingPreview, DatabaseValue, DataBinding } from './ai-database';
 
 import { requestClient } from '#/api/request';
 
@@ -123,6 +123,8 @@ export interface SceneRequest {
   usageKnown: boolean;
 }
 export interface ScenePreview {
+  dataValues?: Record<string, DatabaseValue>;
+  reads?: BindingPreview['reads'];
   inputSummary: Record<string, string>;
   notices: string[];
   originalMessages: { content: string; role: string }[];

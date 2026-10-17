@@ -7,6 +7,16 @@ import type {
 
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 
+import {
+  ElAlert,
+  ElButton,
+  ElFormItem,
+  ElInput,
+  ElOption,
+  ElPopover,
+  ElSelect,
+} from 'element-plus';
+
 import { databaseFields, databaseRecords } from '#/api/system/ai-database';
 
 import { databaseFilterValue } from './database-filter-value';
@@ -29,6 +39,8 @@ const loading = ref(false);
 const truncated = ref(false);
 const error = ref('');
 const limit = ref(20);
+const filterOpen = ref(false);
+let searchTimer: ReturnType<typeof setTimeout> | undefined;
 let generation = 0;
 let alive = true;
 watch(
@@ -44,6 +56,7 @@ const booleanSearch = computed(() =>
 );
 async function load() {
   if (!props.sourceKey || props.readonly) return;
+  clearTimeout(searchTimer);
   const run = ++generation;
   loading.value = true;
   error.value = '';
@@ -69,8 +82,15 @@ async function load() {
     if (!alive || run !== generation) return;
     rows.value = result.records;
     truncated.value = result.truncated;
-    selected.value = '';
-    emit('update:modelValue', null);
+    const index = props.modelValue
+      ? rows.value.findIndex(
+          (row) =>
+            row.businessRef?.type === props.modelValue?.businessRef?.type &&
+            row.businessRef?.id === props.modelValue?.businessRef?.id,
+        )
+      : -1;
+    selected.value = index < 0 ? '' : String(index);
+    emit('update:modelValue', index < 0 ? null : (rows.value[index] ?? null));
   } catch {
     if (alive && run === generation) {
       rows.value = [];
@@ -80,9 +100,9 @@ async function load() {
     if (alive && run === generation) loading.value = false;
   }
 }
-function choose(event: Event) {
+function choose(value: string) {
   if (props.readonly) return;
-  const raw = (event.target as HTMLSelectElement).value;
+  const raw = value;
   if (raw === '') {
     emit('update:modelValue', null);
     return;
@@ -92,6 +112,12 @@ function choose(event: Event) {
     'update:modelValue',
     Number.isSafeInteger(index) ? (rows.value[index] ?? null) : null,
   );
+}
+function searchRecords(value: string) {
+  keyword.value = value;
+  limit.value = 20;
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => void load(), 250);
 }
 watch(
   () => props.sourceKey,
@@ -124,126 +150,159 @@ watch(
 onBeforeUnmount(() => {
   alive = false;
   generation++;
+  clearTimeout(searchTimer);
 });
 </script>
 <template>
-  <section class="database-record-picker" aria-label="选择业务记录">
-    <h3>{{ label || '选择业务记录' }}</h3>
-    <div class="record-search">
-      <select
-        v-model="filterField"
-        aria-label="记录搜索字段"
-        @change="keyword = ''"
-        :disabled="readonly || loading"
-      >
-        <option v-for="field in fields" :key="field.field" :value="field.field">
-          {{ field.label || field.field }}
-        </option>
-      </select>
-      <input
-        v-if="!booleanSearch"
-        v-model="keyword"
-        aria-label="记录搜索值"
-        :readonly="readonly"
-        placeholder="输入内容筛选记录"
-        @keydown.enter.prevent="load"
-      />
-      <select
-        v-else
-        v-model="keyword"
-        aria-label="记录搜索值"
-        :disabled="readonly || loading"
-      >
-        <option value="">不限</option>
-        <option value="true">是</option>
-        <option value="false">否</option>
-      </select>
-      <button type="button" :disabled="readonly || loading" @click="load">
-        搜索记录
-      </button>
-    </div>
-    <select
-      v-model="selected"
-      aria-label="业务记录"
-      :disabled="readonly || loading"
-      @change="choose"
-    >
-      <option value="" disabled>
-        {{ loading ? '正在读取记录…' : '按名称选择记录' }}
-      </option>
-      <option
-        v-for="(record, index) in rows"
-        :key="index"
-        :value="String(index)"
-      >
-        {{ record.label }}
-      </option>
-    </select>
-    <p v-if="!loading && rows.length === 0 && !error" class="muted">
-      没有符合条件的有权记录。
-    </p>
-    <p v-if="truncated" class="muted">
-      只显示前 {{ limit }} 条记录，请缩小筛选范围。
-      <button
-        v-if="limit < 200"
-        type="button"
+  <div class="database-record-picker" aria-label="选择业务记录">
+    <div class="record-picker-line">
+      <ElSelect
+        v-model="selected"
+        aria-label="业务记录"
+        :placeholder="label || '搜索并选择业务记录'"
+        filterable
+        remote
+        :remote-method="searchRecords"
         :disabled="readonly"
-        @click="
-          limit = Math.min(limit + 20, 200);
-          load();
-        "
+        :loading="loading"
+        clearable
+        @change="choose($event ?? '')"
       >
-        加载更多
-      </button>
-    </p>
-    <p v-if="modelValue" class="muted">已选择：{{ modelValue.label }}</p>
-    <p v-if="error" role="alert">{{ error }}</p>
-  </section>
+        <ElOption
+          v-for="(record, index) in rows"
+          :key="index"
+          :value="String(index)"
+          :label="record.label"
+        />
+        <template #footer>
+          <ElButton
+            v-if="truncated && limit < 200"
+            link
+            type="primary"
+            :disabled="loading"
+            @click="
+              limit = Math.min(limit + 20, 200);
+              load();
+            "
+          >
+            显示更多记录
+          </ElButton>
+          <span v-else-if="truncated" class="record-hint">
+            已显示前 {{ limit }} 条，请缩小筛选范围
+          </span>
+        </template>
+      </ElSelect>
+      <ElPopover
+        v-model:visible="filterOpen"
+        trigger="click"
+        placement="bottom-end"
+        :width="320"
+      >
+        <template #reference>
+          <ElButton :disabled="readonly" aria-label="筛选业务记录">
+            筛选
+          </ElButton>
+        </template>
+        <div class="record-filter">
+          <ElFormItem label="搜索字段">
+            <ElSelect
+              v-model="filterField"
+              aria-label="记录搜索字段"
+              filterable
+              :disabled="readonly || loading"
+              @change="keyword = ''"
+            >
+              <ElOption
+                v-for="field in fields"
+                :key="field.field"
+                :value="field.field"
+                :label="field.label || field.field"
+              />
+            </ElSelect>
+          </ElFormItem>
+          <ElFormItem label="搜索内容">
+            <ElInput
+              v-if="!booleanSearch"
+              v-model="keyword"
+              aria-label="记录搜索值"
+              placeholder="输入字段内容"
+              :readonly="readonly"
+              @keydown.enter.prevent="
+                load();
+                filterOpen = false;
+              "
+            />
+            <ElSelect
+              v-else
+              v-model="keyword"
+              aria-label="记录搜索值"
+              :disabled="readonly"
+            >
+              <ElOption label="不限" value="" />
+              <ElOption label="是" value="true" />
+              <ElOption label="否" value="false" />
+            </ElSelect>
+          </ElFormItem>
+          <ElButton
+            type="primary"
+            :loading="loading"
+            @click="
+              load();
+              filterOpen = false;
+            "
+          >
+            搜索记录
+          </ElButton>
+        </div>
+      </ElPopover>
+    </div>
+    <ElAlert
+      v-if="error"
+      :title="error"
+      type="error"
+      closable
+      @close="error = ''"
+      class="record-error"
+    />
+  </div>
 </template>
 <style scoped>
 .database-record-picker {
   display: grid;
-  gap: 12px;
-  padding: 16px;
-  border: 1px solid hsl(var(--border));
-  border-radius: 8px;
-}
-
-h3 {
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.record-search {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-}
-
-select,
-input {
+  gap: 8px;
   min-width: 0;
-  padding: 9px 12px;
-  background: hsl(var(--background));
-  border: 1px solid hsl(var(--border));
-  border-radius: 6px;
 }
 
-.record-search input {
+.record-picker-line {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.record-picker-line :deep(.el-select) {
   flex: 1;
+  min-width: 0;
 }
 
-.muted {
+.record-filter {
+  display: grid;
+  gap: 6px;
+}
+
+.record-filter :deep(.el-form-item) {
+  display: block;
+}
+
+.record-filter :deep(.el-select) {
+  width: 100%;
+}
+
+.record-hint {
   font-size: 12px;
   color: hsl(var(--muted-foreground));
 }
 
-button {
-  color: hsl(var(--primary));
-}
-
-[role='alert'] {
-  font-size: 13px;
-  color: hsl(var(--destructive));
+.record-error {
+  font-size: 12px;
 }
 </style>

@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import type { SaveView } from './ordered-autosave';
 
+import type { BindingPreview } from '#/api/system/ai-database';
 import type {
   SceneCreate,
   SceneDefinition,
   SceneDetail,
   SceneLegacy,
   SceneModelOption,
+  SceneSubmission,
   SceneSummary,
 } from '#/api/system/ai-scene';
 
@@ -23,9 +25,25 @@ import { onBeforeRouteLeave } from 'vue-router';
 import { useAccessStore } from '@vben/stores';
 
 import {
+  ElAlert,
+  ElButton,
+  ElCollapse,
+  ElCollapseItem,
+  ElDialog,
+  ElEmpty,
+  ElForm,
+  ElFormItem,
+  ElInput,
+  ElPopconfirm,
+  ElRadioButton,
+  ElRadioGroup,
+} from 'element-plus';
+
+import {
   createScene,
   getScene,
   getSceneWorkspace,
+  previewScene,
   sceneModels,
   setSceneEnabled,
 } from '#/api/system/ai-scene';
@@ -122,6 +140,24 @@ async function preparePreview() {
   if (!(await autosave.flush(key))) throw new Error('SAVE_UNCONFIRMED');
   return autosave.view(key).confirmed.dataBindings ?? [];
 }
+async function readDataPreview(
+  businessRef: SceneSubmission['businessRef'],
+): Promise<BindingPreview> {
+  if (!view.value) throw new Error('SCENE_UNAVAILABLE');
+  const saved = autosave.view(view.value.sceneKey);
+  const result = await previewScene(saved.sceneKey, {
+    expectedRevision: saved.revision,
+    businessRef,
+    inputs: { user_request: '' },
+  });
+  if (!result.dataValues || !result.reads)
+    throw new Error('PREVIEW_UNAVAILABLE');
+  return {
+    values: result.dataValues,
+    reads: result.reads,
+    notices: result.notices.map((code) => ({ code, reference: '' })),
+  };
+}
 const leaveState = ref<'blocked' | 'saving' | null>(null);
 let finishLeave: ((allowed: boolean) => void) | undefined;
 let leaveGeneration = 0;
@@ -130,6 +166,36 @@ let detailGeneration = 0;
 let searchTimer: ReturnType<typeof setTimeout> | undefined;
 let disposed = false;
 const latestSummaries = new Map<string, SceneSummary>();
+const dialogOpen = computed(() =>
+  Boolean(leaveState.value || conflict.value || createOpen.value),
+);
+const dialogTitle = computed(() => {
+  if (leaveState.value) return '离开前处理未确认内容';
+  if (conflict.value) return '处理版本冲突';
+  return '新建场景';
+});
+function closeWorkspaceDialog(done: () => void) {
+  if (creating.value || leaveState.value) return;
+  createOpen.value = false;
+  conflict.value = undefined;
+  done();
+}
+async function saveNow() {
+  if (view.value && !(await autosave.flush(view.value.sceneKey)))
+    message.value = '保存未完成，请检查当前字段或重试。';
+}
+async function prepareTrial() {
+  return view.value ? autosave.flush(view.value.sceneKey) : false;
+}
+async function refreshModels() {
+  if (!can('query')) return;
+  try {
+    const result = await sceneModels('TEXT');
+    if (!disposed) models.value = result;
+  } catch {
+    if (!disposed) message.value = '模型组合读取失败，请重试。';
+  }
+}
 const autosave = new OrderedSceneAutosave<SceneDefinition>({
   clone: cloneScene,
   equal: (a, b) => JSON.stringify(a) === JSON.stringify(b),
@@ -461,13 +527,17 @@ onBeforeUnmount(() => {
       @select="selectScene"
       @create="createOpen = true"
     />
-    <main :aria-busy="switching">
-      <div v-if="message" class="message" role="alert">
-        <span>{{ message }}</span>
-        <button type="button" @click="message = ''">关闭</button>
-      </div>
+    <main class="scene-main" :aria-busy="switching">
+      <ElAlert
+        v-if="message"
+        :title="message"
+        type="warning"
+        show-icon
+        closable
+        @close="message = ''"
+      />
       <template v-if="view && selected">
-        <header>
+        <header class="scene-heading">
           <div>
             <h1>{{ view.value.name || '未命名场景' }}</h1>
             <SceneSaveStatus
@@ -477,70 +547,84 @@ onBeforeUnmount(() => {
               @conflict="inspectConflict"
             />
           </div>
-          <button
-            v-if="can('enable')"
-            type="button"
-            :disabled="toggling"
-            @click="toggleEnabled"
-          >
-            {{ selected.enabled ? '停用场景' : '启用场景' }}
-          </button>
+          <div class="scene-actions">
+            <ElButton @click="refreshModels">刷新模型</ElButton>
+            <SceneTrialPanel
+              v-if="legacy?.compatibility !== 'READ_ONLY'"
+              :scene-key="view.sceneKey"
+              :definition="view.confirmed"
+              :revision="view.revision"
+              :version-id="selected.currentVersionId"
+              :business-ref="trialBusinessRef"
+              :models="models"
+              :prepare="prepareTrial"
+            />
+            <ElPopconfirm
+              v-if="can('enable') && selected.enabled"
+              title="停用此场景？已有对话仍可查看。"
+              confirm-button-text="停用"
+              cancel-button-text="保留"
+              @confirm="toggleEnabled"
+            >
+              <template #reference>
+                <ElButton :disabled="toggling">停用场景</ElButton>
+              </template>
+            </ElPopconfirm>
+            <ElButton
+              v-else-if="can('enable')"
+              :disabled="toggling"
+              @click="toggleEnabled"
+            >
+              启用场景
+            </ElButton>
+            <ElButton
+              v-if="view.editable"
+              type="primary"
+              :disabled="toggling || view.phase === 'saving'"
+              @click="saveNow"
+            >
+              保存
+            </ElButton>
+          </div>
         </header>
-        <p v-if="!selected.currentVersionId" class="availability">
+        <p v-if="!selected.currentVersionId" class="scene-state">
           尚未保存有效配置
         </p>
         <p
           v-else-if="selected.availability.state !== 'READY'"
-          class="availability"
+          class="scene-state"
         >
           {{ !selected.enabled ? '场景已停用' : '当前模型暂不可用' }}
-          <span v-for="reason in selected.availability.reasons" :key="reason">
-            {{ reason }}
-          </span>
         </p>
-        <section v-if="conflict" class="conflict" aria-label="处理版本冲突">
-          <h2>服务器版本已变化</h2>
-          <p>
-            本地输入已保留。选择使用服务器内容，或基于服务器最新版本保存本地内容。
-          </p>
-          <pre>{{ conflict.definition?.promptText }}</pre>
-          <button type="button" @click="resolve('use-server')">
-            使用服务器内容
-          </button>
-          <button type="button" @click="resolve('keep-local')">
-            保留本地并重新保存
-          </button>
-        </section>
-        <section v-if="legacy" class="legacy-notice">
-          <h2>
-            {{
+        <ElCollapse v-if="legacy" class="legacy-notice">
+          <ElCollapseItem
+            name="compatibility"
+            :title="
               legacy.compatibility === 'READ_ONLY'
-                ? '此旧配置保持只读'
-                : '旧配置格式转换'
-            }}
-          </h2>
-          <p v-for="reason in legacy.reasons" :key="reason">
-            {{ legacyReasonLabel(reason) }}
-          </p>
-          <p v-for="note in legacy.conversionNotes" :key="note">
-            {{ legacyConversionLabel(note) }}
-          </p>
-          <p>原版本继续保留；首次读取不会保存或转换。</p>
-          <button
-            v-if="
-              legacy.compatibility === 'CONVERTIBLE' &&
-              legacy.requiresConfirmation &&
-              !converted &&
-              can('edit')
+                ? '旧配置保持只读 · 查看兼容说明'
+                : '旧配置兼容说明'
             "
-            type="button"
-            @click="confirmConversion"
           >
-            确认转换说明，开始编辑
-          </button>
-          <p v-if="converted">将在下次有效保存时使用新编辑格式。</p>
-          <details>
-            <summary>查看原内容</summary>
+            <p v-for="reason in legacy.reasons" :key="reason">
+              {{ legacyReasonLabel(reason) }}
+            </p>
+            <p v-for="note in legacy.conversionNotes" :key="note">
+              {{ legacyConversionLabel(note) }}
+            </p>
+            <p>原版本保留，首次读取不自动转换。</p>
+            <ElButton
+              v-if="
+                legacy.compatibility === 'CONVERTIBLE' &&
+                legacy.requiresConfirmation &&
+                !converted &&
+                can('edit')
+              "
+              type="primary"
+              @click="confirmConversion"
+            >
+              确认转换说明，开始编辑
+            </ElButton>
+            <p v-if="converted">下次有效保存时使用新编辑格式。</p>
             <div v-for="(item, index) in legacy.originalMessages" :key="index">
               <small>{{ item.section }}</small>
               <pre>{{ item.text }}</pre>
@@ -548,8 +632,8 @@ onBeforeUnmount(() => {
             <pre v-if="legacy.originalMessages.length === 0">{{
               JSON.stringify(legacy.originalDefinition, null, 2)
             }}</pre>
-          </details>
-        </section>
+          </ElCollapseItem>
+        </ElCollapse>
         <PromptEditor
           v-if="legacy?.compatibility !== 'READ_ONLY'"
           ref="promptEditor"
@@ -581,6 +665,10 @@ onBeforeUnmount(() => {
               :value="view.value.dataBindings ?? []"
               :readonly="!view.editable || toggling"
               :prepare-preview="preparePreview"
+              :read-preview="readDataPreview"
+              :preview-disabled="
+                !can('test') || !access.accessCodes.includes('ai:scene:invoke')
+              "
               @change="
                 autosave.edit(view.sceneKey, {
                   ...view.value,
@@ -592,293 +680,206 @@ onBeforeUnmount(() => {
             />
           </template>
         </PromptEditor>
-        <SceneTrialPanel
-          v-if="legacy?.compatibility !== 'READ_ONLY'"
-          :scene-key="view.sceneKey"
-          :definition="view.confirmed"
-          :revision="view.revision"
-          :version-id="selected.currentVersionId"
-          :business-ref="trialBusinessRef"
-        />
       </template>
-      <section v-else class="empty">
-        <h1>提示词配置</h1>
-        <p>从左侧选择场景，或新建一个场景开始配置。</p>
-        <button type="button" @click="loadList">重新读取</button>
-      </section>
-    </main>
-    <div v-if="leaveState" class="dialog-backdrop leave-dialog-backdrop">
-      <section
-        class="create-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-label="离开前处理未确认内容"
+      <ElEmpty
+        v-else
+        description="从左侧选择或新建一个提示词场景"
+        :image-size="100"
       >
-        <h2>
+        <ElButton @click="loadList">重新读取</ElButton>
+      </ElEmpty>
+    </main>
+    <ElDialog
+      :model-value="dialogOpen"
+      :title="dialogTitle"
+      :aria-label="dialogTitle"
+      width="min(620px, 94vw)"
+      :close-on-click-modal="false"
+      :close-on-press-escape="!leaveState"
+      :show-close="!leaveState"
+      :before-close="closeWorkspaceDialog"
+    >
+      <template v-if="leaveState">
+        <p class="dialog-copy">
           {{ leaveState === 'saving' ? '正在保存后离开…' : '仍有未确认内容' }}
-        </h2>
-        <p>
-          本地输入仅保留在本页会话中。离开、刷新或关闭页面可能丢失未确认内容；已经发出的请求仍可能在服务端完成。
         </p>
-        <div>
-          <button type="button" @click="chooseLeave(false)">留在当前页</button>
-          <button type="button" @click="chooseLeave(true)">
-            放弃未确认内容并离开
-          </button>
-        </div>
-      </section>
-    </div>
-    <div v-if="createOpen" class="dialog-backdrop">
-      <form
-        class="create-dialog"
+        <p class="dialog-copy">
+          本地输入仅保留在本页会话中。离开、刷新或关闭可能丢失未确认内容；已经发出的请求仍可能在服务端完成。
+        </p>
+      </template>
+      <template v-else-if="conflict">
+        <p class="dialog-copy">
+          本地输入已保留，可选择服务器内容，或基于最新版本重新保存本地内容。
+        </p>
+        <pre class="conflict-content">{{
+          conflict.definition?.promptText
+        }}</pre>
+      </template>
+      <ElForm
+        v-else
+        label-position="top"
         aria-label="新建场景"
+        :disabled="creating || Boolean(pendingCreate)"
         @submit.prevent="create"
       >
-        <h2>新建场景</h2>
-        <p v-if="pendingCreate" class="availability">
-          上次创建受理尚未确认，重试将使用原请求。
+        <p v-if="pendingCreate" class="dialog-copy">
+          上次创建受理尚未确认，重试仍使用原请求。
         </p>
-        <label>
-          场景类型
-          <select
-            v-model="newKind"
-            :disabled="creating || Boolean(pendingCreate)"
-          >
-            <option value="GENERAL">通用场景</option>
-            <option
+        <ElFormItem label="场景类型">
+          <ElRadioGroup v-model="newKind" aria-label="新建场景类型">
+            <ElRadioButton value="GENERAL">通用场景</ElRadioButton>
+            <ElRadioButton
               v-if="access.accessCodes.includes('lowcode:record:query')"
               value="RECORD_SUMMARY"
             >
               记录摘要
-            </option>
-          </select>
-        </label>
-        <SceneFormPicker
+            </ElRadioButton>
+          </ElRadioGroup>
+        </ElFormItem>
+        <ElFormItem
           v-if="newKind === 'RECORD_SUMMARY'"
-          :value="newFormId"
-          :disabled="creating || Boolean(pendingCreate)"
-          @change="newFormId = $event"
-        />
-        <label>
-          场景名称
-          <input
-            v-model="newName"
-            required
-            maxlength="120"
-            :disabled="Boolean(pendingCreate)"
+          label="绑定表单"
+          required
+        >
+          <SceneFormPicker
+            :value="newFormId"
+            :disabled="creating || Boolean(pendingCreate)"
+            @change="newFormId = $event"
           />
-        </label>
-        <label>
-          用途（可选）
-          <input v-model="newPurpose" :disabled="Boolean(pendingCreate)" />
-        </label>
-        <div>
-          <button
-            type="button"
-            :disabled="creating"
-            @click="createOpen = false"
-          >
+        </ElFormItem>
+        <ElFormItem label="场景名称" required>
+          <ElInput
+            v-model="newName"
+            aria-label="新建场景名称"
+            maxlength="120"
+          />
+        </ElFormItem>
+        <ElFormItem label="用途">
+          <ElInput v-model="newPurpose" aria-label="新建场景用途" />
+        </ElFormItem>
+      </ElForm>
+      <template #footer>
+        <template v-if="leaveState">
+          <ElButton type="primary" @click="chooseLeave(false)">
+            留在当前页
+          </ElButton>
+          <ElButton @click="chooseLeave(true)">放弃未确认内容并离开</ElButton>
+        </template>
+        <template v-else-if="conflict">
+          <ElButton @click="resolve('use-server')">使用服务器内容</ElButton>
+          <ElButton type="primary" @click="resolve('keep-local')">
+            保留本地并重新保存
+          </ElButton>
+        </template>
+        <template v-else>
+          <ElButton :disabled="creating" @click="createOpen = false">
             取消
-          </button>
-          <button
-            type="submit"
+          </ElButton>
+          <ElButton
+            type="primary"
+            :loading="creating"
             :disabled="
-              creating ||
-              !newName.trim() ||
-              (newKind === 'RECORD_SUMMARY' && !newFormId)
+              !newName.trim() || (newKind === 'RECORD_SUMMARY' && !newFormId)
             "
+            @click="create"
           >
-            {{ creating ? '正在创建…' : '创建场景' }}
-          </button>
-        </div>
-      </form>
-    </div>
+            {{ pendingCreate ? '重试创建' : '创建场景' }}
+          </ElButton>
+        </template>
+      </template>
+    </ElDialog>
   </div>
 </template>
-
 <style scoped>
 .scene-workspace {
   display: flex;
   min-height: calc(100vh - 150px);
   margin: 16px;
+  overflow: hidden;
   color: hsl(var(--foreground));
   background: hsl(var(--background));
-  border: 1px solid hsl(var(--border));
-  border-radius: 12px;
+  border-radius: 10px;
 }
 
-main {
+.scene-main {
+  display: grid;
   flex: 1;
+  gap: 20px;
+  align-content: start;
   min-width: 0;
-  padding: 28px 36px;
+  padding: 24px;
 }
 
-header {
+.scene-heading {
   display: flex;
-  gap: 16px;
-  align-items: start;
+  flex-wrap: wrap;
+  gap: 18px;
+  align-items: flex-start;
   justify-content: space-between;
-  margin-bottom: 24px;
 }
 
 h1 {
   margin-bottom: 8px;
-  font-size: 22px;
+  font-size: 21px;
   font-weight: 600;
   overflow-wrap: anywhere;
 }
 
-h2 {
-  font-weight: 600;
-}
-
-button {
-  color: hsl(var(--primary));
-}
-
-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.5;
-}
-
-.message {
+.scene-actions {
   display: flex;
-  gap: 16px;
-  justify-content: space-between;
-  padding: 10px 14px;
-  margin-bottom: 20px;
-  border: 1px solid hsl(var(--border));
-  border-radius: 8px;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
 }
 
-.availability,
-.data-objects p,
-.trial p {
-  margin: 10px 0 20px;
+.scene-actions :deep(.el-button) {
+  margin: 0;
+}
+
+.scene-state,
+.dialog-copy {
   font-size: 13px;
+  line-height: 1.8;
   color: hsl(var(--muted-foreground));
-}
-
-.data-objects {
-  padding: 16px;
-  border: 1px solid hsl(var(--border));
-  border-radius: 8px;
-}
-
-.trial {
-  padding-top: 20px;
-  margin-top: 28px;
-  border-top: 1px solid hsl(var(--border));
-}
-
-summary {
-  cursor: pointer;
-}
-
-.empty {
-  padding-top: 160px;
-  color: hsl(var(--muted-foreground));
-  text-align: center;
-}
-
-.empty p {
-  margin: 16px 0;
-}
-
-.conflict {
-  padding: 16px;
-  margin-bottom: 20px;
-  border: 1px solid #b66a19;
-  border-radius: 8px;
 }
 
 .legacy-notice {
-  padding: 16px;
-  margin-bottom: 20px;
   font-size: 13px;
-  border: 1px solid hsl(var(--border));
+}
+
+.legacy-notice pre,
+.conflict-content {
+  padding: 16px;
+  overflow: auto;
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  background: hsl(var(--muted) / 45%);
   border-radius: 8px;
 }
 
-.legacy-notice p {
-  margin: 8px 0;
-  color: hsl(var(--muted-foreground));
-}
-
-.legacy-notice pre {
-  max-height: 240px;
-  margin: 12px 0;
-  overflow: auto;
-  overflow-wrap: anywhere;
-  white-space: pre-wrap;
-}
-
-.conflict pre {
-  max-height: 160px;
-  margin: 12px 0;
-  overflow: auto;
-  white-space: pre-wrap;
-}
-
-.conflict button {
-  margin-right: 20px;
-}
-
-.dialog-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 1000;
-  display: grid;
-  place-items: center;
-  background: #0005;
-}
-
-.leave-dialog-backdrop {
-  z-index: 1100;
-}
-
-.create-dialog {
-  display: grid;
-  gap: 20px;
-  width: min(480px, 90vw);
-  padding: 28px;
-  background: hsl(var(--background));
-  border: 1px solid hsl(var(--border));
-  border-radius: 12px;
-}
-
-.create-dialog label {
-  display: grid;
-  gap: 8px;
-}
-
-.create-dialog input {
-  padding: 10px;
-  background: transparent;
-  border: 1px solid hsl(var(--border));
-  border-radius: 6px;
-}
-
-.create-dialog form,
-.create-dialog div {
-  display: flex;
-  gap: 24px;
-  justify-content: flex-end;
+.dialog-copy {
+  margin-bottom: 16px;
 }
 
 @media (max-width: 1100px) {
-  main {
-    padding: 24px;
+  .scene-main {
+    padding: 20px;
   }
 }
 
-@media (max-width: 720px) {
+@media (max-width: 900px) {
   .scene-workspace {
     flex-direction: column;
+    margin: 8px;
   }
 
-  main {
-    padding: 20px;
+  .scene-main {
+    padding: 16px;
+  }
+
+  .scene-actions {
+    width: 100%;
   }
 }
 </style>
