@@ -47,7 +47,15 @@ beforeEach(() => {
   vi.clearAllMocks();
   access.accessCodes = ['ai:scene:test', 'ai:scene:invoke'];
   samples.mockResolvedValue({ records: [], total: '0' });
-  api.previewScene.mockResolvedValue({ renderedMessages: [], notices: [] });
+  api.previewScene.mockResolvedValue({
+    sceneKey: 'scene.a',
+    sceneVersionId: 'version-4',
+    originalMessages: [],
+    renderedMessages: [],
+    inputSummary: {},
+    resourceSummary: {},
+    notices: [],
+  });
   api.testScene.mockResolvedValue({
     requestId: '10',
     sceneKey: 'scene.a',
@@ -56,6 +64,79 @@ beforeEach(() => {
   });
 });
 describe('explicit scene trial', () => {
+  it('shows the checked snapshot and summary keys without values, with clear empty states and separate original prompt', async () => {
+    access.accessCodes.push('lowcode:record:list', 'lowcode:record:query');
+    samples.mockResolvedValue({
+      records: [
+        { recordId: '7', label: '授权记录', schemaVersion: 1, revision: 1 },
+      ],
+      total: '1',
+    });
+    api.previewScene.mockResolvedValueOnce({
+      sceneKey: 'scene.a',
+      sceneVersionId: 'version-4',
+      inputSummary: { user_request: 'PRIVATE_TEST_VALUE' },
+      resourceSummary: { 'lowcode.record': 'PRIVATE_RECORD_BODY' },
+      renderedMessages: [{ role: 'USER', content: 'PRIVATE_RENDERED_BODY' }],
+      originalMessages: [{ role: 'SYSTEM', content: '概括 {{user_request}}' }],
+      notices: [],
+    });
+    const value = definition();
+    value.dataObjects = [
+      { objectKey: 'lowcode.record', formId: '42', fields: ['subject'] },
+    ];
+    const wrapper = mount(SceneTrialPanel, {
+      props: {
+        sceneKey: 'scene.a',
+        revision: 4,
+        definition: value,
+        versionId: 'version-4',
+      },
+    });
+    (wrapper.get('details').element as HTMLDetailsElement).open = true;
+    await wrapper.get('details').trigger('toggle');
+    await flushPromises();
+    await wrapper.get('select[aria-label="试运行样例"]').setValue('7');
+    await button(wrapper, '查看授权预览').trigger('click');
+    await flushPromises();
+    const preview = wrapper.get('[aria-label="授权预览"]');
+    expect(
+      preview
+        .findAll('dl div')
+        .map((row) => [row.get('dt').text(), row.get('dd').text()]),
+    ).toEqual([
+      ['已校验的场景版本', 'version-4'],
+      ['输入变量', 'user_request'],
+      ['数据对象', 'lowcode.record'],
+    ]);
+    expect(preview.text()).toContain('测试值与记录正文已隐去');
+    expect(preview.text()).toContain('未调用模型');
+    expect(preview.text()).not.toMatch(
+      /PRIVATE_TEST_VALUE|PRIVATE_RECORD_BODY|PRIVATE_RENDERED_BODY/,
+    );
+    expect(preview.get('details').attributes('open')).toBeUndefined();
+    expect(preview.get('details pre').text()).toBe('概括 {{user_request}}');
+    expect(preview.text()).toContain('不代表实际注入模型的消息');
+    (preview.get('details').element as HTMLDetailsElement).open = true;
+    await preview.get('details').trigger('toggle');
+    expect(wrapper.get('details.trial-panel').attributes('open')).toBeDefined();
+    expect(api.testScene).not.toHaveBeenCalled();
+    expect(stream).not.toHaveBeenCalled();
+    wrapper.unmount();
+    const empty = mount(SceneTrialPanel, {
+      props: {
+        sceneKey: 'scene.a',
+        revision: 4,
+        definition: definition(),
+        versionId: 'version-4',
+      },
+    });
+    await button(empty, '查看授权预览').trigger('click');
+    await flushPromises();
+    expect(empty.get('[aria-label="授权预览"]').text()).toContain('无输入变量');
+    expect(empty.get('[aria-label="授权预览"]').text()).toContain('无数据对象');
+    empty.unmount();
+  });
   it('previews saved revision without invoking a provider and requires cost confirmation for test', async () => {
     const wrapper = mount(SceneTrialPanel, {
       props: {

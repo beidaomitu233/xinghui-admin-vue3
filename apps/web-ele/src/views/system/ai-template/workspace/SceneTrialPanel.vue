@@ -46,6 +46,12 @@ const sampleTotal = ref('0');
 const requirement = ref('');
 const confirmedCosts = ref(false);
 const preview = ref<ScenePreview>();
+const previewInputNames = computed(() =>
+  Object.keys(preview.value?.inputSummary ?? {}),
+);
+const previewObjectNames = computed(() =>
+  Object.keys(preview.value?.resourceSummary ?? {}),
+);
 const request = ref<SceneRequest>();
 const output = ref('');
 const error = ref('');
@@ -266,7 +272,7 @@ onBeforeUnmount(() => {
   <details
     class="trial-panel"
     :open="expanded"
-    @toggle="expanded = ($event.target as HTMLDetailsElement).open"
+    @toggle.self="expanded = ($event.target as HTMLDetailsElement).open"
   >
     <summary>同页试运行</summary>
     <p v-if="!canRun" class="hint">
@@ -367,9 +373,44 @@ onBeforeUnmount(() => {
       <p v-if="error" role="alert">{{ error }}</p>
       <section v-if="preview" aria-label="授权预览">
         <h3>授权预览</h3>
-        <pre v-for="(item, index) in preview.renderedMessages" :key="index">{{
-          item.content
-        }}</pre>
+        <dl class="preview-summary">
+          <div>
+            <dt>已校验的场景版本</dt>
+            <dd>{{ preview.sceneVersionId }}</dd>
+          </div>
+          <div>
+            <dt>输入变量</dt>
+            <dd>
+              {{
+                previewInputNames.length > 0
+                  ? previewInputNames.join('、')
+                  : '无输入变量'
+              }}
+            </dd>
+          </div>
+          <div>
+            <dt>数据对象</dt>
+            <dd>
+              {{
+                previewObjectNames.length > 0
+                  ? previewObjectNames.join('、')
+                  : '无数据对象'
+              }}
+            </dd>
+          </div>
+        </dl>
+        <p class="hint">
+          测试值与记录正文已隐去。此预览仅校验授权与配置，未调用模型。
+        </p>
+        <details v-if="preview.originalMessages.length > 0">
+          <summary>查看原提示词</summary>
+          <p class="hint">
+            以下是未替换变量的配置原文，不代表实际注入模型的消息。
+          </p>
+          <pre v-for="(item, index) in preview.originalMessages" :key="index">{{
+            item.content
+          }}</pre>
+        </details>
         <p v-for="notice in preview.notices" :key="notice">{{ notice }}</p>
       </section>
       <section v-if="request">
@@ -402,6 +443,21 @@ summary {
   margin: 14px 0;
   font-size: 12px;
   color: hsl(var(--muted-foreground));
+}
+
+.preview-summary {
+  display: grid;
+  gap: 12px;
+  margin: 16px 0;
+}
+
+.preview-summary dt {
+  font-weight: 600;
+}
+
+.preview-summary dd {
+  margin-top: 4px;
+  overflow-wrap: anywhere;
 }
 
 label {
