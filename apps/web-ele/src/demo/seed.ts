@@ -243,32 +243,8 @@ DEMO_MENUS.push({
   children: [
     {
       ...leaf(
-        '106',
-        'AI配置',
-        '/ai/configurations',
-        'system/ai-config/index',
-        'carbon:settings-adjust',
-        1,
-        '202610160180000001',
-      ),
-      perms: 'ai:config:list',
-    },
-    {
-      ...leaf(
-        '202610160180000002',
-        'AI应用管理',
-        '/ai/applications',
-        'system/ai-application/index',
-        'carbon:application',
-        2,
-        '202610160180000001',
-      ),
-      perms: 'ai:application:list',
-    },
-    {
-      ...leaf(
         '107',
-        'AI提示词配置',
+        '提示词配置',
         '/ai/templates',
         'system/ai-template/index',
         'carbon:document',
@@ -280,7 +256,7 @@ DEMO_MENUS.push({
     {
       ...leaf(
         '202610160180000003',
-        'AI日志记录',
+        '调用监控',
         '/ai/requests',
         'system/ai-request/index',
         'carbon:document',
@@ -293,6 +269,8 @@ DEMO_MENUS.push({
 });
 export const DEMO_PERMISSIONS = [
   'ai:workspace:enter',
+  'ai:scene:list',
+  'ai:scene:query',
   ...['config', 'application', 'template', 'data', 'request'].flatMap(
     (domain) => ['list', 'query'].map((action) => `ai:${domain}:${action}`),
   ),

@@ -17,7 +17,7 @@ import {
   listRecords,
   updateRecord,
 } from '#/api/lowcode/forms';
-import { recordSummaryApplication } from '#/api/system/ai-application';
+import { recordSummaryScene } from '#/api/system/ai-scene';
 
 import { newField } from '../form-schema';
 import Records from './index.vue';
@@ -46,13 +46,20 @@ vi.mock('#/api/lowcode/forms', () =>
     ].map((name) => [name, vi.fn()]),
   ),
 );
-vi.mock('#/api/system/ai-application', () => ({
-  recordSummaryApplication: vi.fn(),
+vi.mock('#/api/system/ai-scene', () => ({
+  recordSummaryScene: vi.fn(),
 }));
 vi.mock('./AiSummaryDialog.vue', () => ({
   default: {
     name: 'AiSummaryDialog',
-    props: ['appId', 'formId', 'recordId', 'fields', 'modelValue', 'writable'],
+    props: [
+      'sceneKey',
+      'formId',
+      'recordId',
+      'fields',
+      'modelValue',
+      'writable',
+    ],
     emits: ['adopt', 'update:modelValue'],
     template: '<section data-summary-dialog />',
   },
@@ -186,6 +193,7 @@ beforeEach(() => {
   context.route = reactive({ params: { formId: '1' } });
   context.access = reactive({
     accessCodes: [
+      'ai:scene:invoke',
       'lowcode:record:list',
       'lowcode:record:query',
       'lowcode:record:edit',
@@ -239,10 +247,14 @@ beforeEach(() => {
     pageNum: 1,
     pageSize: 10,
   });
-  vi.mocked(recordSummaryApplication).mockResolvedValue({
-    appId: '11',
-    appVersionId: '12',
-    name: 'Summary app',
+  vi.mocked(recordSummaryScene).mockResolvedValue({
+    sceneKey: '11',
+    currentVersionId: '12',
+    name: 'Summary scene',
+    kind: 'RECORD_SUMMARY',
+    formId: '1',
+    revision: 1,
+    availability: { state: 'READY', reasons: [] },
   });
   vi.mocked(getRecord).mockResolvedValue(original);
 });
@@ -261,7 +273,7 @@ it('loads an actual detail before mounting summary and passes its historical sch
   await flushPromises();
   const dialog = view.getComponent({ name: 'AiSummaryDialog' });
   expect(dialog.props()).toMatchObject({
-    appId: '11',
+    sceneKey: '11',
     formId: '1',
     recordId: '7',
     modelValue: true,

@@ -12,7 +12,7 @@ describe('aI compatibility deep links', () => {
         history: createMemoryHistory(),
         routes: [
           route,
-          { path: '/ai/configurations', component: {}, name: 'Configurations' },
+          { path: '/ai/requests', component: {}, name: 'Monitor' },
           { path: '/ai/templates', component: {}, name: 'Templates' },
           { path: '/auth/login', component: {}, name: 'Login' },
         ],
@@ -23,7 +23,7 @@ describe('aI compatibility deep links', () => {
         return target.path.startsWith('/ai/') ? '/auth/login' : true;
       });
       await router.push(route.path);
-      expect(checked).toContain(route.redirect);
+      expect(checked).toContain(String(route.redirect).split('?')[0]);
       expect(router.currentRoute.value.name).toBe('Login');
       expect(route.meta?.hideInMenu).toBe(true);
       expect(route).not.toHaveProperty('component');

@@ -7,6 +7,7 @@ import type {
   FormRecordRow,
   RuntimeDefinition,
 } from '#/api/lowcode/forms';
+import type { SceneEntry } from '#/api/system/ai-scene';
 
 import { computed, onBeforeUnmount, ref, toRaw, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
@@ -24,7 +25,7 @@ import {
   removeRecord,
   updateRecord,
 } from '#/api/lowcode/forms';
-import { recordSummaryApplication } from '#/api/system/ai-application';
+import { recordSummaryScene } from '#/api/system/ai-scene';
 
 import {
   dataError,
@@ -63,11 +64,7 @@ const summaryRecord = ref<FormRecord>();
 const summaryOpen = ref(false);
 const summaryLoading = ref(false);
 const summaryError = ref('');
-const summaryApplication = ref<null | {
-  appId: string;
-  appVersionId: string;
-  name: string;
-}>(null);
+const summaryScene = ref<null | SceneEntry>(null);
 const columns = computed(
   () => runtime.value?.schema.fields.filter((field) => field.listVisible) ?? [],
 );
@@ -105,13 +102,17 @@ async function load() {
     if (run !== serial) return;
     runtime.value = value;
     result.value = records;
-    summaryApplication.value = null;
-    if (can('query') && import.meta.env.VITE_APP_DEMO !== 'true') {
+    summaryScene.value = null;
+    if (
+      can('query') &&
+      access.accessCodes.includes('ai:scene:invoke') &&
+      import.meta.env.VITE_APP_DEMO !== 'true'
+    ) {
       try {
-        const application = await recordSummaryApplication(id);
-        if (run === serial) summaryApplication.value = application;
+        const application = await recordSummaryScene(id);
+        if (run === serial) summaryScene.value = application;
       } catch {
-        if (run === serial) summaryApplication.value = null;
+        if (run === serial) summaryScene.value = null;
       }
     }
   } catch {
@@ -130,7 +131,7 @@ function search() {
 async function summarize(row: FormRecordRow) {
   if (
     !can('query') ||
-    !summaryApplication.value ||
+    !summaryScene.value ||
     !runtime.value ||
     summaryLoading.value
   )
@@ -140,7 +141,7 @@ async function summarize(row: FormRecordRow) {
     summaryError.value = '记录读取失败，请重试。';
     return;
   }
-  const application = summaryApplication.value;
+  const application = summaryScene.value;
   editorSerial++;
   const run = ++summarySerial;
   const listGeneration = serial;
@@ -157,8 +158,8 @@ async function summarize(row: FormRecordRow) {
       !can('query') ||
       runtime.value?.id !== formId ||
       String(route.params.formId) !== formId ||
-      summaryApplication.value?.appId !== application.appId ||
-      summaryApplication.value?.appVersionId !== application.appVersionId
+      summaryScene.value?.sceneKey !== application.sceneKey ||
+      summaryScene.value?.currentVersionId !== application.currentVersionId
     )
       return;
     if (!validRecordDetail(record, row, formId))
@@ -380,7 +381,7 @@ watch(
     filterField.value = '';
     filterValue.value = '';
     runtime.value = undefined;
-    summaryApplication.value = null;
+    summaryScene.value = null;
     summaryOpen.value = false;
     summaryRecord.value = undefined;
     summarySerial++;
@@ -524,7 +525,7 @@ watch(
                 详情
               </el-button>
               <el-button
-                v-if="can('query') && summaryApplication"
+                v-if="can('query') && summaryScene"
                 link
                 type="primary"
                 :loading="summaryLoading"
@@ -611,9 +612,9 @@ watch(
       </template>
     </el-dialog>
     <AiSummaryDialog
-      v-if="summaryRecord && summaryApplication && runtime"
+      v-if="summaryRecord && summaryScene && runtime"
       v-model="summaryOpen"
-      :app-id="summaryApplication.appId"
+      :scene-key="summaryScene.sceneKey"
       :form-id="runtime.id"
       :record-id="summaryRecord.id"
       :fields="summaryRecord.schema.fields"

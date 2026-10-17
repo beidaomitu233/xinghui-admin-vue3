@@ -1,26 +1,26 @@
 /* eslint-disable vue/one-component-per-file -- Lightweight test component stubs. */
-import type { AiRequestView } from '#/api/system/ai-application';
+import type { SceneRequest } from '#/api/system/ai-scene';
 
 import { flushPromises, mount } from '@vue/test-utils';
 import { defineComponent, h } from 'vue';
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { subscribeAiRequest } from '#/api/system/ai-application';
 import {
-  cancelAiRequest,
-  getAiRequest,
-  submitApplication,
-  subscribeAiRequest,
-} from '#/api/system/ai-application';
+  cancelSceneRequest,
+  getSceneRequest,
+  submitScene,
+} from '#/api/system/ai-scene';
 
 import AiSummaryDialog from './AiSummaryDialog.vue';
 
-vi.mock('#/api/system/ai-application', () => ({
-  cancelAiRequest: vi.fn(),
-  getAiRequest: vi.fn(),
-  submitApplication: vi.fn(),
-  subscribeAiRequest: vi.fn(),
+vi.mock('#/api/system/ai-scene', () => ({
+  cancelSceneRequest: vi.fn(),
+  getSceneRequest: vi.fn(),
+  submitScene: vi.fn(),
 }));
+vi.mock('#/api/system/ai-application', () => ({ subscribeAiRequest: vi.fn() }));
 vi.mock('element-plus', () => ({
   ElAlert: { name: 'ElAlert', render: () => null },
   ElButton: { name: 'ElButton', render: () => null },
@@ -99,16 +99,14 @@ const Option = defineComponent({
     return () => h('option', { value: props.value }, props.label);
   },
 });
-function accepted(status: AiRequestView['status'] = 'QUEUED'): AiRequestView {
+function accepted(status: SceneRequest['status'] = 'QUEUED'): SceneRequest {
   return {
-    appId: '5',
-    appVersionId: '11',
+    sceneKey: '5',
+    sceneVersionId: '11',
     attemptCount: 0,
-    businessId: '1:7',
-    businessType: 'lowcode.record',
+    businessRef: { id: '1:7', type: 'lowcode.record' },
     createdAt: '2026-10-16T08:00:00Z',
     deadline: '2026-10-16T08:01:00Z',
-    draftRevision: null,
     errorCode: null,
     finishedAt: null,
     inputTokens: null,
@@ -124,7 +122,7 @@ function accepted(status: AiRequestView['status'] = 'QUEUED'): AiRequestView {
 function mountDialog(writable = true) {
   return mount(AiSummaryDialog, {
     props: {
-      appId: '5',
+      sceneKey: '5',
       fields: [
         {
           defaultValue: null,
@@ -170,9 +168,9 @@ describe('record summary interaction', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     sessionStorage.clear();
-    vi.mocked(submitApplication).mockResolvedValue(accepted());
-    vi.mocked(getAiRequest).mockResolvedValue(accepted('RUNNING'));
-    vi.mocked(cancelAiRequest).mockResolvedValue(accepted('CANCELLED'));
+    vi.mocked(submitScene).mockResolvedValue(accepted());
+    vi.mocked(getSceneRequest).mockResolvedValue(accepted('RUNNING'));
+    vi.mocked(cancelSceneRequest).mockResolvedValue(accepted('CANCELLED'));
   });
 
   it('ignores late deltas and completion callbacks after confirmed local cancellation', async () => {
@@ -193,6 +191,8 @@ describe('record summary interaction', () => {
     const wrapper = mountDialog();
     await button(wrapper, '生成摘要').trigger('click');
     await flushPromises();
+    expect(wrapper.text()).toContain('场景版本：11');
+    expect(wrapper.text()).not.toContain('应用版本');
     await button(wrapper, '取消生成').trigger('click');
     await flushPromises();
     receive?.({
@@ -217,18 +217,18 @@ describe('record summary interaction', () => {
     ).toBe('visible partial');
     expect(wrapper.text()).toContain('已取消');
     expect(wrapper.find('select').exists()).toBe(false);
-    expect(cancelAiRequest).toHaveBeenCalledOnce();
+    expect(cancelSceneRequest).toHaveBeenCalledOnce();
     wrapper.unmount();
   });
 
   it('shows a known admission failure and its original trace without silently resubmitting', async () => {
-    vi.mocked(submitApplication).mockRejectedValueOnce({
+    vi.mocked(submitScene).mockRejectedValueOnce({
       response: {
         headers: { 'x-request-id': '101' },
         data: { message: 'RESOURCE_FORBIDDEN' },
       },
     });
-    vi.mocked(getAiRequest).mockResolvedValue({
+    vi.mocked(getSceneRequest).mockResolvedValue({
       ...accepted('FAILED'),
       errorCode: 'RESOURCE_FORBIDDEN',
     });
@@ -237,20 +237,20 @@ describe('record summary interaction', () => {
     await flushPromises();
     expect(wrapper.text()).toContain('无权读取所需记录。');
     expect(wrapper.text()).toContain('101');
-    expect(getAiRequest).toHaveBeenCalledWith('101');
-    expect(sessionStorage.getItem('ai-summary:5:1:7')).toBe('101');
-    expect(submitApplication).toHaveBeenCalledOnce();
+    expect(getSceneRequest).toHaveBeenCalledWith('101');
+    expect(sessionStorage.getItem('ai-scene-summary:5:1:7')).toBe('101');
+    expect(submitScene).toHaveBeenCalledOnce();
     expect(subscribeAiRequest).not.toHaveBeenCalled();
     wrapper.unmount();
   });
 
   it('restores only request metadata on reload without submitting or pretending to recover output', async () => {
-    sessionStorage.setItem('ai-summary:5:1:7', '101');
-    vi.mocked(getAiRequest).mockResolvedValue(accepted('SUCCEEDED'));
+    sessionStorage.setItem('ai-scene-summary:5:1:7', '101');
+    vi.mocked(getSceneRequest).mockResolvedValue(accepted('SUCCEEDED'));
     const wrapper = mountDialog();
     await flushPromises();
-    expect(getAiRequest).toHaveBeenCalledWith('101');
-    expect(submitApplication).not.toHaveBeenCalled();
+    expect(getSceneRequest).toHaveBeenCalledWith('101');
+    expect(submitScene).not.toHaveBeenCalled();
     expect(subscribeAiRequest).not.toHaveBeenCalled();
     expect(wrapper.text()).toContain('历史正文未保留');
     expect(wrapper.emitted('adopt')).toBeUndefined();
@@ -258,7 +258,7 @@ describe('record summary interaction', () => {
   });
 
   it('reuses admission identity after an ambiguous network failure and never submits record contents', async () => {
-    vi.mocked(submitApplication)
+    vi.mocked(submitScene)
       .mockRejectedValueOnce(new Error('connection lost'))
       .mockResolvedValueOnce(accepted('SUCCEEDED'));
     const wrapper = mountDialog();
@@ -266,15 +266,16 @@ describe('record summary interaction', () => {
     await flushPromises();
     await button(wrapper, '确认原受理结果').trigger('click');
     await flushPromises();
-    expect(submitApplication).toHaveBeenCalledTimes(2);
-    expect(vi.mocked(submitApplication).mock.calls[0]?.[1]).toEqual(
-      vi.mocked(submitApplication).mock.calls[1]?.[1],
+    expect(submitScene).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(submitScene).mock.calls[0]?.[1]).toEqual(
+      vi.mocked(submitScene).mock.calls[1]?.[1],
     );
-    expect(vi.mocked(submitApplication).mock.calls[0]?.[1].businessRef).toEqual(
-      { id: '1:7', type: 'lowcode.record' },
-    );
+    expect(vi.mocked(submitScene).mock.calls[0]?.[1].businessRef).toEqual({
+      id: '1:7',
+      type: 'lowcode.record',
+    });
     expect(
-      Object.keys(vi.mocked(submitApplication).mock.calls[0]?.[1].inputs ?? {}),
+      Object.keys(vi.mocked(submitScene).mock.calls[0]?.[1].inputs ?? {}),
     ).toEqual(['user_request']);
     expect(subscribeAiRequest).not.toHaveBeenCalled();
     wrapper.unmount();
@@ -293,8 +294,8 @@ describe('record summary interaction', () => {
     const wrapper = mountDialog();
     await button(wrapper, '生成摘要').trigger('click');
     await flushPromises();
-    expect(submitApplication).toHaveBeenCalledOnce();
-    expect(getAiRequest).toHaveBeenCalledWith('101');
+    expect(submitScene).toHaveBeenCalledOnce();
+    expect(getSceneRequest).toHaveBeenCalledWith('101');
     expect(wrapper.text()).toContain('连接中断，请查询原请求。');
     const warning = wrapper
       .findAll('[data-message]')
@@ -336,13 +337,13 @@ describe('record summary interaction', () => {
       ['summary', 'authorized summary'],
     ]);
     expect(wrapper.emitted('update:modelValue')).toEqual([[false]]);
-    expect(submitApplication).toHaveBeenCalledOnce();
+    expect(submitScene).toHaveBeenCalledOnce();
     wrapper.unmount();
   });
 
   it('cancels an accepted run if the component was removed before admission returned', async () => {
-    let resolve: ((value: AiRequestView) => void) | undefined;
-    vi.mocked(submitApplication).mockImplementation(
+    let resolve: ((value: SceneRequest) => void) | undefined;
+    vi.mocked(submitScene).mockImplementation(
       () =>
         new Promise((done) => {
           resolve = done;
@@ -353,7 +354,7 @@ describe('record summary interaction', () => {
     wrapper.unmount();
     resolve?.(accepted());
     await flushPromises();
-    expect(cancelAiRequest).toHaveBeenCalledWith('101');
+    expect(cancelSceneRequest).toHaveBeenCalledWith('101');
     expect(subscribeAiRequest).not.toHaveBeenCalled();
   });
 });

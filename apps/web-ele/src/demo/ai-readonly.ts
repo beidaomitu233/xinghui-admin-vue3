@@ -12,6 +12,7 @@ import type {
   RequestLogRow,
   RequestLogStatistics,
 } from '../api/system/ai-request-log';
+import type { SceneDetail, SceneMonitor } from '../api/system/ai-scene';
 import type {
   ResourceDefinition,
   TemplateDefinition,
@@ -29,6 +30,40 @@ export const AI_DEMO_IDS = {
   request: '9100000000000000501',
 };
 const time = '2026-10-16 09:00:00';
+const scene: SceneDetail = {
+  legacy: null,
+  scene: {
+    sceneKey: 'scene.fictionalreadonly',
+    name: '[虚构只读] 记录摘要场景',
+    purpose: '静态布局示例，不保存或执行',
+    kind: 'GENERAL',
+    formId: null,
+    source: 'NATIVE',
+    enabled: false,
+    revision: 0,
+    currentVersionId: null,
+    availability: { state: 'UNCONFIGURED', reasons: [] },
+    updatedAt: '2026-10-16T01:00:00Z',
+  },
+  definition: {
+    name: '[虚构只读] 记录摘要场景',
+    purpose: '静态布局示例，不保存或执行',
+    promptText:
+      '这是虚构提示词。静态演示不会自动保存、读取业务数据或调用模型。',
+    outputRequirement: '',
+    dataObjects: [],
+    modelPolicy: {
+      mode: 'FIXED',
+      models: [],
+      fallback: false,
+      outputFormat: 'TEXT',
+      timeoutSeconds: 30,
+      maxAttempts: 2,
+      maxConcurrent: 2,
+      maxTokens: 1024,
+    },
+  },
+};
 const configuration: AiConfiguration = {
   id: AI_DEMO_IDS.config,
   name: '[虚构只读] 未连接的 AI 配置',
@@ -200,6 +235,9 @@ function filteredLogs(params: Params) {
   if (params.scope === 'AUDIT')
     throw new AiDemoFailure(403, '静态演示仅支持查看，未发送请求');
   return [log].filter((row) => {
+    if (params.requestKind && params.requestKind !== row.request.kind)
+      return false;
+    if (params.sceneKey) return false; // The historical denial example has no scene identity.
     const values = {
       appId: row.request.appId,
       requestId: row.request.requestId,
@@ -248,6 +286,79 @@ export function readOnlyAiDemo(
   if (method !== 'GET')
     throw new AiDemoFailure(501, '静态演示仅支持查看，未发送请求');
   const send = (data: unknown): Reply => ({ handled: true, data });
+  if (path === '/ai/scenes/record-summary') return send(null);
+  if (path === '/system/ai/scenes/workspace') {
+    const records =
+      !params.search ||
+      `${scene.scene.name} ${scene.scene.purpose}`.includes(
+        String(params.search),
+      )
+        ? [scene.scene]
+        : [];
+    return send({
+      scenes: paged(records, params),
+      selected: params.selectedSceneKey === scene.scene.sceneKey ? scene : null,
+    });
+  }
+  if (path === `/system/ai/scenes/${scene.scene.sceneKey}`) return send(scene);
+  if (
+    path === '/system/ai/scenes/options/models' ||
+    path === '/system/ai/scenes/options/keys'
+  )
+    return send([]);
+  if (path === '/system/ai/scene-data/catalog')
+    return send({
+      objects: [],
+      inputVariables: [
+        {
+          name: 'user_request',
+          label: '用户要求',
+          type: 'STRING',
+          required: false,
+          maxChars: 8000,
+        },
+      ],
+    });
+  if (
+    path === '/system/ai/scene-data/forms' ||
+    path === '/system/ai/scene-data/samples'
+  )
+    return send(paged([], params));
+  if (path === '/system/ai/monitor/summary') {
+    const count = filteredLogs(params).length;
+    if (params.scope && params.scope !== 'OWN')
+      throw new AiDemoFailure(403, '静态演示仅支持本人虚构数据');
+    const monitor: SceneMonitor = {
+      observedAt: '2026-10-16T01:00:00Z',
+      window: {
+        from: String(params.from ?? '2026-10-15T01:00:00Z'),
+        to: String(params.to ?? '2026-10-16T01:00:00Z'),
+      },
+      scope: 'OWN',
+      requestKind: String(params.requestKind ?? 'BUSINESS'),
+      keyCards: {
+        enabledKeyVersions: null,
+        knownAdmittedPairs: null,
+        recentlyFailedKeyVersions: null,
+        unattributedAttempts: null,
+        unavailableReason: 'STATIC_DEMO',
+      },
+      calls: {
+        requests: count,
+        businessRequests: 0,
+        testRequests: count,
+        succeededRequests: 0,
+        failedRequests: count,
+        modelAttempts: 0,
+        failedAttempts: 0,
+        knownInputTokens: null,
+        knownOutputTokens: null,
+        unknownInputAttempts: 0,
+        unknownOutputAttempts: 0,
+      },
+    };
+    return send(monitor);
+  }
   if (path === '/ai/applications/record-summary') return send(null);
   if (path === '/system/ai/configurations') {
     const rows = [configuration].filter(

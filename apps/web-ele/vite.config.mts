@@ -8,7 +8,11 @@ import { ElementPlusResolver } from 'unplugin-vue-components/resolvers';
 import Components from 'unplugin-vue-components/vite';
 import { loadEnv } from 'vite';
 
-import { DEMO_MANIFEST, staticDemoPlugins } from './demo-build';
+import {
+  DEMO_ICON_MODULE_ID,
+  DEMO_MANIFEST,
+  staticDemoPlugins,
+} from './demo-build';
 
 export default defineConfig(async ({ mode }) => {
   const demo = loadEnv(mode, process.cwd()).VITE_APP_DEMO === 'true';
@@ -23,6 +27,9 @@ export default defineConfig(async ({ mode }) => {
         }
       : {},
     vite: {
+      // The dependency scanner visits guarded dynamic imports even in normal dev mode.
+      // This virtual ID belongs to the demo plugin, rather than an installable dependency.
+      optimizeDeps: { exclude: [DEMO_ICON_MODULE_ID] },
       define: {
         'import.meta.env.VITE_APP_DEMO': JSON.stringify(String(demo)),
         ...(demo
