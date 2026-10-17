@@ -825,9 +825,9 @@ public Result<String> demo()
 
 ## 场景工作区与直接保存接口
 
-本节描述一期工作区改造合同，尚待组合验收及正式发布。sceneKey由服务端生成，sceneVersionId为不可变执行版本，均与旧appId不同；所有ID及分页total为字符串。旧版接口在下一节按原源码保留，不能把旧发布操作当作新场景的保存前置。
+本节描述一期工作区改造合同，精确源码与验证边界见[版本组合](../releases/versions.md)。sceneKey由服务端生成，sceneVersionId为不可变执行版本，均与旧appId不同；所有ID及分页total为字符串。旧版接口在下一节按原源码保留，不能把旧发布操作当作新场景的保存前置。
 
-工作区新增映射按下列实际Controller核对，尚待整体组合验收；SSE复用既有路径，不重复计入新增20条。
+工作区新增映射按下列实际Controller核对；SSE复用既有路径，不重复计入新增20条。
 
 | Controller | 源码（后端system-admin/src/main/java/com/xinghuiTec/下） | 新增映射数 |
 | --- | --- | --- |
