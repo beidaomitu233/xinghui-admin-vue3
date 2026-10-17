@@ -1,6 +1,6 @@
 # 主要第三方归属与许可
 
-现有审核静态构建记录了90个实际打包依赖：[包与版本清单](site/licenses/packages.json)、[随包许可及NOTICE原文](site/licenses/third-party.txt)、[该次构建使用的图标集作者与许可元数据](site/licenses/icon-sets.json)。这些文件描述对应静态产物，不自动覆盖后来导入或更新的全部源码依赖。
+2026-10-17 一期静态构建按实际模块记录了90个打包依赖：[包与版本清单](site/licenses/packages.json)、[随包许可及NOTICE原文](site/licenses/third-party.txt)、[使用的图标集作者与许可元数据](site/licenses/icon-sets.json)。构建来源见[产物清单](site/publication.json)。这些文件描述对应静态产物，不自动覆盖全部源码及开发依赖。
 
 以下信息来自该静态构建环境中相应包的 `package.json`、原始 `LICENSE` / `NOTICE` 文件核对，许可文本逐字保留。它是主要上游的起始清单，**不是整个源码工作区直接、传递及开发依赖的完整许可证审计**。源码依赖范围应结合各工作区 `package.json` 和 `pnpm-lock.yaml` 核查；维护者仍须按实际构建模块补齐发行所需声明。
 
@@ -14,6 +14,6 @@
 
 完整 [Apache License 2.0](site/licenses/Apache-2.0.txt) 来自已核对的 ECharts LICENSE 中对应原文；ECharts完整LICENSE及其附加声明同时保留，没有用一个简短摘要替代许可。这里不删除或替换上游原有版权。
 
-Pages 工作流只上传 `site/`。站点内公开许可路径为 `/xinghui-admin-vue3/licenses/`，该目录提供与已审核静态快照对应的声明副本；根文档的源码导入说明不表示静态快照已经重新构建或发布。后续构建若使用其他版本或包，应以实际模块清单更新并保留其所附许可。
+Pages 工作流只上传 `site/`。站点内公开许可路径为 `/xinghui-admin-vue3/licenses/`，该目录提供与本次审核静态构建对应的声明副本；部署结果另以 Actions 和实际站点为准。后续构建若使用其他版本或包，应以实际模块清单更新并保留其所附许可。
 
 源码导入须保留 Vben 的原版权和完整 MIT 许可，以及各目录、组件、依赖附带的原有声明。本文件不替代根 `LICENSE` 或第三方许可原文，也不构成后端源码、Git 历史或整个源码工作区的完整许可证审计结论。

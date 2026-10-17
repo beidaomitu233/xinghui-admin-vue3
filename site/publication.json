@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-17",
+  "scope": "AI phase one static demonstration and documentation",
+  "frontendSource": "be3355112fb5d443e6ab276cf3792cf650b89cfa",
+  "backendSource": "79b4655b56621fbcdafe48eb858d312bd76eb465",
+  "runtime": "browser-local-only",
+  "realModelCalls": false,
+  "newReleaseTag": false
+}
