@@ -39,6 +39,8 @@ CHILDREN的relation包含parentVariable、parentField、childField。parentVaria
 
 ## 当前记录与身份
 
+业务场景候选Entry提供`contextRequired`、`contextSourceKey`、`contextSourceLabel`和`canStartFromMonitor`，供前端按名称选择当前记录。选择器不可通过读取完整管理定义绕过权限；不能在监控直接创建的场景，应从提供真实记录上下文的业务入口进入。续聊沿用会话原业务引用，不由客户端更换。
+
 低代码BusinessRef仍为 `lowcode.record / formId:recordId`；通用行候选返回 `database.record / db1.<base64url>`，解码为sourceKey及主键映射。引用只是类型化选择，不是授权令牌。执行服务须保持完整引用直到后续尝试、持久化与SSE重连；最长2048字符，不可被旧短列截断。没有当前行绑定的普通场景可沿用ai.scene关联。
 
 HTTP不接受actor/tenant/authorities。真实身份进入有界只读事务工作线程，当前账户与tenant重新校验，并在finally恢复原SecurityContext。通用数据库目录、编译、预览与实际读取都要求平台身份和独立ai:data:database:read；无法推导权限的普通表也受此限制。低代码仍要求实际record query，集合候选另需list；已知资讯/字典表叠加原动作，租户与软删除条件不可由过滤覆盖。
