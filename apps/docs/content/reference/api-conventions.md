@@ -96,6 +96,14 @@ curl --fail-with-body -H "Authorization: ${TOKEN}" \
 
 在自己有权限的资源上，应得到 HTTP 成功且业务 code 200；越权不通过增加前端按钮或伪造 tenantId 解决。解析失败、版本冲突或存储不可用时，先保存输入并按[错误码](./error-codes.md)与[故障排查](../operations/troubleshooting.md)定位层次。
 
+## 场景工作区与监控
+
+新场景使用服务端生成的sceneKey和不可变sceneVersionId，合法配置携带expectedRevision/clientMutationId直接保存；无需发布应用。管理、业务运行、scene-data及监控的完整路径和逐项权限见[API目录](./api-catalog.md#场景工作区与直接保存接口)，不要把上面的旧appKey/sceneKey渲染链路当成新工作区接口。
+
+场景新增/保存/启停JSON上限128KiB；业务提交、模型试运行及预览上限32KiB，仅接受application/json和identity编码。预览/试运行同时要求平台身份、ai:scene:test与ai:scene:invoke，业务数据仍按当前真实主体授权。候选模型、Key与数据对象的查询权限分别检查，管理动作不授予业务读取权。
+
+监控导航可从真实日志或配置动作派生，入口可见不授予日志list、配置query或AUDIT。缺少相应统计权限时字段为null并附安全原因，不能解释为0。新接口响应禁缓存，预览及数据候选包含private；查询监控不会重发供应商请求。
+
 ## 源码依据
 
 后端 `common/common-core/src/main/java/com/xinghuiTec/utils/Result.java`、`system-framework/src/main/java/com/xinghuiTec/config/JacksonConfig.java`、`filter/LoginFilter.java`；`system-admin/src/main/java/com/xinghuiTec/` 下的 `controller/SysOssController.java`、`NotificationInboxController.java`、`BusinessConfigController.java`、`ai/prompt/AiSceneReadBoundaryFilter.java`、`AiSceneReadService.java`、`lowcode/LowcodeService.java`。前端 `apps/web-ele/src/api/request.ts`、`src/api/system/news.ts`、`src/views/system/notification/target-navigation.ts`。
