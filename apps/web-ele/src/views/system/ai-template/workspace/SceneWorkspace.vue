@@ -10,7 +10,14 @@ import type {
   SceneSummary,
 } from '#/api/system/ai-scene';
 
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  watch,
+} from 'vue';
 import { onBeforeRouteLeave } from 'vue-router';
 
 import { useAccessStore } from '@vben/stores';
@@ -23,6 +30,7 @@ import {
   setSceneEnabled,
 } from '#/api/system/ai-scene';
 
+import DatabaseBindingEditor from './DatabaseBindingEditor.vue';
 import { OrderedSceneAutosave } from './ordered-autosave';
 import PromptEditor from './PromptEditor.vue';
 import { cloneScene, persistScene } from './scene-save-adapter';
@@ -92,6 +100,28 @@ const legacyByScene = new Map<string, null | SceneLegacy>();
 const conversionConsent = new Set<string>();
 const mutationConsent = new Map<string, boolean>();
 const variables = ref<{ label: string; name: string }[]>([]);
+const promptEditor = ref<InstanceType<typeof PromptEditor>>();
+const trialBusinessRef = ref<null | { id: string; type: string }>(null);
+const allVariables = computed(() => [
+  ...(variables.value.some((variable) => variable.name === 'user_request')
+    ? []
+    : [{ label: '用户要求', name: 'user_request' }]),
+  ...variables.value,
+  ...(view.value?.value.dataBindings ?? []).map((binding) => ({
+    label: binding.label,
+    name: binding.variable,
+  })),
+]);
+async function insertBinding(variable: string) {
+  await nextTick();
+  await promptEditor.value?.insertVariable(variable);
+}
+async function preparePreview() {
+  if (!view.value) throw new Error('SCENE_UNAVAILABLE');
+  const key = view.value.sceneKey;
+  if (!(await autosave.flush(key))) throw new Error('SAVE_UNCONFIRMED');
+  return autosave.view(key).confirmed.dataBindings ?? [];
+}
 const leaveState = ref<'blocked' | 'saving' | null>(null);
 let finishLeave: ((allowed: boolean) => void) | undefined;
 let leaveGeneration = 0;
@@ -275,6 +305,8 @@ async function selectScene(key: string) {
     }
     if (disposed || run !== detailGeneration) return;
     selected.value = latestSummaries.get(key) ?? detail.scene;
+    trialBusinessRef.value = null;
+    variables.value = [];
     legacy.value = legacyByScene.get(key) ?? null;
     converted.value = conversionConsent.has(key);
     view.value = autosave.view(key);
@@ -520,15 +552,17 @@ onBeforeUnmount(() => {
         </section>
         <PromptEditor
           v-if="legacy?.compatibility !== 'READ_ONLY'"
+          ref="promptEditor"
           :value="view.value"
           :readonly="!view.editable || toggling"
           :models="models"
           :fields="view.fields"
-          :variables="variables"
+          :variables="allVariables"
           @change="autosave.edit(view.sceneKey, $event)"
         >
           <template #data>
             <SceneDataSelector
+              v-if="selected.source === 'LEGACY_V04'"
               :key="view.sceneKey"
               :value="view.value.dataObjects"
               :fixed-form-id="selected.formId"
@@ -541,6 +575,21 @@ onBeforeUnmount(() => {
                 })
               "
             />
+            <DatabaseBindingEditor
+              v-else
+              :key="view.sceneKey"
+              :value="view.value.dataBindings ?? []"
+              :readonly="!view.editable || toggling"
+              :prepare-preview="preparePreview"
+              @change="
+                autosave.edit(view.sceneKey, {
+                  ...view.value,
+                  dataBindings: $event,
+                })
+              "
+              @insert="insertBinding"
+              @context="trialBusinessRef = $event ?? null"
+            />
           </template>
         </PromptEditor>
         <SceneTrialPanel
@@ -549,6 +598,7 @@ onBeforeUnmount(() => {
           :definition="view.confirmed"
           :revision="view.revision"
           :version-id="selected.currentVersionId"
+          :business-ref="trialBusinessRef"
         />
       </template>
       <section v-else class="empty">

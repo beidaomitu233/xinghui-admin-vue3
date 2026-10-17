@@ -21,6 +21,7 @@ import {
 import { sceneDataSamples } from '#/api/system/ai-scene-data';
 
 const props = defineProps<{
+  businessRef?: SceneSubmission['businessRef'];
   definition: SceneDefinition;
   revision: number;
   sceneKey: string;
@@ -61,12 +62,19 @@ const formId = computed(() => props.definition.dataObjects[0]?.formId);
 const active = computed(
   () => request.value && ['QUEUED', 'RUNNING'].includes(request.value.status),
 );
-const needsRecord = computed(() => props.definition.dataObjects.length > 0);
+const needsRecord = computed(
+  () =>
+    props.definition.dataObjects.length > 0 ||
+    props.definition.dataBindings?.some(
+      (binding) => binding.row?.currentRecord,
+    ),
+);
 const ready = computed(() =>
   Boolean(
     props.versionId &&
     canRun.value &&
     (!needsRecord.value ||
+      props.businessRef ||
       (canSamples.value &&
         samples.value.some((sample) => sample.recordId === sampleId.value))),
   ),
@@ -104,15 +112,15 @@ async function loadSamples() {
   }
 }
 function input(): SceneSubmission {
+  let businessRef = props.businessRef;
+  if (!businessRef && needsRecord.value && formId.value) {
+    businessRef = {
+      type: 'lowcode.record',
+      id: `${formId.value}:${sampleId.value}`,
+    };
+  }
   return {
-    ...(needsRecord.value
-      ? {
-          businessRef: {
-            type: 'lowcode.record',
-            id: `${formId.value}:${sampleId.value}`,
-          },
-        }
-      : {}),
+    ...(businessRef ? { businessRef } : {}),
     inputs: { user_request: requirement.value },
     idempotencyKey: crypto.randomUUID(),
   };
@@ -282,7 +290,8 @@ onBeforeUnmount(() => {
       <p class="hint">
         按已保存的第 {{ revision }} 次修订执行；自动保存不会发起试运行。
       </p>
-      <template v-if="needsRecord">
+      <p v-if="businessRef" class="hint">使用上方选择的业务记录试运行。</p>
+      <template v-else-if="needsRecord && formId">
         <p v-if="!canSamples" class="hint">
           没有记录列表权限，无法选择试运行样例。
         </p>
@@ -414,6 +423,15 @@ onBeforeUnmount(() => {
         <p v-for="notice in preview.notices" :key="notice">{{ notice }}</p>
       </section>
       <section v-if="request">
+        <router-link
+          v-if="request.conversationId && !active"
+          :to="{
+            path: '/ai/requests',
+            query: { conversation: request.conversationId },
+          }"
+        >
+          查看完整对话并追问
+        </router-link>
         <p>请求 {{ request.requestId }} · {{ request.status }}</p>
         <p>执行快照 {{ request.sceneVersionId }}</p>
         <div class="actions">

@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import type { SceneDefinition, SceneModelOption } from '#/api/system/ai-scene';
 
-import { nextTick, ref } from 'vue';
+import { computed, nextTick, ref } from 'vue';
+
+import { promptDocument, singlePromptDocument } from './prompt-document';
 
 const props = defineProps<{
   fields: Record<string, string>;
@@ -12,28 +14,36 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{ change: [value: SceneDefinition] }>();
 const promptInput = ref<HTMLTextAreaElement>();
+const document = computed(() => promptDocument(props.value));
+function change(value: SceneDefinition) {
+  if (!props.readonly) emit('change', singlePromptDocument(value));
+}
+function update(field: 'name' | 'purpose', value: string) {
+  change({ ...props.value, [field]: value });
+}
+function updatePrompt(value: string) {
+  if (!props.readonly)
+    emit('change', {
+      ...props.value,
+      promptText: value,
+      outputRequirement: '',
+    });
+}
 async function insertVariable(name: string) {
   if (props.readonly || !props.variables?.some((item) => item.name === name))
     return;
   const input = promptInput.value;
-  const start = input?.selectionStart ?? props.value.promptText.length;
+  const start = input?.selectionStart ?? document.value.length;
   const end = input?.selectionEnd ?? start;
   const token = `{{${name}}}`;
-  update(
-    'promptText',
-    props.value.promptText.slice(0, start) +
-      token +
-      props.value.promptText.slice(end),
-  );
+  const value =
+    document.value.slice(0, start) + token + document.value.slice(end);
+  updatePrompt(value);
   await nextTick();
-  input?.focus();
-  input?.setSelectionRange(start + token.length, start + token.length);
-}
-function update(
-  field: 'name' | 'outputRequirement' | 'promptText' | 'purpose',
-  value: string,
-) {
-  if (!props.readonly) emit('change', { ...props.value, [field]: value });
+  if (document.value === value) {
+    input?.focus();
+    input?.setSelectionRange(start + token.length, start + token.length);
+  }
 }
 function chooseModel(event: Event) {
   if (props.readonly) return;
@@ -42,45 +52,32 @@ function chooseModel(event: Event) {
       `${item.model.modelRef}:${item.model.configVersion}` ===
       (event.target as HTMLSelectElement).value,
   );
-  if (!option) return;
-  emit('change', {
-    ...props.value,
-    modelPolicy: {
-      ...props.value.modelPolicy,
-      mode: 'FIXED',
-      fallback: false,
-      models: [
-        {
-          model: option.model,
-          keyMode: 'AUTO',
-          allowedKeys: [],
-          fixedKey: null,
-          fallbackKeys: [],
-        },
-      ],
-    },
-  });
-}
-function updatePolicy(
-  field: 'maxAttempts' | 'maxConcurrent' | 'maxTokens' | 'timeoutSeconds',
-  event: Event,
-) {
-  if (props.readonly) return;
-  const value = (event.target as HTMLInputElement).valueAsNumber;
-  if (!Number.isSafeInteger(value)) return;
-  emit('change', {
-    ...props.value,
-    modelPolicy: { ...props.value.modelPolicy, [field]: value },
-  });
-}
-function outputFormat(event: Event) {
-  const value = (event.target as HTMLSelectElement).value;
-  if (!props.readonly && (value === 'TEXT' || value === 'JSON_OBJECT'))
-    emit('change', {
+  if (option)
+    change({
       ...props.value,
-      modelPolicy: { ...props.value.modelPolicy, outputFormat: value },
+      modelPolicy: {
+        ...props.value.modelPolicy,
+        mode: 'FIXED',
+        fallback: false,
+        models: [
+          {
+            model: option.model,
+            keyMode: 'AUTO',
+            allowedKeys: [],
+            fixedKey: null,
+            fallbackKeys: [],
+          },
+        ],
+      },
     });
 }
+function modelName(code: string) {
+  if (code === 'poolside/laguna-s-2.1:free') return 'Poolside Laguna S 2.1';
+  if (code === 'nvidia/nemotron-3.5-lightning:free')
+    return 'NVIDIA Nemotron 3.5 Lightning';
+  return code;
+}
+defineExpose({ insertVariable });
 </script>
 <template>
   <div class="prompt-editor">
@@ -96,7 +93,7 @@ function outputFormat(event: Event) {
         <span v-if="fields.name" class="field-error">{{ fields.name }}</span>
       </label>
       <label>
-        用途
+        用途（可选）
         <input
           :value="value.purpose"
           :readonly="readonly"
@@ -107,7 +104,7 @@ function outputFormat(event: Event) {
         </span>
       </label>
       <label>
-        模型
+        对话模型
         <select
           :disabled="readonly"
           :value="
@@ -117,7 +114,7 @@ function outputFormat(event: Event) {
           "
           @change="chooseModel"
         >
-          <option value="" disabled>选择模型</option>
+          <option value="" disabled>选择已配置的模型</option>
           <option
             v-if="
               value.modelPolicy.models[0] &&
@@ -131,86 +128,25 @@ function outputFormat(event: Event) {
             "
             :value="`${value.modelPolicy.models[0].model.modelRef}:${value.modelPolicy.models[0].model.configVersion}`"
           >
-            当前模型暂不可用（保留配置）
+            原模型当前不可用（保留原配置）
           </option>
           <option
             v-for="item in models"
             :key="`${item.model.modelRef}:${item.model.configVersion}`"
             :value="`${item.model.modelRef}:${item.model.configVersion}`"
           >
-            {{ item.configName }} · {{ item.modelCode }}
+            {{ item.configName }} · {{ modelName(item.modelCode) }}
           </option>
         </select>
       </label>
     </div>
-    <details>
-      <summary>调用设置</summary>
-      <div class="editor-meta policy">
-        <label>
-          输出格式
-          <select
-            :value="value.modelPolicy.outputFormat"
-            :disabled="readonly"
-            @change="outputFormat"
-          >
-            <option value="TEXT">文本</option>
-            <option value="JSON_OBJECT">JSON 对象</option>
-          </select>
-        </label>
-        <label>
-          超时（秒）
-          <input
-            type="number"
-            min="1"
-            :value="value.modelPolicy.timeoutSeconds"
-            :readonly="readonly"
-            @change="updatePolicy('timeoutSeconds', $event)"
-          />
-        </label>
-        <label>
-          最多尝试次数
-          <input
-            type="number"
-            min="1"
-            :value="value.modelPolicy.maxAttempts"
-            :readonly="readonly"
-            @change="updatePolicy('maxAttempts', $event)"
-          />
-        </label>
-        <label>
-          最多并发
-          <input
-            type="number"
-            min="1"
-            :value="value.modelPolicy.maxConcurrent"
-            :readonly="readonly"
-            @change="updatePolicy('maxConcurrent', $event)"
-          />
-        </label>
-        <label>
-          输出 Token 上限
-          <input
-            type="number"
-            min="1"
-            :value="value.modelPolicy.maxTokens"
-            :readonly="readonly"
-            @change="updatePolicy('maxTokens', $event)"
-          />
-        </label>
-      </div>
-      <p v-if="value.modelPolicy.models.length > 1" class="policy-hint">
-        当前保留 {{ value.modelPolicy.models.length }} 个模型的{{
-          value.modelPolicy.mode === 'ROUND_ROBIN' ? '轮询' : '固定'
-        }}策略；重新选择模型将使用所选单模型。
-      </p>
-    </details>
     <slot name="data"></slot>
     <p
-      v-if="fields.dataObjects"
+      v-if="fields.dataObjects || fields.dataBindings"
       class="field-error"
       data-field-error="dataObjects"
     >
-      {{ fields.dataObjects }}
+      {{ fields.dataBindings || fields.dataObjects }}
     </p>
     <p
       v-if="fields.modelPolicy"
@@ -220,7 +156,7 @@ function outputFormat(event: Event) {
       {{ fields.modelPolicy }}
     </p>
     <div class="variables">
-      <span>插入变量</span>
+      <span>插入引用</span>
       <button
         v-for="variable in variables"
         :key="variable.name"
@@ -231,38 +167,22 @@ function outputFormat(event: Event) {
         {{ variable.label }}
       </button>
     </div>
-    <label class="prompt-label">
+    <label>
       提示词
       <textarea
         ref="promptInput"
         aria-label="提示词"
-        :value="value.promptText"
+        :value="document"
         :readonly="readonly"
-        placeholder="描述任务、语气与输出要求…"
-        @input="
-          update('promptText', ($event.target as HTMLTextAreaElement).value)
-        "
+        placeholder="写下要完成的任务，并从数据选择器插入引用…"
+        @input="updatePrompt(($event.target as HTMLTextAreaElement).value)"
       ></textarea>
     </label>
-    <p v-if="fields.promptText" class="field-error">{{ fields.promptText }}</p>
-    <details :open="Boolean(value.outputRequirement)">
-      <summary>输出规则（可选）</summary>
-      <textarea
-        aria-label="输出规则"
-        class="output"
-        :value="value.outputRequirement"
-        :readonly="readonly"
-        placeholder="补充格式或长度要求"
-        @input="
-          update(
-            'outputRequirement',
-            ($event.target as HTMLTextAreaElement).value,
-          )
-        "
-      ></textarea>
-    </details>
-    <p v-if="fields.outputRequirement" class="field-error">
-      {{ fields.outputRequirement }}
+    <p v-if="value.outputRequirement" class="historical-note">
+      原有指令已合并显示，实际编辑后会一并保存。
+    </p>
+    <p v-if="fields.promptText || fields.outputRequirement" class="field-error">
+      {{ fields.promptText || fields.outputRequirement }}
     </p>
   </div>
 </template>
@@ -272,31 +192,9 @@ function outputFormat(event: Event) {
   gap: 24px;
 }
 
-.variables {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  align-items: center;
-  font-size: 12px;
-}
-
-.variables button {
-  color: hsl(var(--primary));
-}
-
-.policy {
-  margin-top: 16px;
-}
-
-.policy-hint {
-  margin-top: 12px;
-  font-size: 12px;
-  color: hsl(var(--muted-foreground));
-}
-
 .editor-meta {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
 }
 
@@ -320,31 +218,31 @@ textarea {
 }
 
 textarea {
-  min-height: 420px;
+  min-height: 460px;
   line-height: 1.8;
   resize: vertical;
 }
 
-textarea:focus,
-input:focus,
-select:focus {
-  outline: 2px solid hsl(var(--primary) / 30%);
-  outline-offset: 1px;
+.variables {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  font-size: 12px;
 }
 
-textarea.output {
-  min-height: 120px;
-  margin-top: 12px;
-}
-
-summary {
-  font-size: 13px;
-  cursor: pointer;
+.variables button {
+  color: hsl(var(--primary));
 }
 
 .field-error {
   font-size: 12px;
-  color: #b66a19;
+  color: hsl(var(--destructive));
+}
+
+.historical-note {
+  font-size: 12px;
+  color: hsl(var(--muted-foreground));
 }
 
 [readonly],

@@ -7,6 +7,7 @@ import type {
   AiConfiguration,
   ConfigurationVersion,
 } from '../api/system/ai-configuration';
+import type { ConversationSummary } from '../api/system/ai-conversation';
 import type {
   RequestLogDetail,
   RequestLogRow,
@@ -20,6 +21,8 @@ import type {
   View,
 } from '../api/system/ai-template';
 
+import { OPENROUTER_SUGGESTED_MODELS } from '../api/system/ai-settings';
+
 // Entirely fictional local data. No key material, provider attempts, test success or executable publication.
 export const AI_DEMO_IDS = {
   config: '9100000000000000101',
@@ -30,6 +33,40 @@ export const AI_DEMO_IDS = {
   request: '9100000000000000501',
 };
 const time = '2026-10-16 09:00:00';
+const conversation: ConversationSummary = {
+  conversationId: 'fictional-conversation',
+  title: '[虚构只读] 订单分析对话',
+  sceneKey: 'scene.fictionalreadonly',
+  sceneName: '[虚构只读] 分析场景',
+  kind: 'BUSINESS',
+  businessRef: null,
+  sourceLabel: '虚构演示资料',
+  revision: 2,
+  status: 'SUCCEEDED',
+  lastMessage: '[虚构示例] 可按地区汇总订单。',
+  updatedAt: '2026-10-16T01:00:00Z',
+  history: 'COMPLETE',
+  canContinue: false,
+};
+const settings = {
+  configId: AI_DEMO_IDS.config,
+  revision: 0,
+  name: '[虚构只读] 未连接的 AI 配置',
+  provider: 'openrouter',
+  endpointUrl: 'https://openrouter.ai/api/v1/chat/completions',
+  keyConfigured: false,
+  maskedKey: '',
+  models: OPENROUTER_SUGGESTED_MODELS,
+  active: false,
+  pendingChanges: false,
+  connection: {
+    status: 'NOT_TESTED',
+    message: '虚构演示未连接模型服务',
+    active: false,
+    testId: null,
+    checkedAt: null,
+  },
+};
 const scene: SceneDetail = {
   legacy: null,
   scene: {
@@ -286,6 +323,52 @@ export function readOnlyAiDemo(
   if (method !== 'GET')
     throw new AiDemoFailure(501, '静态演示仅支持查看，未发送请求');
   const send = (data: unknown): Reply => ({ handled: true, data });
+  if (path === '/ai/scenes') return send([]);
+  if (path === '/ai/conversations') {
+    if (params.scope && params.scope !== 'OWN')
+      throw new AiDemoFailure(403, '静态演示仅支持本人虚构数据');
+    return send(
+      paged(
+        !params.search || conversation.title.includes(String(params.search))
+          ? [conversation]
+          : [],
+        params,
+      ),
+    );
+  }
+  if (path === `/ai/conversations/${conversation.conversationId}`)
+    return send({
+      conversation,
+      notice: '所有消息为虚构布局示例，未调用模型。',
+      messages: [
+        '[虚构问题] 请分析订单情况。',
+        '[虚构示例] 可按地区汇总订单。',
+      ].map((content, index) => ({
+        messageId: `fictional-message-${index}`,
+        sequence: index + 1,
+        role: index === 0 ? 'USER' : 'ASSISTANT',
+        content,
+        status: 'SUCCEEDED',
+        requestId: AI_DEMO_IDS.request,
+        sceneVersionId: 'fictional-version',
+        errorCode: null,
+        partial: false,
+        createdAt: conversation.updatedAt,
+        finishedAt: conversation.updatedAt,
+      })),
+    });
+  if (path === '/system/ai/settings/providers')
+    return send([
+      {
+        code: 'openrouter',
+        name: 'OpenRouter',
+        defaultEndpoint: settings.endpointUrl,
+        suggestedModels: OPENROUTER_SUGGESTED_MODELS,
+      },
+    ]);
+  if (path === '/system/ai/settings') return send(paged([settings], params));
+  if (path === `/system/ai/settings/${settings.configId}`)
+    return send(settings);
   if (path === '/ai/scenes/record-summary') return send(null);
   if (path === '/system/ai/scenes/workspace') {
     const records =
