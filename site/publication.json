@@ -4,7 +4,7 @@
   "scope": "Standalone AI channels, multi-key model associations and discovery, durable conversations, database prompt references",
   "frontendSource": "e22022ad51f72777960244f085c7637be898ecdb",
   "backendSource": "3f992848752ac167bdb014851af501e2c0471fcf",
-  "documentationSource": "24be2ea13ba3a5f9be9220a7cd023bbe885e7aee",
+  "documentationSource": "e9e5d0d3b03e80ac69ad513ce122f4b791ce2b59",
   "runtime": "browser-local-only",
   "realModelCalls": false,
   "newReleaseTag": false
