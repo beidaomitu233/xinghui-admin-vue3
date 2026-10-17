@@ -13,6 +13,11 @@ const required = [
   '/src/views/system/ai-application/index.test.ts',
   '/src/views/system/ai-application/KeyPolicyEditor.test.ts',
   '/src/views/system/ai-request/RequestLogPanel.test.ts',
+  '/src/views/system/ai-request/MonitorWorkspace.test.ts',
+  '/src/views/system/ai-template/workspace/ordered-autosave.test.ts',
+  '/src/views/system/ai-template/workspace/SceneWorkspace.test.ts',
+  '/src/views/system/ai-template/workspace/SceneDataSelector.test.ts',
+  '/src/views/system/ai-template/workspace/SceneTrialPanel.test.ts',
   '/src/api/system/ai-template.test.ts',
   '/src/api/system/ai-runtime-stream.test.ts',
   '/src/api/system/ai-runtime-errors.test.ts',
@@ -31,6 +36,11 @@ const minimumAssertions = new Map([
   ['/src/demo/ai-pages.test.ts', 7],
   ['/src/router/menu-cleanup.test.ts', 4],
   ['/src/styles/workspace-theme.test.ts', 5],
+  ['/src/views/system/ai-request/MonitorWorkspace.test.ts', 3],
+  ['/src/views/system/ai-template/workspace/ordered-autosave.test.ts', 10],
+  ['/src/views/system/ai-template/workspace/SceneDataSelector.test.ts', 3],
+  ['/src/views/system/ai-template/workspace/SceneTrialPanel.test.ts', 3],
+  ['/src/views/system/ai-template/workspace/SceneWorkspace.test.ts', 16],
 ]);
 const authSuites = [
   '/src/api/core/session-info.test.mjs',

@@ -85,6 +85,12 @@ function createRequestClient(baseURL: string, options?: RequestClientOptions) {
   // 通用的错误处理,如果没有进入上面的错误处理逻辑，就会进入这里
   client.addResponseInterceptor(
     errorMessageResponseInterceptor((msg: string, error) => {
+      // Scene autosave owns an inline retry/conflict state. Do not duplicate it with a global toast.
+      if (
+        error?.config?.method === 'put' &&
+        /^\/system\/ai\/scenes\//.test(error?.config?.url ?? '')
+      )
+        return;
       // 这里可以根据业务进行定制,你可以拿到 error 内的信息进行定制化处理，根据不同的 code 做不同的提示，而不是直接使用 message.error 提示 msg
       // 检查后端返回的错误字段: msg, message, error
       const responseData = error?.response?.data ?? {};

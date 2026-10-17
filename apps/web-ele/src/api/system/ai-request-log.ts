@@ -13,6 +13,8 @@ export interface RequestLogFilters {
   from?: string;
   modelRef?: string;
   requestId?: string;
+  requestKind?: 'BUSINESS' | 'TEST';
+  sceneKey?: string;
   scope: 'AUDIT' | 'OWN';
   status?: RequestStatus;
   subjectRef?: string;
@@ -22,7 +24,10 @@ export interface RequestLogFilters {
 export interface RequestLogRow {
   appName: string;
   elapsedMs: AiRestLong;
-  request: AiRequestView;
+  request: AiRequestView & {
+    sceneKey?: null | string;
+    sceneVersionId?: null | string;
+  };
   subjectRef: string;
   tenantRef: string;
 }

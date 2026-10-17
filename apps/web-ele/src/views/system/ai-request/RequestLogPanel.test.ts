@@ -1,6 +1,9 @@
 /* eslint-disable vue/one-component-per-file -- Lightweight view test stubs. */
 import type { AiPage } from '#/api/system/ai-application';
-import type { RequestLogRow } from '#/api/system/ai-request-log';
+import type {
+  RequestLogFilters,
+  RequestLogRow,
+} from '#/api/system/ai-request-log';
 
 import { flushPromises, mount } from '@vue/test-utils';
 import { defineComponent, h } from 'vue';
@@ -140,8 +143,9 @@ const page = (subject: string): AiPage<RequestLogRow> => ({
   pageNum: 1,
   pageSize: 20,
 });
-function mountPanel() {
+function mountPanel(controlledFilters?: RequestLogFilters) {
   return mount(RequestLogPanel, {
+    props: { controlledFilters },
     global: {
       directives: { loading: () => {} },
       stubs: {
@@ -222,6 +226,48 @@ describe('request log scope', () => {
     expect(wrapper.text()).toContain('未知 / 0');
     expect(wrapper.get('[data-rows]').text()).toContain('9007199254740993');
     wrapper.unmount();
+  });
+  it('uses controlled monitor filters for list and export without its independent filters or statistics', async () => {
+    access.codes.push('ai:request:export');
+    const query: RequestLogFilters = {
+      scope: 'OWN',
+      sceneKey: 'scene.a',
+      requestKind: 'TEST',
+      modelRef: 'model-1',
+      status: 'FAILED',
+      from: '2026-10-16T00:00:00Z',
+      to: '2026-10-17T00:00:00Z',
+    };
+    vi.mocked(exportRequestLogs).mockResolvedValue([]);
+    const create = vi.fn(() => 'blob:controlled-test');
+    vi.stubGlobal('URL', { createObjectURL: create, revokeObjectURL: vi.fn() });
+    const wrapper = mountPanel(query);
+    try {
+      await flushPromises();
+      expect(listRequestLogs).toHaveBeenCalledWith({
+        ...query,
+        pageNum: 1,
+        pageSize: 20,
+      });
+      expect(requestLogStatistics).not.toHaveBeenCalled();
+      expect(wrapper.find('select').exists()).toBe(false);
+      await wrapper
+        .findAll('button')
+        .find((button) => button.text() === '导出 JSON')
+        ?.trigger('click');
+      await flushPromises();
+      expect(exportRequestLogs).toHaveBeenCalledWith(query);
+      await wrapper.setProps({
+        controlledFilters: { ...query, scope: 'OWN', requestKind: 'BUSINESS' },
+      });
+      await flushPromises();
+      expect(
+        vi.mocked(listRequestLogs).mock.calls.at(-1)?.[0].requestKind,
+      ).toBe('BUSINESS');
+    } finally {
+      wrapper.unmount();
+      vi.unstubAllGlobals();
+    }
   });
   it('requires an explicit audit switch and discards a late audit response after returning to own', async () => {
     access.codes.push('ai:request:audit');

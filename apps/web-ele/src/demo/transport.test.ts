@@ -60,8 +60,6 @@ describe('public static demo contracts', () => {
         menu.component,
       ]),
     ).toEqual([
-      ['/ai/configurations', 'system/ai-config/index'],
-      ['/ai/applications', 'system/ai-application/index'],
       ['/ai/templates', 'system/ai-template/index'],
       ['/ai/requests', 'system/ai-request/index'],
     ]);
@@ -305,7 +303,7 @@ describe('public static demo contracts', () => {
     ];
     for (const url of reads) expect(await f.call(url)).toBeTruthy();
     const pages = DEMO_MENUS.flatMap((m) => m.children ?? []);
-    expect(pages).toHaveLength(20);
+    expect(pages).toHaveLength(18);
     expect(pages.map((m) => m.path)).toEqual(
       expect.arrayContaining([
         '/workspace',
