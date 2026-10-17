@@ -14,14 +14,14 @@
 
 | 仓库 | 产品源码提交                               |
 | ---- | ------------------------------------------ |
-| 后端 | `9337e3a137da066578ef591c657aa956856d37bc` |
-| 前端 | `d84bcc37df2909fb8d45ca8f9a95176979035c7a` |
+| 后端 | `033891da78f618c3aef3095cd69fbb071caff22f` |
+| 前端 | `813a80add7572917db2b9c3d8c254258eb7cbf00` |
 
 已独立核对真实页面的连续保存、网络失败保留、离开保护、原请求重试及刷新恢复，新通用场景无需发布即可保存为可运行配置；真实HTTP的日志列表、统计、详情与导出已通过相同筛选核对。后端新增V225与V227，正常迁移目录共29个versioned脚本；旧快照升级保留原请求、版本和记录，日志原授权恢复与会话刷新见[升级说明](./upgrade.md)。
 
 本轮OpenRouter使用虚构文具采购样例，仅注入授权subject字段：请求经过鉴权、授权投影、渲染及一次实际供应商尝试，免费模型在90秒内未返回正文，最终超时，记录未被自动修改。该结果验证了失败处理，不能当作本轮成功生成或采纳闭环；历史一期的模型成功证据也不保证供应商现时可用。
 
-后端候选的正式CI含MySQL5.7/8.0服务检查；前端质量门槛包含测试、类型、样式、生产构建及完整文档构建，结果与Gitflow合并分别见[后端PR](https://github.com/beidaomitu233/xinghui-admin-backend/pull/4)和[前端PR](https://github.com/beidaomitu233/xinghui-admin-vue3/pull/7)。公开站点实际部署状态仍以Actions及HTTP为准。本次没有新Tag，v1.2.0保持原快照。
+后端候选的正式CI含MySQL5.7/8.0服务检查；前端质量门槛包含测试、类型、样式、生产构建及完整文档构建，结果与Gitflow合并分别见[后端预览修正PR](https://github.com/beidaomitu233/xinghui-admin-backend/pull/6)和[前端PR](https://github.com/beidaomitu233/xinghui-admin-vue3/pull/7)。公开站点实际部署状态仍以Actions及HTTP为准。本次没有新Tag，v1.2.0保持原快照。
 
 ## 当前源码基线
 
