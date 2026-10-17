@@ -23,7 +23,7 @@ async function reset() {
     type="info"
     closable
   >
-    <span>字典、表单及资讯可本地编辑；账号、权限、文件和外部服务只读。</span>
+    <span>AI仅展示虚构数据；字典、表单及资讯可本地编辑。</span>
     <button type="button" class="ml-2 underline" @click="reset">
       重置示例数据
     </button>

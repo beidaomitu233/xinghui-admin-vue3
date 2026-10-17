@@ -1,6 +1,6 @@
 # 菜单与页面入口
 
-菜单管理位于 **系统管理 → 菜单管理**。当前默认导航按 **系统管理、通用能力、运行维护** 三个一级目录组织。页面的可见集合来自用户实际授权，不保证每个身份都能看到三组中的全部子项。
+菜单管理位于 **系统管理 → 菜单管理**。当前源码默认导航按 **系统管理、通用能力、运行维护、AI管理** 四个一级目录组织。页面的可见集合来自用户实际授权，不保证每个身份都能看到四组中的全部子项。v1.2.0静态旧快照沿用原三组布局，不能据此推断当前源码的菜单结构。
 
 ## 菜单字段
 
@@ -31,4 +31,4 @@
 - 前端：`apps/web-ele/src/api/system/menu.ts`、`apps/web-ele/src/views/system/menu/index.vue`。
 - 路由加载：`apps/web-ele/src/router/routes-helper.ts`；核心入口：`apps/web-ele/src/router/routes/core.ts`。
 - 后端：`system-admin/src/main/java/com/xinghuiTec/controller/SysMenuController.java`。
-- 最新层级：`system-admin/src/main/resources/db/migration/V20261013_170__menu_consolidation.sql`。
+- 旧三组层级：`system-admin/src/main/resources/db/migration/V20261013_170__menu_consolidation.sql`；当前独立AI组与动作：`V20261016_180__ai_config_v04.sql`、`V20261016_210__ai_access_actions.sql`（同目录）。

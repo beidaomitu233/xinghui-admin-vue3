@@ -9,6 +9,7 @@ import type {
 import type { DemoState } from './seed';
 
 import { dataError, schemaError } from '../views/lowcode/form-schema';
+import { AiDemoFailure, readOnlyAiDemo } from './ai-readonly';
 import {
   createDemoState,
   DEMO_IMAGE,
@@ -368,6 +369,8 @@ export function createDemoTransport(storage: DemoStorage) {
             permissions: DEMO_PERMISSIONS,
           };
         if (path === '/user/router' && method === 'GET') return DEMO_MENUS;
+        const ai = readOnlyAiDemo(path, method, params);
+        if (ai.handled) return ai.data;
         if (method === 'GET') {
           if (path === '/system/user/list')
             return page(filtered(DEMO_USERS, params), params);
@@ -797,9 +800,12 @@ export function createDemoTransport(storage: DemoStorage) {
           : { code: 200, data: structuredClone(value), msg: '本地演示' },
       );
     } catch (error) {
-      const status = error instanceof DemoFailure ? error.status : 400;
+      const status =
+        error instanceof DemoFailure || error instanceof AiDemoFailure
+          ? error.status
+          : 400;
       const message =
-        error instanceof DemoFailure
+        error instanceof DemoFailure || error instanceof AiDemoFailure
           ? error.message
           : '本地演示请求无效，操作未保存';
       const rejected = Object.assign(new Error(message), {

@@ -1,0 +1,417 @@
+import type {
+  ApplicationView,
+  AvailableModel,
+  PublishedTemplateOption,
+} from '../api/system/ai-application';
+import type {
+  AiConfiguration,
+  ConfigurationVersion,
+} from '../api/system/ai-configuration';
+import type {
+  RequestLogDetail,
+  RequestLogRow,
+  RequestLogStatistics,
+} from '../api/system/ai-request-log';
+import type {
+  ResourceDefinition,
+  TemplateDefinition,
+  Version,
+  View,
+} from '../api/system/ai-template';
+
+// Entirely fictional local data. No key material, provider attempts, test success or executable publication.
+export const AI_DEMO_IDS = {
+  config: '9100000000000000101',
+  model: '9100000000000000102',
+  app: '9100000000000000201',
+  template: '9100000000000000301',
+  resource: '9100000000000000401',
+  request: '9100000000000000501',
+};
+const time = '2026-10-16 09:00:00';
+const configuration: AiConfiguration = {
+  id: AI_DEMO_IDS.config,
+  name: '[虚构只读] 未连接的 AI 配置',
+  environment: 'static-demo',
+  providerCode: 'openrouter',
+  status: 'DRAFT',
+  revision: 0,
+  activeVersion: null,
+  activePairs: [],
+  latestTestId: null,
+  updatedAt: time,
+  legacyModelId: null,
+  draft: {
+    configVersion: '1',
+    providerCode: 'openrouter',
+    protocol: 'OPENAI_CHAT',
+    endpointUrl: 'https://provider.example.invalid/not-connected',
+    timeoutSeconds: 30,
+    models: [
+      {
+        modelRef: AI_DEMO_IDS.model,
+        modelCode: 'fictional/local-only',
+        jsonObject: false,
+      },
+    ],
+    keys: [],
+  },
+};
+const resource: ResourceDefinition = {
+  name: '[虚构只读] 记录主题资源',
+  domain: '仅展示引用声明，不读取业务数据',
+  owner: '虚构演示负责人',
+  source: 'lowcode.record',
+  formId: '2001',
+  fields: ['subject'],
+  subjects: ['demo'],
+  applications: [AI_DEMO_IDS.app],
+  timeoutMillis: 2000,
+};
+const template: TemplateDefinition = {
+  name: '[虚构只读] 记录摘要模板',
+  purpose: '仅展示模板和资源引用，不预览取数或生成',
+  owner: '虚构演示负责人',
+  maxChars: 12_000,
+  messages: [
+    {
+      section: 'INSTRUCTION',
+      text: '这是非执行的虚构模板示例。静态演示不会调用模型。',
+    },
+    { section: 'INPUT', text: '{{user_request}}' },
+    { section: 'DATA', text: '{{record_subject}}' },
+  ],
+  variables: [
+    {
+      name: 'user_request',
+      type: 'STRING',
+      required: true,
+      hasDefault: false,
+      defaultValue: null,
+      maxChars: 1000,
+      sensitive: false,
+      truncate: false,
+    },
+    {
+      name: 'record_subject',
+      type: 'STRING',
+      required: true,
+      hasDefault: false,
+      defaultValue: null,
+      maxChars: 1000,
+      sensitive: false,
+      truncate: false,
+    },
+  ],
+  resources: [
+    {
+      name: '虚构记录主题',
+      resourceId: AI_DEMO_IDS.resource,
+      resourceVersionId: '1',
+      required: true,
+      omitOnMissing: false,
+      parameters: { businessRef: { source: 'BUSINESS_REF', key: 'id' } },
+      outputs: { subject: 'record_subject' },
+    },
+  ],
+};
+const application: ApplicationView = {
+  appId: AI_DEMO_IDS.app,
+  entryKey: 'fictional-readonly',
+  name: '[虚构只读] 摘要应用声明',
+  purpose: '未测试、未发布、未启用；不执行任何模型调用',
+  ownerId: 'demo',
+  enabled: false,
+  publishedVersionId: null,
+  revision: 0,
+  draftRevision: 0,
+  draft: {
+    scope: 'FRONTEND',
+    formId: '2001',
+    allowedSubjects: ['demo'],
+    allowedAuthorities: [],
+    template: { templateId: AI_DEMO_IDS.template, templateVersionId: '1' },
+    inputNames: ['user_request'],
+    requirements: { outputFormat: 'TEXT', streaming: true, tools: false },
+    models: [
+      {
+        model: { modelRef: AI_DEMO_IDS.model, configVersion: '1' },
+        keyMode: 'AUTO',
+        allowedKeys: [],
+        fixedKey: null,
+        fallbackKeys: [],
+      },
+    ],
+    modelMode: 'FIXED',
+    modelFallback: false,
+    maxAttempts: 1,
+    maxConcurrent: 1,
+    maxTokens: 256,
+    timeoutSeconds: 30,
+  },
+};
+const log: RequestLogRow = {
+  appName: '[虚构只读] 静态拒绝记录（未调用模型）',
+  elapsedMs: 0,
+  subjectRef: 'demo',
+  tenantRef: 'static-demo',
+  request: {
+    requestId: AI_DEMO_IDS.request,
+    appId: AI_DEMO_IDS.app,
+    appVersionId: null,
+    draftRevision: 0,
+    kind: 'TEST',
+    businessType: 'demo.not-executed',
+    businessId: 'fictional-record',
+    status: 'FAILED',
+    stage: 'ADMISSION',
+    errorCode: 'CAPABILITY_UNSUPPORTED',
+    outputStarted: false,
+    attemptCount: 0,
+    usageKnown: false,
+    inputTokens: null,
+    outputTokens: null,
+    createdAt: '2026-10-16T09:00:00+08:00',
+    deadline: '2026-10-16T09:00:30+08:00',
+    finishedAt: '2026-10-16T09:00:00+08:00',
+  },
+};
+type Params = Record<string, unknown>;
+type Reply = { data: unknown; handled: true } | { handled: false };
+export class AiDemoFailure extends Error {
+  constructor(
+    public status: number,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+function paged<T>(rows: T[], params: Params) {
+  const pageNum = Math.max(1, Number(params.pageNum) || 1);
+  const pageSize = Math.min(100, Math.max(1, Number(params.pageSize) || 20));
+  return {
+    records: rows.slice((pageNum - 1) * pageSize, pageNum * pageSize),
+    total: String(rows.length),
+    pageNum,
+    pageSize,
+  };
+}
+function filteredLogs(params: Params) {
+  if (params.scope === 'AUDIT')
+    throw new AiDemoFailure(403, '静态演示仅支持查看，未发送请求');
+  return [log].filter((row) => {
+    const values = {
+      appId: row.request.appId,
+      requestId: row.request.requestId,
+      businessId: row.request.businessId,
+      status: row.request.status,
+      subjectRef: row.subjectRef,
+      tenantRef: row.tenantRef,
+    };
+    for (const [key, value] of Object.entries(values))
+      if (params[key] && String(params[key]) !== value) return false;
+    if (params.modelRef) return false; // No model was attempted.
+    const date = Date.parse(row.request.createdAt);
+    return (
+      (!params.from || date >= Date.parse(String(params.from))) &&
+      (!params.to || date <= Date.parse(String(params.to)))
+    );
+  });
+}
+function definition(resourceKind: boolean): View {
+  return {
+    id: resourceKind ? AI_DEMO_IDS.resource : AI_DEMO_IDS.template,
+    name: resourceKind ? resource.name : template.name,
+    revision: 0,
+    enabled: false,
+    state: 'DRAFT',
+    update_time: time,
+    definition: resourceKind ? resource : template,
+    versions: [version(resourceKind)],
+  };
+}
+function version(resourceKind: boolean): Version {
+  return {
+    id: '1',
+    version_no: 1,
+    config_hash: 'fictional-local-declaration-not-approved',
+    create_time: time,
+    definition: resourceKind ? resource : template,
+  };
+}
+export function readOnlyAiDemo(
+  path: string,
+  method: string,
+  params: Params,
+): Reply {
+  if (!/^\/(?:system\/ai|ai\/)/.test(path)) return { handled: false };
+  if (method !== 'GET')
+    throw new AiDemoFailure(501, '静态演示仅支持查看，未发送请求');
+  const send = (data: unknown): Reply => ({ handled: true, data });
+  if (path === '/ai/applications/record-summary') return send(null);
+  if (path === '/system/ai/configurations') {
+    const rows = [configuration].filter(
+      (c) =>
+        (!params.name || c.name.includes(String(params.name))) &&
+        (!params.environment || c.environment === params.environment) &&
+        (!params.providerCode || c.providerCode === params.providerCode) &&
+        (!params.status || c.status === params.status),
+    );
+    return send({
+      ...paged(
+        rows.map((c) => ({
+          id: c.id,
+          name: c.name,
+          environment: c.environment,
+          providerCode: c.providerCode,
+          status: c.status,
+          revision: c.revision,
+          modelCount: c.draft.models.length,
+          usableKeyCount: 0,
+          latestTestTime: null,
+        })),
+        params,
+      ),
+      legacyModels: [],
+      jsonObjectModels: [],
+    });
+  }
+  if (path === `/system/ai/configurations/${AI_DEMO_IDS.config}`)
+    return send(configuration);
+  if (path === `/system/ai/configurations/${AI_DEMO_IDS.config}/versions`) {
+    const versions: ConfigurationVersion[] = [
+      {
+        configVersion: '1',
+        snapshot: configuration.draft,
+        admittedPairs: [],
+        createdAt: time,
+        activated: false,
+      },
+    ];
+    return send(versions);
+  }
+  if (path === `/system/ai/configurations/${AI_DEMO_IDS.config}/impact`)
+    return send([]);
+  if (path === '/system/ai/applications')
+    return send(
+      paged(
+        [application].filter(
+          (a) =>
+            !params.search ||
+            `${a.name} ${a.entryKey}`.includes(String(params.search)),
+        ),
+        params,
+      ),
+    );
+  if (path === '/system/ai/applications/options/models') {
+    const models: AvailableModel[] = [];
+    return send(models);
+  }
+  if (path === '/system/ai/applications/options/keys') return send([]);
+  if (path === `/system/ai/applications/${AI_DEMO_IDS.app}`)
+    return send(application);
+  if (path === `/system/ai/applications/${AI_DEMO_IDS.app}/health`)
+    return send({
+      appId: application.appId,
+      appVersionId: null,
+      checkedAt: time,
+      revision: 0,
+      state: 'DISABLED',
+      reason: null,
+    });
+  if (
+    path === `/system/ai/applications/${AI_DEMO_IDS.app}/test-evidence` ||
+    path === `/system/ai/applications/${AI_DEMO_IDS.app}/versions`
+  )
+    return send([]);
+  if (path === '/system/ai/templates/options') {
+    const options: PublishedTemplateOption[] = [
+      {
+        available: false,
+        inputVariables: [
+          {
+            name: 'user_request',
+            type: 'STRING',
+            required: true,
+            hasDefault: false,
+          },
+        ],
+        name: template.name,
+        resources: [
+          { resourceId: AI_DEMO_IDS.resource, resourceVersionId: '1' },
+        ],
+        templateId: AI_DEMO_IDS.template,
+        templateVersionId: '1',
+        versionNumber: 1,
+        unavailableReasons: ['TEMPLATE_DISABLED', 'RESOURCE_DISABLED'],
+      },
+    ];
+    return send(paged(options, params));
+  }
+  if (path === '/system/ai/templates/legacy-scenes')
+    return send(paged([], params));
+  const match =
+    /^\/system\/ai\/(templates|data-resources)(?:\/(\d+))?(?:\/versions\/(\d+)(\/references)?|\/(checks))?$/.exec(
+      path,
+    );
+  if (match) {
+    const isResource = match[1] === 'data-resources';
+    const expected = isResource ? AI_DEMO_IDS.resource : AI_DEMO_IDS.template;
+    if (!match[2])
+      return send(
+        paged(
+          [definition(isResource)].map(
+            ({ definition: _definition, versions: _versions, ...row }) => row,
+          ),
+          params,
+        ),
+      );
+    if (match[2] !== expected || (match[3] && match[3] !== '1'))
+      throw new AiDemoFailure(404, '虚构 AI 示例不存在');
+    if (match[4] || match[5]) return send([]);
+    return send(match[3] ? version(isResource) : definition(isResource));
+  }
+  if (path === '/system/ai/requests')
+    return send(paged(filteredLogs(params), params));
+  if (path === '/system/ai/requests/statistics') {
+    const count = filteredLogs(params).length;
+    const stats: RequestLogStatistics = {
+      requests: count,
+      businessRequests: 0,
+      testRequests: count,
+      modelAttempts: 0,
+      knownInputTokens: null,
+      knownOutputTokens: null,
+      unknownInputAttempts: 0,
+      unknownOutputAttempts: 0,
+    };
+    return send(stats);
+  }
+  if (path === '/system/ai/requests/export')
+    throw new AiDemoFailure(501, '静态演示仅支持查看，未发送请求');
+  if (path === `/system/ai/requests/${AI_DEMO_IDS.request}`) {
+    if (filteredLogs(params).length === 0)
+      throw new AiDemoFailure(404, '筛选范围内没有该虚构记录');
+    const detail: RequestLogDetail = {
+      request: log,
+      attempts: [],
+      stages: [
+        {
+          stageId: '1',
+          stage: 'ADMISSION',
+          outcome: 'REJECTED',
+          errorCode: 'CAPABILITY_UNSUPPORTED',
+          referenceId: application.appId,
+          referenceKind: 'APPLICATION',
+          referenceVersion: null,
+          createdAt: log.request.createdAt,
+        },
+      ],
+    };
+    return send(detail);
+  }
+  // Retain the old read-only metadata endpoints for existing local demonstrations and tests.
+  if (/^\/system\/ai\/(?:models|prompts)(?:\/|$)/.test(path))
+    return { handled: false };
+  throw new AiDemoFailure(404, '该 AI 读取未提供本地示例，不会连接网络');
+}

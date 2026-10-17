@@ -64,6 +64,12 @@ const failed = ref(false);
 const busy = ref(false);
 const visible = ref(false);
 const current = ref<AiConfiguration>();
+const editorLocked = computed(
+  () =>
+    busy.value ||
+    current.value?.status === 'ARCHIVED' ||
+    !(current.value ? can('edit') : can('add')),
+);
 const editor = reactive(newEditor());
 const jsonObjectModels = ref<string[]>([]);
 const modelOptions = computed(() => [
@@ -508,12 +514,7 @@ onUnmounted(() => {
         closable
         class="mb-4"
       />
-      <el-form
-        label-position="top"
-        :disabled="
-          busy || current?.status === 'ARCHIVED' || (!!current && !can('edit'))
-        "
-      >
+      <el-form label-position="top" :disabled="editorLocked">
         <div class="grid gap-4 md:grid-cols-3">
           <el-form-item label="配置名称">
             <el-input
@@ -526,7 +527,10 @@ onUnmounted(() => {
             <el-input v-model="editor.environment" maxlength="32" />
           </el-form-item>
           <el-form-item label="提供商">
-            <el-select v-model="editor.providerCode" :disabled="!!current">
+            <el-select
+              v-model="editor.providerCode"
+              :disabled="editorLocked || !!current"
+            >
               <el-option label="OpenRouter" value="openrouter" />
             </el-select>
           </el-form-item>
@@ -560,8 +564,9 @@ onUnmounted(() => {
               :key="code"
               :value="code"
               :disabled="
-                !jsonObjectModels.includes(code) &&
-                !editor.jsonObjectModels.includes(code)
+                editorLocked ||
+                (!jsonObjectModels.includes(code) &&
+                  !editor.jsonObjectModels.includes(code))
               "
             >
               {{ code }}
@@ -574,7 +579,7 @@ onUnmounted(() => {
         <div class="my-3 flex items-center justify-between">
           <h3>共享Key</h3>
           <el-button
-            :disabled="editor.keys.length >= 16"
+            :disabled="editorLocked || editor.keys.length >= 16"
             @click="editor.keys.push(newKey(editor.keys.length + 1))"
           >
             添加一行

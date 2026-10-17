@@ -31,7 +31,7 @@ features:
 | 你的目标 | 从这里开始 | 正常结果 |
 | --- | --- | --- |
 | 首次运行项目 | [快速开始](guide/quickstart.md) → [运行验证](guide/verification.md) | 连接自己配置的数据库、缓存和 API，完成登录与最小验证 |
-| 使用管理页面 | [功能手册](features/accounts.md) → [三个菜单组](features/menus.md) | 能找到当前身份实际获权的入口，不把菜单显示当成服务端授权 |
+| 使用管理页面 | [功能手册](features/accounts.md) → [四个菜单组](features/menus.md) | 能找到当前身份实际获权的入口，不把菜单显示当成服务端授权 |
 | 新增功能 | [项目结构](development/structure.md) → [新增模块](development/module-extension.md) | 知道应修改哪层代码、怎样增加迁移和验证权限 |
 | 复用页面组件 | [组件概览](components/overview.md) | 找到本项目实际适配与组件契约，而不是照搬上游示例 |
 | 上线或升级 | [部署](operations/deployment.md) → [备份恢复](operations/backup-restore.md) → [升级](releases/upgrade.md) | 形成可回滚、可核验的部署组合 |
@@ -47,7 +47,7 @@ features:
 
 本次 Pages 发布目标为[后台静态演示](https://beidaomitu233.github.io/xinghui-admin-vue3/)和[文档中心](https://beidaomitu233.github.io/xinghui-admin-vue3/docs/)，实际部署状态以[公开仓库 Actions](https://github.com/beidaomitu233/xinghui-admin-vue3/actions)及 HTTP 验收为准。静态演示使用浏览器本地示例数据，不连接真实后端或供应商；这次发布不等同后端正式发行或完整应用质量 CI。
 
-当前是开发候选文档，不是正式发行或企业采用证明。页面存在不代表所有供应商已接通；微信网站真实扫码、短信发送、远端 CI 与独立机器验证的限制见[能力边界](overview/capabilities.md)。本机站点可访问也不等于已公开互联网发布。
+v1.2.0是已发布静态旧快照；[当前源码组合](releases/versions.md)的一期AI已通过正式CI、MySQL5.7/8.0服务矩阵与真实记录摘要闭环，尚未为该AI源码建立独立发行Tag。源码默认四个一级组为系统管理、通用能力、运行维护、AI管理；实际显示仍按身份授权过滤。页面存在不代表所有供应商已接通，真实微信扫码、短信发送与独立机器验证仍有边界，见[能力清单](overview/capabilities.md)。Agent与插件执行尚未交付。
 
 文档只有一个正文来源：前端仓库 `apps/docs/content/`。默认静态基路径为 `/docs/`，子目录托管可通过 `DOCS_BASE` 设置完整路径；章节使用 `.html` 地址。默认“文档中心、当前页面帮助、版本说明”入口不携带用户信息或 API 凭据。部署失败时按[故障排查](operations/troubleshooting.md)检查静态目录和反向代理，不把文档 404 当成登录失效。
 
