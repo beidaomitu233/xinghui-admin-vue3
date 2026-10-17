@@ -920,7 +920,7 @@ onBeforeUnmount(() => {
                 :loading="getCatalog(key).loading"
                 collapse-tags
                 collapse-tags-tooltip
-                placeholder="搜索扫描目录并选择模型"
+                placeholder="搜索目录或选择本渠道模型"
               >
                 <ElOption
                   v-for="model in modelChoices(key)"
@@ -961,7 +961,7 @@ onBeforeUnmount(() => {
                       上一页
                     </ElButton>
                     <span>
-                      可选 {{ getCatalog(key).total }} 项{{
+                      扫描目录 {{ getCatalog(key).total }} 项{{
                         getCatalog(key).filteredCount
                           ? ` · 忽略 ${getCatalog(key).filteredCount} 项`
                           : ''
