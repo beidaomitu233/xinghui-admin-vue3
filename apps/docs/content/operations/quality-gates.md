@@ -4,7 +4,7 @@
 
 ## 后端必需测试与产物
 
-`scripts/quality/required-tests.txt`定义43类必需测试，当前候选实际执行169项。执行全部模块package并验证报告及Boot结构：
+`scripts/quality/required-tests.txt`定义当前必需测试类，包含AI数据引用、会话、配置和权限回归。以候选提交的清单及实际报告计算数量，不沿用旧版本的测试总数。执行全部模块package并验证报告及Boot结构：
 
 ::: code-group
 
@@ -33,6 +33,8 @@ pwsh -NoProfile -File scripts/quality/Test-ReportGate.ps1
 
 `failIfNoSpecifiedTests=false`允许不含选定类的依赖模块继续构建，但后续门槛会要求每个必需类恰有一份非空、零失败/错误/跳过的报告，不能省略。可执行包还需包含BOOT-INF/classes和JarLauncher。
 
+Windows默认启用`windows-test-agent`测试配置，预加载Spring Boot所管理版本的Byte Buddy agent，避免Mockito动态附加被系统拒绝后停滞。它只影响测试JVM，保留原用例和断言；`-DargLine`仍可设置测试内存等参数。Linux使用原有测试启动方式。
+
 `Test-ReportGate`在临时目录证明正常fixture exit0，missing/zero/failed/error/skipped/duplicate exit1。最后故意失败子进程的exit1是受控证据，脚本完成状态不能靠单独读取残留LASTEXITCODE误判；实际失败断言会抛错并中断。
 
 ## 隔离服务与兼容矩阵
@@ -41,7 +43,7 @@ pwsh -NoProfile -File scripts/quality/Test-ReportGate.ps1
 
 本机服务测试有**精确分配的schema allowlist**，不能将任意已有库改名或绕过0表门槛运行。教程不公开本机测试库/端口；如需本地服务验证，先由负责人分配隔离实例与schema，再按现有用例的精确防护流程执行。CI绝不读取本机私有秘密文件。
 
-需要证明MySQL兼容时，每个矩阵版本都必须实际成功。当前本地实测MySQL8.0.12、含最新V170及optional清理R的23条history、1项服务测试；5.7/8.0容器矩阵未运行，这不能写成完整版本支持证明。
+需要证明MySQL兼容时，候选提交的两个矩阵版本都必须实际成功，并记录对应Actions结果。本地单一MySQL版本的迁移或数据检查不能代替完整矩阵；已发布版本的旧结果也不能代替新候选验收。
 
 ## 前端测试、类型、lint和生产
 
