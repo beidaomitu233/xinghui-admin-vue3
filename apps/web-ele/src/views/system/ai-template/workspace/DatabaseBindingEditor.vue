@@ -500,6 +500,9 @@ onBeforeUnmount(() => {
       >
         预览实际数据
       </ElButton>
+      <p v-if="readPreview" class="reference-hint">
+        仅预览引用数据；用户要求使用预览占位值，不调用模型。
+      </p>
       <p v-if="previewDisabled" class="reference-hint">
         预览需场景试运行与调用权限。
       </p>

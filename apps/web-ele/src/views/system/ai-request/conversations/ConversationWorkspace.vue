@@ -550,6 +550,7 @@ onBeforeUnmount(() => {
     />
     <ConversationBoard
       :key="identityVersion"
+      :scope="scope"
       :conversations="rows.map(conversationItem)"
       :selected="selected ? conversationItem(selected) : null"
       :messages="(detail?.messages ?? []).map(conversationMessage)"

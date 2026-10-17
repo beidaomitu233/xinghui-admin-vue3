@@ -37,6 +37,7 @@ const props = defineProps<{
   readonlyReason: string;
   requiresCostConfirmation?: boolean;
   scenes: ConversationScene[];
+  scope?: 'AUDIT' | 'OWN';
   selected: ConversationItem | null;
   sendDisabled?: boolean;
   submit: (draft: ConversationDraft) => Promise<ConversationAcceptance>;
@@ -148,7 +149,7 @@ const labels: Record<ConversationItem['state'], string> = {
   <div class="conversation-board">
     <aside class="conversation-sidebar">
       <header class="sidebar-heading">
-        <h1>我的对话</h1>
+        <h1>{{ scope === 'AUDIT' ? '审计对话' : '我的对话' }}</h1>
         <ElButton v-if="canCreate" type="primary" @click="emit('create')">
           新对话
         </ElButton>
@@ -160,7 +161,7 @@ const labels: Record<ConversationItem['state'], string> = {
         <ElInput
           v-model="search"
           aria-label="搜索对话"
-          placeholder="搜索标题或内容"
+          placeholder="搜索对话标题"
           clearable
           @clear="emit('search', '')"
         />
@@ -210,9 +211,18 @@ const labels: Record<ConversationItem['state'], string> = {
     <main class="conversation-main">
       <header class="conversation-heading">
         <div>
-          <h2>{{ selected?.title || '开始新对话' }}</h2>
+          <h2>
+            {{
+              selected?.title ||
+              (scope === 'AUDIT' ? '请选择会话' : '开始新对话')
+            }}
+          </h2>
           <p>
-            {{ selected?.sceneLabel || '选择场景，发送第一条消息'
+            {{
+              selected?.sceneLabel ||
+              (scope === 'AUDIT'
+                ? '选择会话查看历史消息'
+                : '选择场景，发送第一条消息')
             }}{{ selected?.sourceLabel ? ` · ${selected.sourceLabel}` : '' }}
           </p>
         </div>

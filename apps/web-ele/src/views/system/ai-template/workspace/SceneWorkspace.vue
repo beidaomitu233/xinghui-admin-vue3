@@ -148,7 +148,7 @@ async function readDataPreview(
   const result = await previewScene(saved.sceneKey, {
     expectedRevision: saved.revision,
     businessRef,
-    inputs: { user_request: '' },
+    inputs: { user_request: '仅预览引用数据，不调用模型。' },
   });
   if (!result.dataValues || !result.reads)
     throw new Error('PREVIEW_UNAVAILABLE');

@@ -758,7 +758,7 @@ onBeforeUnmount(() => {
           </ElTag>
         </template>
       </ElTableColumn>
-      <ElTableColumn label="操作" min-width="210" fixed="right">
+      <ElTableColumn label="操作" width="140" fixed="right">
         <template #default="{ row }">
           <ElButton link type="primary" :disabled="busy" @click="open(row)">
             {{ can('edit') ? '编辑' : '查看' }}
