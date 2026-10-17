@@ -6,11 +6,13 @@
 
 管理入口为 `/system/ai/scenes`，业务调用入口为 `/ai/scenes`。服务端生成稳定sceneKey，配置保存生成真实sceneVersionId；它们与旧appId含义不同。摘要场景固定绑定表单，通用场景允许无数据对象。名称变化不会改换身份或绑定表单。
 
-保存携带 `expectedRevision` 和 `clientMutationId`。服务端在事务内执行CAS、静态编译、创建不可变快照并切当前指针。同mutation同内容重放原结果，不同内容冲突。无效配置返回HTTP400及白名单字段错误，不改变旧有效配置；模型暂不可用允许合法保存并返回不可运行原因。保存不读业务记录、不调用供应商、不写成功测试证据，保持场景启停意图。
+保存携带 `expectedRevision` 和 `clientMutationId`；首次旧模板转换另按详情legacy确认信息提交 `confirmedLegacyConversion:true`。未确认返回409 LEGACY_CONVERSION_CONFIRMATION_REQUIRED，保存失败或事务回滚不算已转换。服务端在事务内执行CAS、静态编译、创建不可变快照并切当前指针。同mutation同内容重放原结果，不同内容冲突。无效配置返回HTTP400及白名单字段错误，不改变旧有效配置；模型暂不可用允许合法保存并返回不可运行原因。保存不读业务记录、不调用供应商、不写成功测试证据，保持场景启停意图。
 
 客户端约600ms合并编辑，同一场景只保留一个写请求在途，较新内容排队。只有对应内容获服务端确认才显示保存成功；迟到响应、切换场景或失败重试不能覆盖本地新输入。409应保留本地编辑，明确处理冲突。
 
 受理时固定sceneKey、sceneVersionId、模型绑定及数据范围；在途调用不随自动保存变化。同幂等键同输入返回原请求，不创建新版本调用。SSE断线查询原请求，有界事件过期不补造正文。业务结果仍由人显式采纳到草稿并保存。
+
+管理预览和试运行同时要求平台身份、ai:scene:test与ai:scene:invoke，真实主体/数据范围继续检查。只有管理测试权限不表示已获业务调用授权。
 
 ## 数据对象唯一接缝
 
@@ -25,7 +27,7 @@
 | `render` | 按固定快照和真实上下文授权读取、单次替换，返回模型消息及安全元数据 |
 | `authorize` | 不依赖user_request，仅复核当前主体、绑定记录及schema元数据，不生成正文 |
 
-`EditorInput`包含prompt、outputInstructions和selections。调用方把场景definition中的promptText、outputRequirement映射到前两项，把dataObjects附上场景头固定formId后生成Selection。编译结果CompiledScene须随不可变执行版本完整持久化，不能接受客户端提交的编译结果。
+`EditorInput`包含prompt、outputInstructions和selections。调用方把场景definition中的promptText、outputRequirement映射到前两项，把dataObjects映射为Selection：摘要使用场景头固定formId，对象若提供formId须一致；GENERAL使用数据对象时由该项formId指定有权选择的表单。编译结果CompiledScene须随不可变执行版本完整持久化，不能接受客户端提交的编译结果。
 
 `SceneContext`包含sceneKey、sceneVersion、服务端TrustedActor、类型化businessRef及requestId。HTTP身份只能从真实认证构造，不接收客户端tenant/actor/authorities。异步读取桥接经校验的SecurityContext并在finally恢复，实际账户启停及租户重新核对。
 
@@ -45,7 +47,9 @@
 
 ## 旧模板转换与连续保存
 
-`AiSceneLegacyTemplates.inspect`读取精确旧模板版本及真实旧Invocation，返回CONVERTIBLE或READ_ONLY、原分区消息/配置、转换差异和批准范围。查看不写配置。单编辑器转换合并为USER且保留null，须明确告知；特殊变量、默认值或不支持资源映射只读保留。
+`AiSceneLegacyTemplates.inspect`读取精确旧模板版本及真实旧Invocation，返回CONVERTIBLE或READ_ONLY、原分区消息/配置、转换差异和批准范围。查看不写配置。单编辑器转换合并为USER且保留null，须明确告知并由用户首次保存确认。truncate=true、默认值、非STRING变量、不匹配的新输入长度/必填策略、不支持资源映射均只读保留。旧user_request的required须与原文是否引用该slot一致，不把原可选输入悄悄改成必填。
+
+业务别名仅接受元数据确认的text/textarea字段，旧变量长度上限至少覆盖相应注册类型的全部历史schema上限（text为2000、textarea为5000），且不启用截断；否则返回固定只读原因。该保守判定不通过最新schema的较短长度推断历史记录也较短。类型不支持、元数据不可用或特殊默认策略都不能宣称无损转换；原配置保持供查看。
 
 用户明确保存可转换配置时调用 `compileEdited(originalTemplateRef, originalInvocation, editor, control)`。每次后续保存都使用同一原模板与原应用版本，不能因当前场景版本已是原生格式而切到普通compile。原旧模板和共享引用不改写，新配置生成独立快照。
 

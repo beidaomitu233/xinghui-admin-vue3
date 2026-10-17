@@ -833,12 +833,12 @@ public Result<String> demo()
 | GET `/system/ai/scenes/workspace` | 分页、search、selectedSceneKey | Workspace；选中详情另受查询动作约束 |
 | GET `/system/ai/scenes/{sceneKey}` | 无正文 | Detail；平台+ai:scene:query |
 | POST `/system/ai/scenes` | `name,purpose,kind,formId,clientMutationId` | 创建稳定身份，初始无有效配置；平台+ai:scene:add |
-| PUT `/system/ai/scenes/{sceneKey}` | `expectedRevision,clientMutationId,definition` | SaveResult；平台+ai:scene:edit，CAS保存即供新调用使用 |
+| PUT `/system/ai/scenes/{sceneKey}` | `expectedRevision,clientMutationId,definition,confirmedLegacyConversion` | SaveResult；平台+ai:scene:edit，CAS保存即供新调用使用 |
 | POST `/system/ai/scenes/{sceneKey}/enabled` | `expectedRevision,clientMutationId,enabled` | 保持配置与启停独立；平台+ai:scene:enable |
 | GET `/system/ai/scenes/options/models` | `outputFormat` | 安全模型候选，无供应商调用 |
 | GET `/system/ai/scenes/options/keys` | `modelRef,configVersion` | Key候选，不含凭据/envName |
-| POST `/system/ai/scenes/{sceneKey}/preview` | `expectedRevision,businessRef,inputs` | 固定已保存版本的授权脱敏预览，不调用模型；平台+ai:scene:test |
-| POST `/system/ai/scenes/{sceneKey}/test-requests` | `expectedRevision,modelIndex,confirmedCosts,submission`，confirmedCosts须true | HTTP202 Request；平台+ai:scene:test，主动模型调用 |
+| POST `/system/ai/scenes/{sceneKey}/preview` | `expectedRevision,businessRef,inputs` | 固定已保存版本的授权脱敏预览，不调用模型；平台+ai:scene:test+ai:scene:invoke |
+| POST `/system/ai/scenes/{sceneKey}/test-requests` | `expectedRevision,modelIndex,confirmedCosts,submission`，confirmedCosts须true | HTTP202 Request；平台+ai:scene:test+ai:scene:invoke，主动模型调用 |
 | GET `/ai/scenes` | `kind,formId` | 有权业务Entry候选，最多100条；ai:scene:invoke及实际范围 |
 | GET `/ai/scenes/record-summary` | `formId` | Entry或null，不返回内部appId |
 | POST `/ai/scenes/{sceneKey}/requests` | `businessRef,inputs,idempotencyKey` | HTTP202 Request；固定当前版本，受理不等于生成成功 |
@@ -847,7 +847,13 @@ public Result<String> demo()
 | GET `/ai/requests/{requestId}/events` | 原JWT及Last-Event-ID | 既有有界SSE；断线查原请求，不自动补发 |
 | GET `/system/ai/monitor/summary` | `scope,requestKind,from,to,sceneKey,modelRef,result` | 真实窗口监控，默认OWN/最近24h，最长31天；AUDIT另需审计动作 |
 
-Definition含name、purpose、promptText、outputRequirement、dataObjects及modelPolicy。dataObjects每项仅objectKey/fields，formId固定在场景头；modelPolicy按SceneDtos声明提交，模型/Key来自候选。SaveResult含detail、clientMutationId、effectiveFrom。没有有效配置时不可运行；合法保存不读记录、不测试Key、不调用模型，模型暂不可用不阻止保存。无效配置400不切换旧有效版本，409保留本地输入处理冲突。
+Definition含name、purpose、promptText、outputRequirement、dataObjects及modelPolicy。dataObjects每项为objectKey/formId/fields；摘要场景可省略对象formId而使用头部绑定，提供时必须与头部一致；GENERAL场景使用数据对象时必须提供有权选择的formId，无数据对象时可省略businessRef；modelPolicy按SceneDtos声明提交，模型/Key来自候选。SaveResult含detail、clientMutationId、effectiveFrom。没有有效配置时不可运行；合法保存不读记录、不测试Key、不调用模型，模型暂不可用不阻止保存。无效配置400不切换旧有效版本，409保留本地输入处理冲突。
+
+旧场景Detail另含legacy，提供compatibility（CONVERTIBLE/READ_ONLY）、reasons、requiresConfirmation、conversionNotes、editor、originalMessages及originalDefinition。首次从旧执行版本转换时，应先展示差异，用户明确确认后在Save中传 `confirmedLegacyConversion:true`；可省略时默认false。需要确认而未确认返回409 `LEGACY_CONVERSION_CONFIRMATION_REQUIRED`，不改变原执行版本。后续已转换快照不重复确认，但每次保存仍校验同一原基线和批准范围；READ_ONLY保留原配置，不能以确认标识绕过。
+
+例如GENERAL场景的dataObjects可为 `[{"objectKey":"lowcode.record","formId":"42","fields":["subject"]}]`；42只是结构示例，实际ID来自有权表单候选。kind为GENERAL不意味着允许任意表单或字段。
+
+管理预览和主动试运行同时要求平台身份、ai:scene:test、ai:scene:invoke，并另验原主体范围及真实记录权限；按钮显示与直接HTTP均按这组权限处理。不能为获得测试入口自动授予业务调用权限。
 
 ### 数据对象与有权候选
 
