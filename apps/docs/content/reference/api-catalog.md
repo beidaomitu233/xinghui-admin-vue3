@@ -2,6 +2,8 @@
 
 本页供集成开发者按路径定位 Controller、调用权限和请求 DTO。保留的旧目录对应 v1.2.0 静态旧快照的教程基线：32 个 Controller，其中30个有HTTP映射，共147条方法/路径（含资讯列表别名）。工作区改造前的一期[源码配对](../releases/versions.md)另新增6个AI Controller、59条映射，形成38个Controller、36个有映射、206条方法/路径的历史盘点，逐条见[旧版一期兼容接口](#当前源码一期新增-ai-接口)。本次新增的4个工作区Controller及20条映射另列在[场景工作区接口](#场景工作区与直接保存接口)，不把206当作改造后的总数。
 
+对话、设置与数据库引用见[实用改造接口](#实用改造接口)，仍待本轮组合验收，不把历史数量当作新增能力通过证明。
+
 旧目录的签名与行号仍属于旧基线；旧版一期兼容节的行号属于后端 `79b4655b56621fbcdafe48eb858d312bd76eb465`。v1.2.0静态站不运行后端，当前源码AI一期未打独立发行Tag；本页不是运行时Swagger，也不承诺未配置服务的接口可直接成功。Agent/插件草案接口未收录为实现。
 
 ## 调用前提
@@ -823,11 +825,63 @@ public Result<String> demo()
 
 :::
 
+## 实用改造接口
+
+本轮增加对话持久化、围绕Key的模型设置和实际数据库引用，仍待整体组合验收。新对话保存完整用户/助手正文，技术请求日志与旧无正文记录保持区别；普通授权数据预览不统一掩码。旧应用发布流程保留为兼容参考。
+
+### 对话与模型设置
+
+下表config/model/scene/record动作分别使用完整前缀ai:config、ai:model、ai:scene、lowcode:record；audit与query指对应ai:request动作，未列出的动作不会由入口权限自动授予。
+
+| 方法路径 | 请求/权限 | 成功data |
+| --- | --- | --- |
+| GET `/ai/conversations` | scope默认OWN，sceneKey/requestKind/search/pageNum/pageSize；ai:request:list，AUDIT另需平台+ai:request:audit | Page，total字符串 |
+| GET `/ai/conversations/{id}` | 本人ai:scene:invoke或ai:request:query；他人AUDIT另需平台+audit+query | Detail，完整持久化messages |
+| POST `/ai/conversations` | sceneKey/kind/businessRef/message/clientMutationId/test；本人invoke，TEST另需平台+scene:test与确认 | HTTP202 Accepted |
+| POST `/ai/conversations/{id}/messages` | expectedRevision/message/clientMutationId/test；仅本人续聊及当前调用/数据权限 | HTTP202 Accepted |
+| GET `/system/ai/settings/providers` | 平台+config:list/query/add/edit/test任一或对应旧model动作 | Provider候选、默认地址与模型建议 |
+| GET `/system/ai/settings` | 平台+config:list或model:list，pageNum/pageSize | Page |
+| GET `/system/ai/settings/{id}` | 平台+config:query或model:query | View |
+| POST `/system/ai/settings` | 平台+config:add或model:add；Change | View |
+| PUT `/system/ai/settings/{id}` | 平台+config:edit或model:edit；Change含expectedRevision | View |
+| POST `/system/ai/settings/{id}/connection-tests` | 平台+config:test或model:test；confirmedCosts/activateOnSuccess；启用另需config:enable | HTTP202 TestRun |
+| GET `/system/ai/settings/{id}/connection-tests/{testId}` | 平台+config:test或model:test | TestRun |
+
+Change为expectedRevision/name/provider/endpointUrl/apiKey/modelCodes；新建expectedRevision=null，已有Key空/null保留，新建空Key拒绝。View只给configured及尾号，不回显Key、密文、ENV或内部版本搭配。保存不调用供应商；连接测试完整成功且仍匹配当前草稿才可启用，失败保留原active配置。
+
+会话message最长2048字符。TEST的test为expectedSceneRevision/modelIndex/confirmedCosts；同mutation同内容重放原结果，不同内容409，同会话已有在途返回CONVERSATION_BUSY。Accepted含conversationId/revision/requestId/sceneVersionId/userMessageId/assistantMessageId/status/contextTruncated/contextStartMessageId。Detail.messages按sequence排列，含role/content/status/errorCode/partial/时间，失败不伪造成功回答。只有成对成功轮参与后续上下文，最近最多20个成功轮次并受容量上限约束；截断明确说明，不删除展示历史。
+
+旧请求标记LEGACY_NO_BODY，提示“旧记录未保留对话”。原SSE与取消路径继续使用，仍检查owner、tenant及当前数据权限；审计查看不是本人续聊授权。
+
+### 数据库引用与实际值预览
+
+以下均要求平台身份和ai:scene:query/add/edit/test任一管理动作。db.来源还需独立ai:data:database:read，低代码来源另需record:query，集合候选另需record:list；运行时仍重新检查，不由场景选中扩权。
+
+| 方法路径 | 输入 | data |
+| --- | --- | --- |
+| GET `/system/ai/scene-data/database/tables` | keyword/pageNum/pageSize | Page<DatabaseTable>：sourceKey/tableName/label/comment/primaryKey |
+| GET `/system/ai/scene-data/database/fields` | sourceKey | DatabaseFields：fields含field/label/comment/type/nullable/primaryKey |
+| GET `/system/ai/scene-data/database/relations` | sourceKey | DatabaseRelation[]：name/parentSourceKey/parentField/childSourceKey/childField/foreignKey |
+| POST `/system/ai/scene-data/database/records` | sourceKey/filters/limit | DatabaseRecords：records含key/label/values/businessRef，另含truncated |
+| POST `/system/ai/scene-data/bindings/preview` | bindings/businessRef | BindingPreview：values、reads、notices；实际普通授权值 |
+
+DataBinding为variable/label/sourceKey/mode/fields/filters/limit/row/relation。模式FIELD返回单值，ROW对象，TABLE/CHILDREN数组；空fields固定该次编译所有可读字段。ROW/FIELD的row为currentRecord/key，固定key须匹配真实主键；CHILDREN的relation为parentVariable/parentField/childField，引用前面的ROW并实际用主值约束子行。
+
+sourceKey为db.加真实表名或lowcode.加表单ID。filters为field/operator/value列表，operator为EQ/NE/GT/GE/LT/LE/CONTAINS/IS_NULL/NOT_NULL；最多16个AND条件，null操作value须null。表及字段只接受真实元数据，值参数化。没有任意SQL或动态表达式入口。
+
+Definition新增同型dataBindings，并映射EditorInput.bindings；CompiledScene.bindings保存完整BindingSnapshot。支持中文与点号的变量可由选择器一键插入，单次替换。原outputRequirement若非空先无损合并进promptText；新界面只编辑合并正文。
+
+候选返回的businessRef可直接用于预览与运行：低代码为lowcode.record及formId:recordId；通用数据库为database.record及db1.前缀base64url引用，承载sourceKey和主键映射，最长2048字符。服务端解析、核对权限与真实来源，引用本身不授予读取权；后续请求/会话持久化与重连须保留完整内容。
+
+最多16绑定、64字段和每绑定200行；两POST仅application/json及identity编码，128KiB正文上限。读取最多10秒且受调用deadline，整体结果256KiB；长文本字段8192字符截断有提示，结构化JSON解析失败或超限明确拒绝。response为no-store/private，values保留数字/null/数组；reads含variable/sourceKey/rowCount/truncated。低代码旧记录缺少后来新增字段时返回null及FIELD_NOT_IN_RECORD_SCHEMA。
+
+通用目录排除认证/凭据/配置等基础设施和秘密字段；JSON/\_json列递归过滤秘密键。已知业务动作、实际tenant与软删条件继续执行。单列FK可直接发现，复合FK不按单列冒充；无可读主键的表仅支持有界TABLE。详细接缝见[数据绑定扩展](../development/ai-extension.md)。
+
 ## 场景工作区与直接保存接口
 
 本节描述一期工作区改造合同，精确源码与验证边界见[版本组合](../releases/versions.md)。sceneKey由服务端生成，sceneVersionId为不可变执行版本，均与旧appId不同；所有ID及分页total为字符串。旧版接口在下一节按原源码保留，不能把旧发布操作当作新场景的保存前置。
 
-工作区新增映射按下列实际Controller核对；SSE复用既有路径，不重复计入新增20条。
+下表保留2026-10-17一期工作区20条映射的盘点；本轮对话、设置和5条数据库绑定接口另列前节，SSE沿用原路径。
 
 | Controller | 源码（后端system-admin/src/main/java/com/xinghuiTec/下） | 新增映射数 |
 | --- | --- | --- |
@@ -874,10 +928,10 @@ Definition含name、purpose、promptText、outputRequirement、dataObjects及mod
 | --- | --- | --- |
 | `/system/ai/scene-data/catalog` | 无 | objects及inputVariables；无记录查询权时objects为空 |
 | `/system/ai/scene-data/forms` | `keyword,pageNum,pageSize` | Page，记录为formId/name/schemaVersion |
-| `/system/ai/scene-data/fields` | `objectKey,formId` | objectKey/formId/schemaVersion/fields；仅subject/summary白名单与schema交集 |
+| `/system/ai/scene-data/fields` | `objectKey,formId` | objectKey/formId/schemaVersion/fields；当前实际schema可读字段，排除秘密字段 |
 | `/system/ai/scene-data/samples` | `objectKey,formId,keyword,pageNum,pageSize` | Page，记录为recordId/label/schemaVersion/revision；当前tenant范围 |
 
-页码1–100000，pageSize1–100，keyword最多100字符并按字面搜索。样本仅以记录原schema中存在的subject最多80字符或编号作标签，不返回整行或internal_note。候选不可替代实际调用授权。
+页码1–100000，pageSize1–100，keyword最多100字符并按字面搜索。该旧样本DTO仅以记录原schema中存在的subject最多80字符或编号作标签，不是业务投影；实际值由新增数据库记录/绑定预览返回。候选不可替代实际调用授权。
 
 ### 监控摘要的分项权限
 
@@ -903,7 +957,7 @@ Definition含name、purpose、promptText、outputRequirement、dataObjects及mod
 - 业务提交、状态、事件和取消的方法注解仅要求认证，服务层另验真实用户/tenant、应用准入、owner和业务引用。`FRONTEND/BACKGROUND/BOTH` 是应用使用范围，`TEST` 忽略这个前后台范围但不忽略允许主体和真实记录读取权限。当前HTTP没有接收客户端servicePrincipal的接口，也没有可直接使用的后台服务身份解析器。
 - 日志scope默认为 `OWN`，限定当前owner/tenant及当前允许的应用/版本；伪造其他tenantRef/subjectRef被拒绝。`AUDIT` 额外要求平台身份和 `ai:request:audit`，仍需list/query/export对应动作；审计只读元数据，不授予模型调用、业务取数或取消他人请求。
 - appId/requestId/configVersion/templateId/resourceId/各versionId及Key引用按字符串处理，即使Java路径参数为long也不要在JavaScript中转Number。revision、draftRevision、schemaVersion、modelIndex和页码为整数，不能与ID互换；分页total等Long在JSON按项目序列化规则为字符串。
-- 新AI响应no-store；preview及模板/资源、日志含private限制。凭据只写不回显，日志不存提示词/输入/输出正文；业务调用的record正文由服务端重取，不能在inputs中伪造身份或授权。
+- 新AI响应no-store；preview及模板/资源、日志含private限制。凭据只写不回显，技术请求日志不存提示词/输入/输出正文；新对话正文另按本人/审计规则持久化。业务调用的record正文由服务端重取，不能在inputs中伪造身份或授权。
 
 ### JSON DTO与返回摘要
 
