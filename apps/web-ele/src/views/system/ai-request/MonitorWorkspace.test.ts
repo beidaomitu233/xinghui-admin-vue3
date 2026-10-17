@@ -1,98 +1,329 @@
 import { flushPromises, mount } from '@vue/test-utils';
 
+import { ElOption } from 'element-plus';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { selectControl, selectValue } from '#/test-utils/element-controls';
 
 import MonitorWorkspace from './MonitorWorkspace.vue';
 
-const access = vi.hoisted(() => ({ accessCodes: [] as string[] }));
-const summary = vi.hoisted(() => vi.fn());
+const router = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn() }));
+
+const access = vi.hoisted(() => ({
+  accessCodes: [] as string[],
+  accessToken: 'session-a',
+}));
+const api = vi.hoisted(() => ({
+  list: vi.fn(),
+  detail: vi.fn(),
+  start: vi.fn(),
+  followup: vi.fn(),
+  scenes: vi.fn(),
+  fields: vi.fn(),
+  records: vi.fn(),
+  stream: vi.fn(),
+}));
 vi.mock('@vben/stores', () => ({ useAccessStore: () => access }));
-vi.mock('vue-router', () => ({ useRoute: () => ({ query: {} }) }));
-vi.mock('#/api/system/ai-scene', () => ({ getSceneMonitor: summary }));
-vi.mock('../ai-config/KeySettingsPanel.vue', () => ({
-  default: { template: '<div data-keys>Key 设置内容</div>' },
+vi.mock('vue-router', () => ({
+  useRoute: () => ({ query: {} }),
+  useRouter: () => router,
 }));
-vi.mock('./RequestLogPanel.vue', () => ({
-  default: {
-    name: 'ControlledLogs',
-    props: ['controlledFilters'],
-    template: '<div data-logs>授权请求日志</div>',
+vi.mock('#/api/request', () => ({ requestClient: { get: api.scenes } }));
+vi.mock('#/api/system/ai-conversation', () => ({
+  listConversations: api.list,
+  getConversation: api.detail,
+  startConversation: api.start,
+  continueConversation: api.followup,
+}));
+vi.mock('#/api/system/ai-application', () => ({
+  subscribeAiRequest: api.stream,
+}));
+vi.mock('#/api/system/ai-scene', () => ({ cancelSceneRequest: vi.fn() }));
+vi.mock('#/api/system/ai-database', () => ({
+  databaseFields: api.fields,
+  databaseRecords: api.records,
+}));
+vi.mock('../ai-config/SimpleSettingsPanel.vue', () => ({
+  default: { template: '<div data-keys>Key 与模型</div>' },
+}));
+const summary = {
+  conversationId: 'private-conversation',
+  title: '订单讨论',
+  sceneKey: 'orders',
+  sceneName: '订单分析',
+  kind: 'BUSINESS',
+  businessRef: null,
+  sourceLabel: '销售业务',
+  revision: 2,
+  status: 'SUCCEEDED',
+  lastMessage: '已分析',
+  updatedAt: '2026-10-18T00:00:00Z',
+  history: 'COMPLETE',
+  canContinue: true,
+};
+const messages = [
+  {
+    messageId: 'u1',
+    sequence: 1,
+    role: 'USER',
+    content: '统计订单',
+    status: 'SUCCEEDED',
+    requestId: 'r1',
+    sceneVersionId: 'v1',
+    partial: false,
+    createdAt: summary.updatedAt,
   },
-}));
-beforeEach(() => {
-  vi.clearAllMocks();
-  access.accessCodes = [];
-  summary.mockResolvedValue({
-    observedAt: '2026-10-17T00:00:00Z',
-    window: { from: '2026-10-16T00:00:00Z', to: '2026-10-17T00:00:00Z' },
-    scope: 'OWN',
-    requestKind: 'BUSINESS',
-    keyCards: {
-      enabledKeyVersions: null,
-      recentlyFailedKeyVersions: null,
-      unavailableReason: 'NO_CONFIGURATION_QUERY',
-    },
-    calls: { requests: 7, modelAttempts: 9 },
-  });
-});
+  {
+    messageId: 'a1',
+    sequence: 2,
+    role: 'ASSISTANT',
+    content: '已保存的完整回答',
+    status: 'SUCCEEDED',
+    requestId: 'r1',
+    sceneVersionId: 'v1',
+    partial: false,
+    createdAt: summary.updatedAt,
+  },
+];
 const drawer = {
   props: ['modelValue'],
   template: '<section v-if="modelValue"><slot /></section>',
 };
-describe('monitor permissions and unknown metrics', () => {
-  it('opens Key settings for config-only access without requesting logs or global statistics', async () => {
-    access.accessCodes = ['ai:config:list', 'ai:config:query'];
-    const wrapper = mount(MonitorWorkspace, {
-      props: { initialKeySettings: true },
-      global: { stubs: { ElDrawer: drawer } },
+const render = (keys = false) =>
+  mount(MonitorWorkspace, {
+    props: { initialKeySettings: keys },
+    global: { stubs: { ElDrawer: drawer } },
+  });
+const click = async (wrapper: ReturnType<typeof render>, text: string) => {
+  const button = wrapper
+    .findAll('button')
+    .find((item) => item.text().includes(text));
+  expect(button).toBeTruthy();
+  if (!button) throw new Error('BUTTON_MISSING');
+  await button.trigger('click');
+  await flushPromises();
+};
+beforeEach(() => {
+  vi.clearAllMocks();
+  access.accessCodes = ['ai:request:list', 'ai:scene:invoke'];
+  api.list.mockResolvedValue({
+    records: [summary],
+    total: '1',
+    pageNum: 1,
+    pageSize: 20,
+  });
+  api.detail.mockResolvedValue({
+    conversation: summary,
+    messages,
+    notice: null,
+  });
+  api.scenes.mockResolvedValue([
+    {
+      sceneKey: 'orders',
+      name: '订单分析',
+      revision: 1,
+      canStartFromMonitor: true,
+      contextRequired: false,
+    },
+  ]);
+});
+describe('persisted conversation workspace', () => {
+  it.each([
+    { codes: ['ai:scene:invoke'], label: 'invoke only' },
+    {
+      codes: ['ai:scene:invoke', 'ai:request:audit'],
+      label: 'invoke and audit without list',
+    },
+  ])(
+    'loads only the own index for $label without gaining management actions',
+    async ({ codes }) => {
+      access.accessCodes = codes;
+      const wrapper = render();
+      await flushPromises();
+      expect(api.list).toHaveBeenCalledWith(
+        expect.objectContaining({ scope: 'OWN' }),
+      );
+      await click(wrapper, '订单讨论');
+      expect(api.detail).toHaveBeenCalledWith(summary.conversationId, 'OWN');
+      expect(wrapper.text()).toContain('已保存的完整回答');
+      expect(wrapper.find('textarea[aria-label="消息内容"]').exists()).toBe(
+        true,
+      );
+      expect(wrapper.find('select[aria-label="会话范围"]').exists()).toBe(
+        false,
+      );
+      expect(wrapper.text()).not.toContain('Key 与模型');
+      expect(api.scenes.mock.calls.every(([url]) => url === '/ai/scenes')).toBe(
+        true,
+      );
+      expect(
+        api.list.mock.calls.every(([query]) => query.scope === 'OWN'),
+      ).toBe(true);
+      wrapper.unmount();
+    },
+  );
+  it('shows streamed deltas and reconciles them with the persisted answer', async () => {
+    let receive:
+      | ((event: { sequence: number; text?: string; type: string }) => void)
+      | undefined;
+    let finish: (() => void) | undefined;
+    api.stream.mockImplementation(async (_id, callback) => {
+      receive = callback;
+      await new Promise<void>((resolve) => {
+        finish = resolve;
+      });
     });
+    api.detail.mockResolvedValueOnce({
+      conversation: { ...summary, status: 'RUNNING' },
+      messages: [
+        messages[0],
+        { ...messages[1], status: 'RUNNING', content: '' },
+      ],
+      notice: null,
+    });
+    const wrapper = render();
     await flushPromises();
-    expect(wrapper.find('[data-keys]').exists()).toBe(true);
-    expect(wrapper.find('[data-logs]').exists()).toBe(false);
-    expect(summary).not.toHaveBeenCalled();
+    await click(wrapper, '订单讨论');
+    receive?.({ sequence: 1, type: 'delta', text: '实时回答' });
+    await flushPromises();
+    expect(wrapper.text()).toContain('实时回答');
+    finish?.();
+    await flushPromises();
+    expect(wrapper.text()).toContain('已保存的完整回答');
+    expect(wrapper.text()).not.toContain('实时回答');
     wrapper.unmount();
   });
-  it('keeps unknown Key counts distinct from zero and scopes calls to OWN by default', async () => {
-    access.accessCodes = ['ai:request:list'];
-    const wrapper = mount(MonitorWorkspace, {
-      global: { stubs: { ElDrawer: drawer } },
+  it('requires a named CURRENT record and submits the exact returned business reference', async () => {
+    const businessRef = {
+      type: 'database.record',
+      id: 'server-returned-token',
+    };
+    api.scenes.mockResolvedValue([
+      {
+        sceneKey: 'orders',
+        name: '订单分析',
+        canStartFromMonitor: true,
+        contextRequired: true,
+        contextSourceKey: 'db.orders',
+        contextSourceLabel: '销售订单',
+      },
+    ]);
+    api.fields.mockResolvedValue({
+      fields: [{ field: 'title', label: '订单名称', type: 'text' }],
+      primaryKey: ['id'],
     });
+    api.records.mockResolvedValue({
+      records: [
+        {
+          key: { id: 42 },
+          label: '十月采购订单',
+          values: { title: '十月采购订单' },
+          businessRef,
+        },
+      ],
+      truncated: false,
+    });
+    api.start.mockResolvedValue({
+      conversationId: summary.conversationId,
+      revision: 1,
+      status: 'SUCCEEDED',
+      requestId: 'r2',
+    });
+    const wrapper = render();
     await flushPromises();
-    expect(summary).toHaveBeenCalledWith(
+    await selectValue(wrapper, '对话场景', 'orders');
+    await flushPromises();
+    await wrapper
+      .get('textarea[aria-label="消息内容"]')
+      .setValue('分析当前订单');
+    await wrapper.get('form.conversation-composer').trigger('submit');
+    await flushPromises();
+    expect(api.start).not.toHaveBeenCalled();
+    await selectValue(wrapper, '业务记录', '0');
+    await flushPromises();
+    await wrapper.get('form.conversation-composer').trigger('submit');
+    await flushPromises();
+    expect(api.start).toHaveBeenCalledWith(
       expect.objectContaining({
-        scope: 'OWN',
-        requestKind: 'BUSINESS',
+        businessRef,
+        message: '分析当前订单',
+        sceneKey: 'orders',
       }),
     );
-    expect(
-      wrapper.findAll('article strong').map((item) => item.text()),
-    ).toEqual(['—', '—', '7', '9']);
-    expect(wrapper.find('option[value="AUDIT"]').exists()).toBe(false);
-    expect(wrapper.find('[data-keys]').exists()).toBe(false);
     wrapper.unmount();
   });
-  it('applies the same scope, type, scene, model, result and time to cards and the log panel', async () => {
-    access.accessCodes = ['ai:request:list', 'ai:request:audit'];
-    const wrapper = mount(MonitorWorkspace, {
-      global: { stubs: { ElDrawer: drawer } },
-    });
+  it('opens Key settings for config-only access without reading conversations', async () => {
+    access.accessCodes = ['ai:config:list'];
+    const wrapper = render(true);
     await flushPromises();
-    await wrapper.get('input[aria-label="筛选场景"]').setValue('scene.a');
-    await wrapper.get('input[aria-label="筛选模型"]').setValue('model-1');
-    await wrapper.get('select[aria-label="请求类型"]').setValue('TEST');
+    expect(router.replace).toHaveBeenCalledWith('/ai/configurations');
+    expect(wrapper.find('[data-keys]').exists()).toBe(false);
+    expect(api.list).not.toHaveBeenCalled();
+    expect(api.scenes).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+  it('reads full persisted messages and sends followups with the original revision', async () => {
+    const wrapper = render();
     await flushPromises();
-    const query = summary.mock.calls.at(-1)?.[0];
-    const filters = wrapper
-      .getComponent({ name: 'ControlledLogs' })
-      .props('controlledFilters');
-    expect(query).toMatchObject({
-      requestKind: 'TEST',
-      sceneKey: 'scene.a',
-      modelRef: 'model-1',
-      scope: 'OWN',
+    await click(wrapper, '订单讨论');
+    expect(wrapper.text()).toContain('已保存的完整回答');
+    expect(wrapper.text()).toContain('统计订单');
+    api.followup.mockResolvedValue({
+      conversationId: summary.conversationId,
+      revision: 3,
+      status: 'SUCCEEDED',
+      requestId: 'r2',
     });
-    const { result, ...common } = query;
-    expect(filters).toEqual({ ...common, status: result });
+    await wrapper
+      .get('textarea[aria-label="消息内容"]')
+      .setValue('再按地区分析');
+    await wrapper.get('form.conversation-composer').trigger('submit');
+    await flushPromises();
+    expect(api.followup).toHaveBeenCalledWith(
+      summary.conversationId,
+      expect.objectContaining({ expectedRevision: 2, message: '再按地区分析' }),
+    );
+    expect(api.start).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+  it('keeps audit history readable with no composer or impersonated followup', async () => {
+    access.accessCodes.push('ai:request:audit');
+    const wrapper = render();
+    await flushPromises();
+    await selectValue(wrapper, '会话范围', 'AUDIT');
+    await flushPromises();
+    await click(wrapper, '订单讨论');
+    expect(api.detail).toHaveBeenLastCalledWith(
+      summary.conversationId,
+      'AUDIT',
+    );
+    expect(wrapper.text()).toContain('已保存的完整回答');
+    expect(wrapper.find('textarea').exists()).toBe(false);
+    expect(api.followup).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+  it('only offers scenes explicitly authorized for direct start', async () => {
+    api.scenes.mockResolvedValue([
+      {
+        sceneKey: 'hidden',
+        name: '业务入口专用',
+        canStartFromMonitor: false,
+        contextRequired: true,
+      },
+      {
+        sceneKey: 'safe',
+        name: '通用问答',
+        canStartFromMonitor: true,
+        contextRequired: false,
+      },
+    ]);
+    const wrapper = render();
+    await flushPromises();
+    const options = selectControl(wrapper, '对话场景')
+      .findAllComponents(ElOption)
+      .map((option) => option.props('value'));
+    expect(options).not.toContain('hidden');
+    expect(options).toContain('safe');
     wrapper.unmount();
   });
 });

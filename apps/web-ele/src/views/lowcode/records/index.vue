@@ -620,6 +620,9 @@ watch(
       :fields="summaryRecord.schema.fields"
       :writable="can('query') && can('edit')"
       @adopt="adoptSummary"
+      @conversation="
+        router.push({ path: '/ai/requests', query: { conversation: $event } })
+      "
     />
   </Page>
 </template>

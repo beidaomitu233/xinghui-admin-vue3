@@ -1,15 +1,54 @@
 import type { SaveCommand } from './ordered-autosave';
 
+import type { DatabaseValue, DataBinding } from '#/api/system/ai-database';
 import type { SceneDefinition, SceneSaveResult } from '#/api/system/ai-scene';
 
 import { saveScene } from '#/api/system/ai-scene';
 
 import { SaveProblem } from './ordered-autosave';
 
+function cloneData(value: DatabaseValue): DatabaseValue {
+  if (Array.isArray(value)) return value.map((value) => cloneData(value));
+  if (value !== null && typeof value === 'object')
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [key, cloneData(item)]),
+    );
+  return value;
+}
+export function cloneDataBinding(binding: DataBinding): DataBinding {
+  return {
+    ...binding,
+    fields: [...binding.fields],
+    filters: binding.filters.map((filter) => ({
+      ...filter,
+      value: cloneData(filter.value),
+    })),
+    row: binding.row
+      ? {
+          currentRecord: binding.row.currentRecord,
+          key: Object.fromEntries(
+            Object.entries(binding.row.key).map(([key, value]) => [
+              key,
+              cloneData(value),
+            ]),
+          ),
+        }
+      : null,
+    relation: binding.relation ? { ...binding.relation } : null,
+  };
+}
+
 /** Copies the wire definition, including nested arrays, without retaining Vue proxies. */
 export function cloneScene(value: SceneDefinition): SceneDefinition {
   return {
     ...value,
+    ...(value.dataBindings
+      ? {
+          dataBindings: value.dataBindings.map((binding) =>
+            cloneDataBinding(binding),
+          ),
+        }
+      : {}),
     dataObjects: value.dataObjects.map((item) => ({
       ...item,
       fields: [...item.fields],
@@ -49,7 +88,7 @@ export function sceneSaveProblem(error: unknown) {
           typeof path === 'string' ? path.replace(/^definition\./, '') : path;
         if (
           typeof name === 'string' &&
-          /^(?:name|purpose|promptText|outputRequirement|dataObjects|modelPolicy)(?:\.\w+|\[\d{1,3}\])*$/.test(
+          /^(?:name|purpose|promptText|outputRequirement|dataObjects|dataBindings|modelPolicy)(?:\.\w+|\[\d{1,3}\])*$/.test(
             name,
           )
         ) {
@@ -60,6 +99,7 @@ export function sceneSaveProblem(error: unknown) {
             promptText: '提示词',
             outputRequirement: '输出规则',
             dataObjects: '数据对象或允许字段',
+            dataBindings: '数据库引用',
             modelPolicy: '模型及调用设置',
           };
           if (root) fields[root] = `${labels[root]}配置不符合要求，请检查。`;

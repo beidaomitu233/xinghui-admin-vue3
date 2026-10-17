@@ -7,6 +7,7 @@ import { defineComponent, h } from 'vue';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { subscribeAiRequest } from '#/api/system/ai-application';
+import { getConversation } from '#/api/system/ai-conversation';
 import {
   cancelSceneRequest,
   getSceneRequest,
@@ -21,6 +22,7 @@ vi.mock('#/api/system/ai-scene', () => ({
   submitScene: vi.fn(),
 }));
 vi.mock('#/api/system/ai-application', () => ({ subscribeAiRequest: vi.fn() }));
+vi.mock('#/api/system/ai-conversation', () => ({ getConversation: vi.fn() }));
 vi.mock('element-plus', () => ({
   ElAlert: { name: 'ElAlert', render: () => null },
   ElButton: { name: 'ElButton', render: () => null },
@@ -252,8 +254,62 @@ describe('record summary interaction', () => {
     expect(getSceneRequest).toHaveBeenCalledWith('101');
     expect(submitScene).not.toHaveBeenCalled();
     expect(subscribeAiRequest).not.toHaveBeenCalled();
-    expect(wrapper.text()).toContain('历史正文未保留');
+    expect(wrapper.text()).toContain('旧记录未保留对话');
     expect(wrapper.emitted('adopt')).toBeUndefined();
+    wrapper.unmount();
+  });
+
+  it('restores persisted successful text without adopting or writing, and opens the same conversation', async () => {
+    sessionStorage.setItem('ai-scene-summary:5:1:7', '101');
+    vi.mocked(getSceneRequest).mockResolvedValue({
+      ...accepted('SUCCEEDED'),
+      conversationId: 'conv-1',
+    });
+    vi.mocked(getConversation).mockResolvedValue({
+      conversation: {
+        conversationId: 'conv-1',
+        sceneKey: '5',
+        title: '摘要讨论',
+        sceneName: '摘要',
+        kind: 'BUSINESS',
+        businessRef: { type: 'lowcode.record', id: '1:7' },
+        sourceLabel: '记录',
+        revision: 2,
+        status: 'SUCCEEDED',
+        lastMessage: '数据库保存的摘要',
+        updatedAt: '2026-10-18T00:00:00Z',
+        history: 'COMPLETE',
+        canContinue: true,
+      },
+      messages: [
+        {
+          messageId: 'a1',
+          sequence: 2,
+          role: 'ASSISTANT',
+          content: '数据库保存的摘要',
+          status: 'SUCCEEDED',
+          requestId: '101',
+          sceneVersionId: '11',
+          errorCode: null,
+          partial: false,
+          createdAt: '2026-10-18T00:00:00Z',
+          finishedAt: '2026-10-18T00:00:00Z',
+        },
+      ],
+      notice: null,
+    });
+    const wrapper = mountDialog();
+    await flushPromises();
+    expect(
+      (
+        wrapper.get('textarea[aria-label="摘要结果"]')
+          .element as HTMLTextAreaElement
+      ).value,
+    ).toBe('数据库保存的摘要');
+    expect(wrapper.emitted('adopt')).toBeUndefined();
+    expect(submitScene).not.toHaveBeenCalled();
+    await button(wrapper, '查看完整对话并追问').trigger('click');
+    expect(wrapper.emitted('conversation')).toEqual([['conv-1']]);
     wrapper.unmount();
   });
 

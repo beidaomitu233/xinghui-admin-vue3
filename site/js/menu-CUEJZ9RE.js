@@ -1,1 +1,0 @@
-import{r as t}from"./bootstrap-CCfMApVc.js";function u(e){return t.get(`/system/menu/${e}`)}function r(e={}){return t.get("/system/menu/tree",{params:e})}function s(e){return t.post("/system/menu/add",e)}function m(e){return t.post("/system/menu/edit",e)}function o(e){return t.post("/system/menu/remove",null,{params:{menuId:e}})}export{u as a,s as b,r as g,o as r,m as u};

@@ -5,6 +5,7 @@ import type {
   ModelReference,
   RequestStatus,
 } from './ai-application';
+import type { BindingPreview, DatabaseValue, DataBinding } from './ai-database';
 
 import { requestClient } from '#/api/request';
 
@@ -23,6 +24,7 @@ export interface SceneModelPolicy {
   timeoutSeconds: number;
 }
 export interface SceneDefinition {
+  dataBindings?: DataBinding[];
   dataObjects: { fields: string[]; formId: null | string; objectKey: string }[];
   modelPolicy: SceneModelPolicy;
   name: string;
@@ -31,6 +33,10 @@ export interface SceneDefinition {
   purpose: string;
 }
 export interface SceneEntry {
+  canStartFromMonitor?: boolean;
+  contextRequired?: boolean;
+  contextSourceKey?: null | string;
+  contextSourceLabel?: null | string;
   availability: SceneAvailability;
   currentVersionId: null | string;
   formId: null | string;
@@ -96,6 +102,9 @@ export interface SceneSubmission {
   inputs: Record<string, unknown>;
 }
 export interface SceneRequest {
+  assistantMessageId?: null | string;
+  conversationId?: null | string;
+  userMessageId?: null | string;
   attemptCount: number;
   businessRef: SceneSubmission['businessRef'];
   createdAt: string;
@@ -114,6 +123,8 @@ export interface SceneRequest {
   usageKnown: boolean;
 }
 export interface ScenePreview {
+  dataValues?: Record<string, DatabaseValue>;
+  reads?: BindingPreview['reads'];
   inputSummary: Record<string, string>;
   notices: string[];
   originalMessages: { content: string; role: string }[];

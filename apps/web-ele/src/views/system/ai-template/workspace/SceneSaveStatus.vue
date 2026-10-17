@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import type { SavePhase } from './ordered-autosave';
 
+import { ElButton } from 'element-plus';
+
 defineProps<{ error: null | string; phase: SavePhase }>();
 defineEmits<{ conflict: []; retry: [] }>();
 const labels: Record<SavePhase, string> = {
@@ -17,20 +19,24 @@ const labels: Record<SavePhase, string> = {
 <template>
   <div class="save-status" role="status" aria-live="polite" :data-phase="phase">
     <span>{{ error || labels[phase] }}</span>
-    <button
+    <ElButton
       v-if="phase === 'error' || phase === 'invalid'"
-      type="button"
+      type="primary"
+      link
+      size="small"
       @click="$emit('retry')"
     >
       重试保存
-    </button>
-    <button
+    </ElButton>
+    <ElButton
       v-if="phase === 'conflict'"
-      type="button"
+      type="primary"
+      link
+      size="small"
       @click="$emit('conflict')"
     >
       处理冲突
-    </button>
+    </ElButton>
   </div>
 </template>
 <style scoped>
@@ -44,17 +50,12 @@ const labels: Record<SavePhase, string> = {
 }
 
 .save-status[data-phase='saved'] {
-  color: #16805b;
+  color: var(--el-color-success);
 }
 
 .save-status[data-phase='error'],
 .save-status[data-phase='conflict'],
 .save-status[data-phase='invalid'] {
-  color: #b66a19;
-}
-
-button {
-  color: hsl(var(--primary));
-  text-decoration: underline;
+  color: var(--el-color-warning);
 }
 </style>

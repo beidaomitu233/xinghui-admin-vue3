@@ -37,7 +37,7 @@ Flyway在application.yml显式配置url/user/password，使用独立迁移连接
 
 V130 曾建立网站内容表；V140 已退役这些表/菜单。应保留历史版本链，不删除旧脚本来假装模块从未存在。optional 下同名 R 脚本用于历史资料示例清理，不再创建示例表。曾使用该 location 的库，后续必须保留，才能校验已应用 repeatable 历史。
 
-旧教程基线曾启用两个location，实测history=23（22 versioned + 清理R），属于历史记录。当前源码默认新库应匹配27个versioned脚本；启用该optional清理R时通常为28条history。不能只凭总数验收，判断依据是每条script/version/type/checksum/success与本环境location及当前源码一致。
+旧教程基线曾启用两个location，实测history=23（22 versioned + 清理R），属于历史记录。工作区改造前的一期配对默认新库为27个versioned脚本；启用该optional清理R时通常为28条history。后续工作区与实用改造还会追加脚本，不能把27当作当前目标总数。判断依据是每条script/version/type/checksum/success与实际部署源码及location一致。
 
 ## 场景工作区增量
 
@@ -45,7 +45,21 @@ V130 曾建立网站内容表；V140 已退役这些表/菜单。应保留历史
 
 `V20261016_227__restore_ai_request_list_action.sql` 在V225后恢复独立日志列表F动作，只向原旧日志页实际授权且有效的角色迁移，防止菜单改名丢失原读取权限。配置或场景动作不作为日志授权来源。升级后正常退出重新登录，刷新旧会话的权限快照。
 
-不要混入后续阶段的未发布迁移或改写旧成功脚本。包含V225/V227的正常目录共29个versioned脚本；optional历史按实际location另核对。
+不要混入后续阶段的未发布迁移或改写旧成功脚本。包含V225/V227的一期工作区配对共29个versioned脚本；optional历史按实际location另核对。
+
+## 对话、多 Key 与独立配置页增量
+
+本轮配置、数据预览、引用保存和对话阅读已原生验证，真实供应商限制见[版本组合](../releases/versions.md)。升级仍须配套对应前后端源码，不能只替换页面。以下脚本位于默认`db/migration`：
+
+| 迁移 | 作用与核对点 |
+| --- | --- |
+| `V20261018_240__conversation_history.sql` | 持久化对话/消息与设置测试意图，并保留完整2048字符业务引用，不截断复合主键记录上下文 |
+| `V20261018_242__ai_database_read_action.sql` | 增加独立ai:data:database:read动作；初始授权仅实际有效的平台管理员，不把场景编辑或旧资源批准转换为全库读取权 |
+| `V20261018_243__settings_key_rotation_receipt.sql` | 增加Key更换的内部执行维护回执，不存明文凭据 |
+| `V20261018_244__restore_standalone_ai_configuration.sql` | 恢复独立AI配置二级菜单与原组件，保留原页面/动作关联和操作者停用状态，不增加角色API或数据授权 |
+| `V20261018_245__ai_key_health.sql` | 按不可变Key版本记录失效隔离状态，并保存设置mutation的主体范围与带密钥指纹；不存提交正文或Key |
+
+数据绑定和模型扫描不另建业务表或凭据库；本轮没有V241或V246脚本需求，不手工补号。按实际目标分支逐条核对迁移，不以历史总数或某个文件存在代替迁移成功。Key密文仍依赖原CONFIG_MASTER_KEY，升级时必须保留该值；隔离Key应通过修复与正常连接测试恢复，不直接删状态来绕过验证。
 
 ## 空库启动
 

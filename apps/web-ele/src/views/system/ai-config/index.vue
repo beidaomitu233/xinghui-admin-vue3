@@ -1,4 +1,8 @@
 <script setup lang="ts">
-import MonitorWorkspace from '../ai-request/MonitorWorkspace.vue';
+import { Page } from '@vben/common-ui';
+
+import ChannelWorkspace from './ChannelWorkspace.vue';
 </script>
-<template><MonitorWorkspace initial-key-settings /></template>
+<template>
+  <Page auto-content-height><ChannelWorkspace /></Page>
+</template>

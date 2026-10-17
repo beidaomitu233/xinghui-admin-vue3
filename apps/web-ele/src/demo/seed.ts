@@ -243,12 +243,24 @@ DEMO_MENUS.push({
   children: [
     {
       ...leaf(
+        '106',
+        'AI配置',
+        '/ai/configurations',
+        'system/ai-config/index',
+        'carbon:settings',
+        1,
+        '202610160180000001',
+      ),
+      perms: 'ai:config:list',
+    },
+    {
+      ...leaf(
         '107',
         '提示词配置',
         '/ai/templates',
         'system/ai-template/index',
         'carbon:document',
-        3,
+        2,
         '202610160180000001',
       ),
       perms: 'ai:workspace:enter',
@@ -260,7 +272,7 @@ DEMO_MENUS.push({
         '/ai/requests',
         'system/ai-request/index',
         'carbon:document',
-        4,
+        3,
         '202610160180000001',
       ),
       perms: 'ai:request:list',

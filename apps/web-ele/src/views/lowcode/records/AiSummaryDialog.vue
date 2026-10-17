@@ -7,6 +7,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { ElMessage } from 'element-plus';
 
 import { subscribeAiRequest } from '#/api/system/ai-application';
+import { getConversation } from '#/api/system/ai-conversation';
 import { aiErrorMessage, aiFailureInfo } from '#/api/system/ai-runtime-errors';
 import {
   cancelSceneRequest,
@@ -24,6 +25,7 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{
   adopt: [fieldKey: string, text: string];
+  conversation: [conversationId: string];
   'update:modelValue': [value: boolean];
 }>();
 const requirement = ref('请概括这条记录的主要信息。');
@@ -68,14 +70,35 @@ const statusLabel = computed(() => {
   return labels[request.value?.status ?? ''] ?? '尚未提交';
 });
 
+async function readPersisted(original: SceneRequest, run: number) {
+  if (!original.conversationId) return false;
+  const detail = await getConversation(original.conversationId);
+  if (run !== generation || request.value?.requestId !== original.requestId)
+    return false;
+  const message = detail.messages.find(
+    (item) =>
+      item.role === 'ASSISTANT' && item.requestId === original.requestId,
+  );
+  if (!message) return false;
+  text.value = message.content;
+  completed.value = message.status === 'SUCCEEDED' && !message.partial;
+  return true;
+}
+function openConversation() {
+  if (busy.value || !request.value?.conversationId) return;
+  emit('update:modelValue', false);
+  emit('conversation', request.value.conversationId);
+}
 async function refresh() {
   if (!request.value) return;
   const run = generation;
   const requestId = request.value.requestId;
   try {
     const original = await getSceneRequest(requestId);
-    if (run === generation && request.value?.requestId === requestId)
+    if (run === generation && request.value?.requestId === requestId) {
       request.value = original;
+      await readPersisted(original, run);
+    }
   } catch {
     if (run === generation) error.value = '查询失败，请保留请求 ID。';
   }
@@ -95,7 +118,8 @@ async function restore() {
     )
       return;
     request.value = original;
-    error.value = '原请求已恢复，历史正文未保留。';
+    const restored = await readPersisted(original, run);
+    if (run === generation) error.value = restored ? '' : '旧记录未保留对话。';
   } catch {
     // Private browsing or another identity may make stored metadata unavailable.
   }
@@ -137,7 +161,8 @@ async function generate() {
     submitting.value = false;
     pendingInput = undefined;
     if (!['QUEUED', 'RUNNING'].includes(accepted.status)) {
-      error.value = '已返回原请求，历史正文未保留。';
+      const restored = await readPersisted(accepted, run);
+      if (run === generation && !restored) error.value = '旧记录未保留对话。';
       return;
     }
     stream = new AbortController();
@@ -172,6 +197,8 @@ async function generate() {
       },
       stream.signal,
     );
+    if (run === generation && request.value?.conversationId)
+      await readPersisted(request.value, run);
   } catch (error_) {
     if (run === generation && request.value?.status !== 'CANCELLED') {
       completed.value = false;
@@ -344,7 +371,11 @@ onBeforeUnmount(() => {
     <el-alert
       v-if="request && !connected && !completed"
       class="mt-2 text-sm text-muted-foreground"
-      title="正文不保留，刷新后仅能查询状态。"
+      :title="
+        request.conversationId
+          ? '可查询已保存的消息，或打开完整对话继续提问。'
+          : '旧记录未保留对话。'
+      "
       type="info"
       closable
     />
@@ -371,6 +402,13 @@ onBeforeUnmount(() => {
       </span>
     </div>
     <template #footer>
+      <el-button
+        v-if="request?.conversationId"
+        :disabled="busy"
+        @click="openConversation"
+      >
+        查看完整对话并追问
+      </el-button>
       <el-button :disabled="submitting" @click="close">关闭</el-button>
       <el-button :disabled="!text" @click="copy">复制当前内容</el-button>
     </template>
