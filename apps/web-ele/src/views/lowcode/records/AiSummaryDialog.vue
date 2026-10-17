@@ -1,25 +1,25 @@
 <script setup lang="ts">
 import type { FormField } from '#/api/lowcode/forms';
-import type { AiRequestView } from '#/api/system/ai-application';
+import type { SceneRequest } from '#/api/system/ai-scene';
 
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 import { ElMessage } from 'element-plus';
 
-import {
-  cancelAiRequest,
-  getAiRequest,
-  submitApplication,
-  subscribeAiRequest,
-} from '#/api/system/ai-application';
+import { subscribeAiRequest } from '#/api/system/ai-application';
 import { aiErrorMessage, aiFailureInfo } from '#/api/system/ai-runtime-errors';
+import {
+  cancelSceneRequest,
+  getSceneRequest,
+  submitScene,
+} from '#/api/system/ai-scene';
 
 const props = defineProps<{
-  appId: string;
   fields: FormField[];
   formId: string;
   modelValue: boolean;
   recordId: string;
+  sceneKey: string;
   writable: boolean;
 }>();
 const emit = defineEmits<{
@@ -28,7 +28,7 @@ const emit = defineEmits<{
 }>();
 const requirement = ref('请概括这条记录的主要信息。');
 const text = ref('');
-const request = ref<AiRequestView>();
+const request = ref<SceneRequest>();
 const submitting = ref(false);
 const connected = ref(false);
 const completed = ref(false);
@@ -38,9 +38,9 @@ const fieldKey = ref('');
 let generation = 0;
 let stream: AbortController | undefined;
 let streamStopped = false;
-let pendingInput: Parameters<typeof submitApplication>[1] | undefined;
+let pendingInput: Parameters<typeof submitScene>[1] | undefined;
 const storageKey = () =>
-  `ai-summary:${props.appId}:${props.formId}:${props.recordId}`;
+  `ai-scene-summary:${props.sceneKey}:${props.formId}:${props.recordId}`;
 const active = computed(() =>
   ['QUEUED', 'RUNNING'].includes(request.value?.status ?? ''),
 );
@@ -73,7 +73,7 @@ async function refresh() {
   const run = generation;
   const requestId = request.value.requestId;
   try {
-    const original = await getAiRequest(requestId);
+    const original = await getSceneRequest(requestId);
     if (run === generation && request.value?.requestId === requestId)
       request.value = original;
   } catch {
@@ -86,11 +86,12 @@ async function restore() {
     const requestId = sessionStorage.getItem(storageKey());
     if (!requestId || !/^[1-9]\d{0,18}$/.test(requestId)) return;
     const run = generation;
-    const original = await getAiRequest(requestId);
+    const original = await getSceneRequest(requestId);
     if (run !== generation) return;
     if (
-      original.appId !== props.appId ||
-      original.businessId !== `${props.formId}:${props.recordId}`
+      original.sceneKey !== props.sceneKey ||
+      original.businessRef?.type !== 'lowcode.record' ||
+      original.businessRef.id !== `${props.formId}:${props.recordId}`
     )
       return;
     request.value = original;
@@ -120,9 +121,9 @@ async function generate() {
   completed.value = false;
   error.value = '';
   try {
-    const accepted = await submitApplication(props.appId, pendingInput);
+    const accepted = await submitScene(props.sceneKey, pendingInput);
     if (run !== generation) {
-      await cancelAiRequest(accepted.requestId);
+      await cancelSceneRequest(accepted.requestId);
       return;
     }
     request.value = accepted;
@@ -164,7 +165,7 @@ async function generate() {
           streamStopped = true;
         }
         if (event.type === 'failed' || event.type === 'cancelled') {
-          request.value.status = event.status as AiRequestView['status'];
+          request.value.status = event.status as SceneRequest['status'];
           error.value = aiErrorMessage(event.errorCode);
           streamStopped = true;
         }
@@ -180,7 +181,7 @@ async function generate() {
         error.value = aiErrorMessage(info.code);
         if (/^[1-9]\d{0,18}$/.test(info.requestId)) {
           try {
-            const original = await getAiRequest(info.requestId);
+            const original = await getSceneRequest(info.requestId);
             if (run !== generation) return;
             request.value = original;
             pendingInput = undefined;
@@ -210,7 +211,7 @@ async function cancel() {
   const requestId = request.value.requestId;
   const currentStream = stream;
   try {
-    const original = await cancelAiRequest(requestId);
+    const original = await cancelSceneRequest(requestId);
     if (run === generation && request.value?.requestId === requestId) {
       request.value = original;
       streamStopped = true;
@@ -252,10 +253,10 @@ function adopt() {
 }
 
 watch(
-  () => [props.formId, props.recordId],
+  () => [props.sceneKey, props.formId, props.recordId],
   () => {
     if (active.value && request.value) {
-      void cancelAiRequest(request.value.requestId).catch(() => {});
+      void cancelSceneRequest(request.value.requestId).catch(() => {});
     }
     generation++;
     stream?.abort();
@@ -275,7 +276,7 @@ onBeforeUnmount(() => {
   generation++;
   stream?.abort();
   if (active.value && request.value) {
-    void cancelAiRequest(request.value.requestId).catch(() => {});
+    void cancelSceneRequest(request.value.requestId).catch(() => {});
   }
 });
 </script>
@@ -328,7 +329,7 @@ onBeforeUnmount(() => {
       @close="error = ''"
     />
     <p v-if="request" class="mb-2 break-all text-sm">
-      请求 ID：{{ request.requestId }} · 应用版本：{{ request.appVersionId }}
+      请求 ID：{{ request.requestId }} · 应用版本：{{ request.sceneVersionId }}
     </p>
     <p v-else-if="traceId" class="mb-2 break-all text-sm">
       追踪 ID：{{ traceId }}

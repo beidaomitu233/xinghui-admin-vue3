@@ -6,10 +6,10 @@ import { nextTick } from 'vue';
 import ElementPlus from 'element-plus';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import ApplicationPage from '../views/system/ai-application/index.vue';
-import ConfigPage from '../views/system/ai-config/index.vue';
+import ConfigPage from '../views/system/ai-config/KeySettingsPanel.vue';
 import RequestPage from '../views/system/ai-request/index.vue';
-import TemplatePage from '../views/system/ai-template/index.vue';
+import ScenePage from '../views/system/ai-template/index.vue';
+import TemplatePage from '../views/system/ai-template/LegacyWorkspace.vue';
 import { DEMO_LOGIN, DEMO_PERMISSIONS } from './seed';
 import { createDemoTransport } from './transport';
 
@@ -33,6 +33,7 @@ vi.mock('@vben/stores', () => ({
 vi.mock('@vben/hooks', () => ({
   useAppConfig: () => ({ apiURL: '/__static_demo_local_only__' }),
 }));
+vi.mock('vue-router', () => ({ useRoute: () => ({ query: {} }) }));
 
 const wrappers: ReturnType<typeof mount>[] = [];
 beforeEach(async () => {
@@ -219,7 +220,7 @@ describe('real AI pages with read-only local transport', () => {
     await settle();
     openButton('配置');
     await settle();
-    const drawer = document.querySelector('.el-drawer');
+    const drawer = document.querySelector('.configuration-editor');
     if (!(drawer instanceof HTMLElement))
       throw new Error('Missing configuration drawer');
     const add = [...drawer.querySelectorAll('button')].find(
@@ -266,7 +267,7 @@ describe('real AI pages with read-only local transport', () => {
     await settle();
     openButton('配置');
     await settle();
-    const editDrawer = document.querySelector('.el-drawer');
+    const editDrawer = document.querySelector('.configuration-editor');
     if (!(editDrawer instanceof HTMLElement))
       throw new Error('Missing editable drawer');
     const editableAdd = [...editDrawer.querySelectorAll('button')].find(
@@ -303,7 +304,7 @@ describe('real AI pages with read-only local transport', () => {
     await settle();
     openButton('配置');
     await settle();
-    const enableDrawer = document.querySelector('.el-drawer');
+    const enableDrawer = document.querySelector('.configuration-editor');
     if (!(enableDrawer instanceof HTMLElement))
       throw new Error('Missing enable-only drawer');
     const lockedAdd = [...enableDrawer.querySelectorAll('button')].find(
@@ -322,7 +323,7 @@ describe('real AI pages with read-only local transport', () => {
   });
   it.each([
     ['configuration', ConfigPage, '配置', '/system/ai/configurations/'],
-    ['application', ApplicationPage, '配置 / 测试', '/system/ai/applications/'],
+    ['scene', ScenePage, '[虚构只读] 记录摘要场景', '/system/ai/scenes/'],
     ['template', TemplatePage, '查看 / 编辑', '/system/ai/templates/'],
     ['request logs', RequestPage, '详情', '/system/ai/requests/'],
   ] as const)(
@@ -344,8 +345,21 @@ describe('real AI pages with read-only local transport', () => {
         });
         wrappers.push(wrapper);
         await settle();
+        if (_name === 'request logs') {
+          await wrapper.get('select[aria-label="请求类型"]').setValue('TEST');
+          await wrapper
+            .get('input[aria-label="开始时间"]')
+            .setValue('2026-10-15T00:00');
+          await wrapper
+            .get('input[aria-label="结束时间"]')
+            .setValue('2026-10-17T00:00');
+          openButton('查询');
+          await settle();
+        }
         expect(wrapper.text()).toContain('虚构');
-        openButton(button);
+        if (_name === 'scene')
+          await wrapper.get('.scene-item').trigger('click');
+        else openButton(button);
         await settle();
         expect(
           client.get.mock.calls.some(([url]) =>

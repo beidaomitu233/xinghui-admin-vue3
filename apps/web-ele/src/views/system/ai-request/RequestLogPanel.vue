@@ -27,12 +27,18 @@ import {
   requestLogStatistics,
 } from '#/api/system/ai-request-log';
 
-const props = defineProps<{ appId?: string }>();
+const props = defineProps<{
+  appId?: string;
+  controlledFilters?: RequestLogFilters;
+}>();
 const access = useAccessStore();
 const can = (action: string) =>
   access.accessCodes.includes(`ai:request:${action}`);
 const canAudit = computed(() => can('audit'));
 const filters = ref<RequestLogFilters>({ appId: props.appId, scope: 'OWN' });
+const effectiveScope = computed(
+  () => props.controlledFilters?.scope ?? filters.value.scope,
+);
 const dates = ref<Date[] | null>(null);
 const rows = ref<RequestLogRow[]>([]);
 const total = ref(0);
@@ -70,11 +76,14 @@ const labels: Record<RequestStatus, string> = {
   INCOMPLETE: '未完成',
   TIMED_OUT: '超时',
 };
-const snapshot = (): RequestLogFilters => ({
-  ...filters.value,
-  from: dates.value?.[0]?.toISOString(),
-  to: dates.value?.[1]?.toISOString(),
-});
+const snapshot = (): RequestLogFilters =>
+  props.controlledFilters
+    ? { ...props.controlledFilters }
+    : {
+        ...filters.value,
+        from: dates.value?.[0]?.toISOString(),
+        to: dates.value?.[1]?.toISOString(),
+      };
 
 async function load() {
   if (!can('list')) return;
@@ -89,7 +98,9 @@ async function load() {
         pageNum: pageNum.value,
         pageSize: pageSize.value,
       }),
-      requestLogStatistics(query),
+      props.controlledFilters
+        ? Promise.resolve(undefined)
+        : requestLogStatistics(query),
     ]);
     if (run !== serial) return;
     rows.value = page.records;
@@ -140,7 +151,7 @@ async function download() {
     !can('export') ||
     exporting.value ||
     inactive ||
-    (filters.value.scope === 'AUDIT' && !canAudit.value)
+    (snapshot().scope === 'AUDIT' && !canAudit.value)
   )
     return;
   const generation = ++exportGeneration;
@@ -189,12 +200,27 @@ watch(
     detailSerial++;
     detail.value = undefined;
     detailOpen.value = false;
-    search();
+    if (!props.controlledFilters) search();
   },
   { immediate: true },
 );
+watch(
+  () => props.controlledFilters,
+  (value) => {
+    if (!value) return;
+    serial++;
+    detailSerial++;
+    invalidateExport();
+    rows.value = [];
+    stats.value = undefined;
+    detail.value = undefined;
+    detailOpen.value = false;
+    search();
+  },
+  { deep: true, immediate: true },
+);
 watch(canAudit, (allowed) => {
-  if (!allowed && filters.value.scope === 'AUDIT') {
+  if (!allowed && snapshot().scope === 'AUDIT') {
     serial++;
     detailSerial++;
     loading.value = false;
@@ -237,12 +263,13 @@ onBeforeUnmount(() => {
   />
   <template v-else>
     <el-alert
+      v-if="!controlledFilters"
       title="默认本人近7天；最长31天。日志不保存正文。"
       type="info"
       closable
       class="mb-3"
     />
-    <el-form inline @submit.prevent="search">
+    <el-form v-if="!controlledFilters" inline @submit.prevent="search">
       <el-form-item label="范围">
         <el-select
           v-model="filters.scope"
@@ -309,6 +336,12 @@ onBeforeUnmount(() => {
         </el-button>
       </el-form-item>
     </el-form>
+    <div v-else class="mb-3 flex justify-end gap-2">
+      <el-button :loading="loading" @click="search">刷新日志</el-button>
+      <el-button v-if="can('export')" :loading="exporting" @click="download">
+        导出 JSON
+      </el-button>
+    </div>
     <el-alert
       v-if="error"
       :title="error"
@@ -344,10 +377,14 @@ onBeforeUnmount(() => {
         label="请求 ID"
         min-width="120"
       />
-      <el-table-column prop="appName" label="应用" min-width="140" />
+      <el-table-column prop="appName" label="场景 / 历史应用" min-width="140" />
       <el-table-column label="版本" width="100">
         <template #default="{ row }">
-          {{ row.request.appVersionId ?? `草稿 ${row.request.draftRevision}` }}
+          {{
+            row.request.sceneVersionId ??
+            row.request.appVersionId ??
+            `草稿 ${row.request.draftRevision}`
+          }}
         </template>
       </el-table-column>
       <el-table-column
@@ -372,13 +409,13 @@ onBeforeUnmount(() => {
         </template>
       </el-table-column>
       <el-table-column
-        v-if="filters.scope === 'AUDIT'"
+        v-if="effectiveScope === 'AUDIT'"
         prop="tenantRef"
         label="租户"
         min-width="100"
       />
       <el-table-column
-        v-if="filters.scope === 'AUDIT'"
+        v-if="effectiveScope === 'AUDIT'"
         prop="subjectRef"
         label="主体"
         min-width="100"
