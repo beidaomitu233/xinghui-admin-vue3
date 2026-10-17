@@ -6,7 +6,7 @@ import { nextTick } from 'vue';
 import ElementPlus from 'element-plus';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import ConfigPage from '../views/system/ai-config/KeySettingsPanel.vue';
+import ConfigPage from '../views/system/ai-config/index.vue';
 import RequestPage from '../views/system/ai-request/index.vue';
 import ScenePage from '../views/system/ai-template/index.vue';
 import TemplatePage from '../views/system/ai-template/LegacyWorkspace.vue';
@@ -35,6 +35,7 @@ vi.mock('@vben/hooks', () => ({
 }));
 vi.mock('vue-router', () => ({
   useRoute: () => ({ query: {} }),
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
   onBeforeRouteLeave: vi.fn(),
 }));
 
@@ -203,132 +204,43 @@ describe('real AI pages with read-only local transport', () => {
       document.body.innerHTML = '';
     }
   });
-  it('locks configuration drafts for viewers while preserving editor and enable-only permissions', async () => {
-    const read = client.get.getMockImplementation();
-    if (!read) throw new Error('Missing local transport');
-    client.get.mockImplementation(
-      async (url: string, options?: { params?: Record<string, unknown> }) => {
-        const result = await read(url, options);
-        // Exercise an eligible checkbox: unsupported capabilities must not hide the permission bug.
-        return url === '/system/ai/configurations'
-          ? { ...result, jsonObjectModels: ['fictional/local-only'] }
-          : result;
-      },
-    );
+  it('shows named key associations in a locked viewer and keeps editing separate from enable permission', async () => {
     const viewer = mount(ConfigPage, {
       attachTo: document.body,
       global: { plugins: [ElementPlus] },
     });
     wrappers.push(viewer);
     await settle();
-    openButton('配置');
+    openButton('查看');
     await settle();
-    const drawer = document.querySelector('.configuration-editor');
-    if (!(drawer instanceof HTMLElement))
-      throw new Error('Missing configuration drawer');
-    const add = [...drawer.querySelectorAll('button')].find(
-      (b) => b.textContent?.trim() === '添加一行',
+    const key = document.querySelector<HTMLInputElement>(
+      'input[aria-label="Key 1 密钥"]',
     );
-    const capability = drawer.querySelector('input[type="checkbox"]');
-    const name = drawer.querySelector('input');
-    if (
-      !add ||
-      !(capability instanceof HTMLInputElement) ||
-      !(name instanceof HTMLInputElement)
-    )
-      throw new Error('Missing editor controls');
-    const keyRows = () =>
-      [...drawer.querySelectorAll('.el-form-item__label')].filter(
-        (label) => label.textContent?.trim() === '标签',
-      ).length;
-    expect(add.disabled).toBe(true);
-    expect(capability.disabled).toBe(true);
-    expect(name.disabled).toBe(true);
-    const before = keyRows();
-    const checked = capability.checked;
-    add.click();
-    capability.click();
-    await settle();
-    expect(keyRows()).toBe(before);
-    expect(capability.checked).toBe(checked);
+    expect(key?.disabled).toBe(true);
+    expect(key?.value).toBe('');
     expect(
-      [...drawer.querySelectorAll('input')].every((input) => input.disabled),
-    ).toBe(true);
-    expect(drawer.textContent).not.toContain('保存草稿');
-    expect(drawer.textContent).not.toContain('测试并保存');
-    expect(client.post).not.toHaveBeenCalled();
-    expect(client.put).not.toHaveBeenCalled();
-    viewer.unmount();
-    wrappers.splice(wrappers.indexOf(viewer), 1);
-    document.body.innerHTML = '';
-    permissions.codes = [...DEMO_PERMISSIONS, 'ai:config:edit'];
-    const editor = mount(ConfigPage, {
-      attachTo: document.body,
-      global: { plugins: [ElementPlus] },
-    });
-    wrappers.push(editor);
-    await settle();
-    openButton('配置');
-    await settle();
-    const editDrawer = document.querySelector('.configuration-editor');
-    if (!(editDrawer instanceof HTMLElement))
-      throw new Error('Missing editable drawer');
-    const editableAdd = [...editDrawer.querySelectorAll('button')].find(
-      (b) => b.textContent?.trim() === '添加一行',
-    );
-    const editableCapability = editDrawer.querySelector(
-      'input[type="checkbox"]',
-    );
-    if (!editableAdd || !(editableCapability instanceof HTMLInputElement))
-      throw new Error('Missing editable controls');
-    expect(editableAdd.disabled).toBe(false);
-    expect(editableCapability.disabled).toBe(false);
-    editableAdd.click();
-    editableCapability.click();
-    await settle();
+      document.querySelector<HTMLInputElement>('input[aria-label="Key 1 名称"]')
+        ?.value,
+    ).toBe('主账号示例');
     expect(
-      [...editDrawer.querySelectorAll('.el-form-item__label')].filter(
-        (label) => label.textContent?.trim() === '标签',
-      ),
-    ).toHaveLength(1);
-    expect(editableCapability.checked).toBe(true);
-    expect(editDrawer.textContent).toContain('保存草稿');
-    expect(client.post).not.toHaveBeenCalled();
-    expect(client.put).not.toHaveBeenCalled();
-    editor.unmount();
-    wrappers.splice(wrappers.indexOf(editor), 1);
-    document.body.innerHTML = '';
-    permissions.codes = [...DEMO_PERMISSIONS, 'ai:config:enable'];
-    const enabler = mount(ConfigPage, {
-      attachTo: document.body,
-      global: { plugins: [ElementPlus] },
-    });
-    wrappers.push(enabler);
-    await settle();
-    openButton('配置');
-    await settle();
-    const enableDrawer = document.querySelector('.configuration-editor');
-    if (!(enableDrawer instanceof HTMLElement))
-      throw new Error('Missing enable-only drawer');
-    const lockedAdd = [...enableDrawer.querySelectorAll('button')].find(
-      (button) => button.textContent?.trim() === '添加一行',
-    );
-    if (!lockedAdd) throw new Error('Missing locked add control');
-    expect(lockedAdd.disabled).toBe(true);
-    const enableButtons = [...enableDrawer.querySelectorAll('button')].filter(
-      (button) => button.textContent?.includes('启用'),
-    );
-    expect(enableButtons).toHaveLength(2);
-    expect(enableButtons.every((button) => !button.disabled)).toBe(true);
-    expect(enableDrawer.textContent).not.toContain('保存草稿');
+      document.querySelector<HTMLInputElement>('input[aria-label="Key 2 名称"]')
+        ?.value,
+    ).toBe('备用账号示例');
+    expect(document.body.textContent).not.toContain('保存渠道');
+    expect(document.body.textContent).not.toContain('启用已验证项');
     expect(client.post).not.toHaveBeenCalled();
     expect(client.put).not.toHaveBeenCalled();
   });
   it.each([
-    ['configuration', ConfigPage, '配置', '/system/ai/configurations/'],
+    ['configuration', ConfigPage, '查看', '/system/ai/settings/'],
     ['scene', ScenePage, '[虚构只读] 记录摘要场景', '/system/ai/scenes/'],
     ['template', TemplatePage, '查看 / 编辑', '/system/ai/templates/'],
-    ['request logs', RequestPage, '详情', '/system/ai/requests/'],
+    [
+      'conversation',
+      RequestPage,
+      '[虚构只读] 订单分析对话',
+      '/ai/conversations/',
+    ],
   ] as const)(
     'opens %s list and detail without a write, network request or render failure',
     async (_name, component, button, detailPrefix) => {
@@ -348,21 +260,12 @@ describe('real AI pages with read-only local transport', () => {
         });
         wrappers.push(wrapper);
         await settle();
-        if (_name === 'request logs') {
-          await wrapper.get('select[aria-label="请求类型"]').setValue('TEST');
-          await wrapper
-            .get('input[aria-label="开始时间"]')
-            .setValue('2026-10-15T00:00');
-          await wrapper
-            .get('input[aria-label="结束时间"]')
-            .setValue('2026-10-17T00:00');
-          openButton('查询');
-          await settle();
-        }
         expect(wrapper.text()).toContain('虚构');
         if (_name === 'scene')
           await wrapper.get('.scene-item').trigger('click');
-        else openButton(button);
+        else if (_name === 'conversation')
+          await wrapper.get('.conversation-item').trigger('click');
+        else if (button) openButton(button);
         await settle();
         expect(
           client.get.mock.calls.some(([url]) =>

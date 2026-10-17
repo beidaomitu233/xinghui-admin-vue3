@@ -3,6 +3,7 @@ const messages: Record<string, string> = {
   CANCELLED: '已取消生成。',
   CAPABILITY_UNSUPPORTED: '模型不支持当前输出要求。',
   CONTENT_REJECTED: '本次请求未能生成内容。',
+  CONVERSATION_FULL: '此对话已达长度上限，请新建对话；已有历史仍可查看。',
   CREDENTIAL_UNAVAILABLE: 'AI 配置暂不可用，请联系管理员。',
   DEADLINE_EXCEEDED: '生成已超时。',
   DEPENDENCY_UNAVAILABLE: 'AI 服务暂不可用。',

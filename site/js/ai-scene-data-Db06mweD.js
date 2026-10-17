@@ -1,0 +1,1 @@
+import{r as a}from"./bootstrap-Cq8i0Byt.js";const e="/system/ai/scene-data",o=()=>a.get(`${e}/catalog`),c=s=>a.get(`${e}/forms`,{params:s}),n=s=>a.get(`${e}/fields`,{params:s});export{c as a,n as b,o as s};

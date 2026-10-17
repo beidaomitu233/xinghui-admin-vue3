@@ -4,7 +4,14 @@ import { flushPromises, mount } from '@vue/test-utils';
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { selectValue } from '#/test-utils/element-controls';
+
+import DatabaseRecordPicker from './DatabaseRecordPicker.vue';
 import SceneTrialPanel from './SceneTrialPanel.vue';
+
+vi.mock('./DatabaseRecordPicker.vue', () => ({
+  default: { props: ['sourceKey'], template: '<div>有权记录选择器</div>' },
+}));
 
 const api = vi.hoisted(() => ({
   previewScene: vi.fn(),
@@ -64,66 +71,26 @@ beforeEach(() => {
   });
 });
 describe('explicit scene trial', () => {
-  it('shows the checked snapshot and summary keys without values, with clear empty states and separate original prompt', async () => {
-    access.accessCodes.push('lowcode:record:list', 'lowcode:record:query');
-    samples.mockResolvedValue({
-      records: [
-        { recordId: '7', label: '授权记录', schemaVersion: 1, revision: 1 },
-      ],
-      total: '1',
-    });
+  it('shows actual authorized data and rendered messages from the saved snapshot without invoking a provider', async () => {
     api.previewScene.mockResolvedValueOnce({
       sceneKey: 'scene.a',
       sceneVersionId: 'version-4',
-      inputSummary: { user_request: 'PRIVATE_TEST_VALUE' },
-      resourceSummary: { 'lowcode.record': 'PRIVATE_RECORD_BODY' },
-      renderedMessages: [{ role: 'USER', content: 'PRIVATE_RENDERED_BODY' }],
-      originalMessages: [{ role: 'SYSTEM', content: '概括 {{user_request}}' }],
+      dataValues: { order: { amount: null, subject: '实际授权订单' } },
+      reads: [
+        {
+          variable: 'order',
+          sourceKey: 'db.orders',
+          rowCount: 1,
+          truncated: true,
+        },
+      ],
+      originalMessages: [{ role: 'SYSTEM', content: '概括 {{order}}' }],
+      renderedMessages: [{ role: 'SYSTEM', content: '实际发送内容' }],
+      inputSummary: {},
+      resourceSummary: {},
       notices: [],
     });
-    const value = definition();
-    value.dataObjects = [
-      { objectKey: 'lowcode.record', formId: '42', fields: ['subject'] },
-    ];
     const wrapper = mount(SceneTrialPanel, {
-      props: {
-        sceneKey: 'scene.a',
-        revision: 4,
-        definition: value,
-        versionId: 'version-4',
-      },
-    });
-    (wrapper.get('details').element as HTMLDetailsElement).open = true;
-    await wrapper.get('details').trigger('toggle');
-    await flushPromises();
-    await wrapper.get('select[aria-label="试运行样例"]').setValue('7');
-    await button(wrapper, '查看授权预览').trigger('click');
-    await flushPromises();
-    const preview = wrapper.get('[aria-label="授权预览"]');
-    expect(
-      preview
-        .findAll('dl div')
-        .map((row) => [row.get('dt').text(), row.get('dd').text()]),
-    ).toEqual([
-      ['已校验的场景版本', 'version-4'],
-      ['输入变量', 'user_request'],
-      ['数据对象', 'lowcode.record'],
-    ]);
-    expect(preview.text()).toContain('测试值与记录正文已隐去');
-    expect(preview.text()).toContain('未调用模型');
-    expect(preview.text()).not.toMatch(
-      /PRIVATE_TEST_VALUE|PRIVATE_RECORD_BODY|PRIVATE_RENDERED_BODY/,
-    );
-    expect(preview.get('details').attributes('open')).toBeUndefined();
-    expect(preview.get('details pre').text()).toBe('概括 {{user_request}}');
-    expect(preview.text()).toContain('不代表实际注入模型的消息');
-    (preview.get('details').element as HTMLDetailsElement).open = true;
-    await preview.get('details').trigger('toggle');
-    expect(wrapper.get('details.trial-panel').attributes('open')).toBeDefined();
-    expect(api.testScene).not.toHaveBeenCalled();
-    expect(stream).not.toHaveBeenCalled();
-    wrapper.unmount();
-    const empty = mount(SceneTrialPanel, {
       props: {
         sceneKey: 'scene.a',
         revision: 4,
@@ -131,11 +98,18 @@ describe('explicit scene trial', () => {
         versionId: 'version-4',
       },
     });
-    await button(empty, '查看授权预览').trigger('click');
+    await button(wrapper, '试运行').trigger('click');
     await flushPromises();
-    expect(empty.get('[aria-label="授权预览"]').text()).toContain('无输入变量');
-    expect(empty.get('[aria-label="授权预览"]').text()).toContain('无数据对象');
-    empty.unmount();
+    await button(wrapper, '授权预览').trigger('click');
+    await flushPromises();
+    expect(wrapper.text()).toContain('实际授权订单');
+    expect(wrapper.text()).toContain('null');
+    expect(wrapper.text()).toContain('已截断');
+    expect(wrapper.text()).toContain('实际发送内容');
+    expect(wrapper.text()).toContain('未调用模型');
+    expect(api.testScene).not.toHaveBeenCalled();
+    expect(stream).not.toHaveBeenCalled();
+    wrapper.unmount();
   });
   it('previews saved revision without invoking a provider and requires cost confirmation for test', async () => {
     const wrapper = mount(SceneTrialPanel, {
@@ -146,8 +120,10 @@ describe('explicit scene trial', () => {
         versionId: 'version-4',
       },
     });
+    await button(wrapper, '试运行').trigger('click');
+    await flushPromises();
     expect(wrapper.get('textarea').attributes('maxlength')).toBe('2048');
-    await button(wrapper, '查看授权预览').trigger('click');
+    await button(wrapper, '授权预览').trigger('click');
     await flushPromises();
     expect(api.previewScene).toHaveBeenCalledWith('scene.a', {
       expectedRevision: 4,
@@ -165,21 +141,32 @@ describe('explicit scene trial', () => {
       modelIndex: 0,
       submission: { inputs: { user_request: '' } },
     });
-    expect(api.testScene.mock.calls[0]?.[1].submission).not.toHaveProperty(
-      'businessRef',
-    );
+    expect(
+      api.testScene.mock.calls[0]?.[1].submission.businessRef,
+    ).toBeUndefined();
     wrapper.unmount();
   });
   it('retains original idempotent submission after lost acceptance even if scene revision changes', async () => {
     api.testScene.mockRejectedValueOnce(new Error('offline'));
+    const candidates = definition();
+    candidates.modelPolicy.models = ['11', '12'].map((id) => ({
+      model: { modelRef: id, configVersion: '1' },
+      keyMode: 'AUTO',
+      allowedKeys: [],
+      fixedKey: null,
+      fallbackKeys: [],
+    }));
     const wrapper = mount(SceneTrialPanel, {
       props: {
         sceneKey: 'scene.a',
         revision: 4,
-        definition: definition(),
+        definition: candidates,
         versionId: 'version-4',
       },
     });
+    await button(wrapper, '试运行').trigger('click');
+    await flushPromises();
+    await selectValue(wrapper, '试运行组合', 1);
     await wrapper.get('input[type="checkbox"]').setValue(true);
     await button(wrapper, '主动试运行').trigger('click');
     await flushPromises();
@@ -187,9 +174,10 @@ describe('explicit scene trial', () => {
     await button(wrapper, '重试原请求').trigger('click');
     await flushPromises();
     expect(api.testScene.mock.calls[1]).toEqual(api.testScene.mock.calls[0]);
+    expect(api.testScene.mock.calls[0]?.[1].modelIndex).toBe(1);
     wrapper.unmount();
   });
-  it('does not fetch sample lists or submit records when the actor lacks list permission', async () => {
+  it('requires an authorized record selection before previewing a record-bound scene', async () => {
     const value = definition();
     value.dataObjects = [
       { objectKey: 'lowcode.record', formId: '42', fields: ['subject'] },
@@ -202,13 +190,13 @@ describe('explicit scene trial', () => {
         versionId: 'version-4',
       },
     });
-    await wrapper.get('details').trigger('toggle');
+    await button(wrapper, '试运行').trigger('click');
     await flushPromises();
-    expect(wrapper.text()).toContain('没有记录列表权限');
+    expect(wrapper.getComponent(DatabaseRecordPicker).props('sourceKey')).toBe(
+      'lowcode.42',
+    );
     expect(samples).not.toHaveBeenCalled();
-    expect(
-      button(wrapper, '查看授权预览').attributes('disabled'),
-    ).toBeDefined();
+    expect(button(wrapper, '授权预览').attributes('disabled')).toBeDefined();
     wrapper.unmount();
   });
 });

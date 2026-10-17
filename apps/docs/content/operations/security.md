@@ -44,3 +44,11 @@ OSS上传最大20MiB、扩展名白名单、记录落库/对象失败补偿；�
 用无token请求应得到401；有会话但无管理权限仍被拒；跨owner/tenant操作不成功；配置读取不含明文；失效revision保留输入并失败。发现边界不符时记录最小脱敏复现，停止依赖该失败链路的操作，按[贡献流程](../contributing/contribution.md)提交实际修复与测试，不降低规则掩盖。
 
 源码：`system-framework/src/main/java/com/xinghuiTec/config/SecurityConfig.java`、`JwtSigningKeyConfiguration.java`、`common/common-core/src/main/java/com/xinghuiTec/config/SecretCipher.java`、`common/common-tenant/src/main/java/com/xinghuiTec/config/tenant/`；`system-admin/src/main/java/com/xinghuiTec/`下的`controller/`、`lowcode/LowcodeIdentity.java`、`ai/prompt/AiSceneReadService.java`、`config/UserImportUploadLimitFilter.java`；前端`apps/web-ele/src/api/request.ts`及对应权限/会话测试。
+
+## AI对话与数据库引用
+
+新对话的用户/助手正文真实保存在数据库，按本人/租户或明确平台审计权限访问；审计查看不允许冒充本人续聊。技术请求日志仍只记录必要元数据，不能将正文或Key写进普通访问/操作日志。备份与恢复应包含实际消息数据及其访问限制。
+
+通用数据库引用要求独立ai:data:database:read和平台身份，保存场景不向调用者派生此权。认证/凭据/配置等基础设施、秘密字段与结构化秘密键不进入上下文，查询保持只读、参数化及有界。普通有权业务值可以实际预览，不能以统一掩码代替数据授权。
+
+模型扫描仅访问OpenRouter/DeepSeek共享预设中的固定官方目录，不允许调用者指定URL、重定向或任意请求。草稿Key扫描使用16KiB有界JSON与WRITE_ONLY密码字段，明文仅本次内存使用，不进入操作日志、持久化或响应；已存Key只在当前有权配置草稿内选取，不接收任意Key版本。扫描目录、连接验证与执行准入分别判断，目录可选性不等于生成成功。失效Key材料隔离后须通过正常测试恢复，不能手工删状态绕过验证。

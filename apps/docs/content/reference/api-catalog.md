@@ -2,6 +2,8 @@
 
 本页供集成开发者按路径定位 Controller、调用权限和请求 DTO。保留的旧目录对应 v1.2.0 静态旧快照的教程基线：32 个 Controller，其中30个有HTTP映射，共147条方法/路径（含资讯列表别名）。工作区改造前的一期[源码配对](../releases/versions.md)另新增6个AI Controller、59条映射，形成38个Controller、36个有映射、206条方法/路径的历史盘点，逐条见[旧版一期兼容接口](#当前源码一期新增-ai-接口)。本次新增的4个工作区Controller及20条映射另列在[场景工作区接口](#场景工作区与直接保存接口)，不把206当作改造后的总数。
 
+对话、设置与数据库引用见[实用改造接口](#实用改造接口)。本轮配置、数据预览、引用保存和对话阅读已原生验证；真实供应商限制见[版本组合](../releases/versions.md)，历史接口数量不作为新增能力通过证明。
+
 旧目录的签名与行号仍属于旧基线；旧版一期兼容节的行号属于后端 `79b4655b56621fbcdafe48eb858d312bd76eb465`。v1.2.0静态站不运行后端，当前源码AI一期未打独立发行Tag；本页不是运行时Swagger，也不承诺未配置服务的接口可直接成功。Agent/插件草案接口未收录为实现。
 
 ## 调用前提
@@ -823,11 +825,124 @@ public Result<String> demo()
 
 :::
 
+## 实用改造接口
+
+本轮增加对话持久化、独立AI配置页的多渠道/命名多Key与模型扫描，以及实际数据库引用；配置、数据预览、引用保存和对话阅读已原生验证，真实供应商限制见[版本组合](../releases/versions.md)。新对话保存完整用户/助手正文，技术请求日志与旧无正文记录保持区别；普通授权数据预览不统一掩码。旧应用发布流程保留为兼容参考。
+
+### 对话与模型设置
+
+下表config/model/scene/record动作分别使用完整前缀ai:config、ai:model、ai:scene、lowcode:record；audit与query指对应ai:request动作，未列出的动作不会由入口权限自动授予。
+
+| 方法路径 | 请求/权限 | 成功data |
+| --- | --- | --- |
+| GET `/ai/conversations` | scope默认OWN，sceneKey/requestKind/search/pageNum/pageSize；本人invoke或request:list，AUDIT须平台+request:list+request:audit | Page，total字符串 |
+| GET `/ai/conversations/{id}` | 本人ai:scene:invoke或ai:request:query；他人AUDIT另需平台+audit+query | Detail，完整持久化messages |
+| POST `/ai/conversations` | sceneKey/kind/businessRef/message/clientMutationId/test；本人invoke，TEST另需平台+scene:test与确认 | HTTP202 Accepted |
+| POST `/ai/conversations/{id}/messages` | expectedRevision/message/clientMutationId/test；仅本人续聊及当前调用/数据权限 | HTTP202 Accepted |
+| GET `/system/ai/settings/providers` | 平台+config:list/query/add/edit/test任一或对应旧model动作 | Provider候选、默认地址与模型建议 |
+| GET `/system/ai/settings` | 平台+config:list或model:list，pageNum/pageSize/search | Page |
+| GET `/system/ai/settings/{id}` | 平台+config:query或model:query | View |
+| POST `/system/ai/settings` | 平台+config:add或model:add；Change | View |
+| PUT `/system/ai/settings/{id}` | 平台+config:edit或model:edit；Change含expectedRevision | View |
+| POST `/system/ai/settings/{id}/connection-tests` | 平台+config:test或model:test；confirmedCosts/activateOnSuccess；启用另需config:enable | HTTP202 TestRun |
+| GET `/system/ai/settings/{id}/connection-tests/{testId}` | 平台+config:test或model:test | TestRun |
+
+Change为expectedRevision/name/provider/endpointUrl/apiKey/modelCodes/keys/clientMutationId；新增expectedRevision=null，编辑必须提供当前revision。provider为openrouter或deepseek，endpointUrl可省略使用所选服务商官方地址，不允许自定义供应商地址。Provider候选为可读名称、官方地址及建议模型；建议不能代替实时扫描或连接测试。
+
+更新时provider/endpointUrl省略保留原渠道；已被使用的配置不能更换服务商或地址，需新增独立渠道再调整场景。场景仍使用的模型不能删除全部声明关联，运行维护无法安全完成时返回409并保留原连接。
+
+keys为完整目标集合：每项`{keyId?,name,apiKey?,modelCodes?}`，省略keyId是新增且必须填Key，已有keyId必须属于本配置，apiKey空/null保留材料。keys提供时，未包含的旧Key会从目标草稿移除；1..16项，name非空且最多80字符，无重复Key。每Key可关联多个模型，同模型可关联多个Key；modelCodes省略表示渠道全部模型，显式列表必须非空且属于渠道模型。顶层modelCodes可由显式Key关联并集推导；最多16模型、64组关联，不允许重复模型。
+
+keys省略兼容原单Key格式并保留原Key集合及关联。旧顶层apiKey非空只允许当前恰好一个Key时更换；多Key配置必须明确具体Key，不能默改第一项。keys和非空顶层apiKey同时提供为400。示例中的模型代码均应来自扫描结果：
+
+```json
+{
+  "expectedRevision": 3,
+  "clientMutationId": "12345678-1234-4234-8234-123456789abc",
+  "name": "日常问答主渠道",
+  "provider": "openrouter",
+  "modelCodes": ["vendor/model-a", "vendor/model-b"],
+  "keys": [
+    {
+      "keyId": "11",
+      "name": "主账号",
+      "apiKey": null,
+      "modelCodes": ["vendor/model-a", "vendor/model-b"]
+    },
+    {
+      "name": "备用账号",
+      "apiKey": "仅密码框输入的新Key",
+      "modelCodes": ["vendor/model-a"]
+    }
+  ]
+}
+```
+
+clientMutationId可省略；提供时必须为规范UUID。同一主体/租户及mutation的同内容重放不会重复创建或保存，返回该配置当前可读结果；同标识不同内容409。重试必须保留原标识和内容，确认成功后下一次编辑使用新标识。响应未确认时先查询原结果，不把重新点击变成新建重复渠道。
+
+View包含configId/revision/name/provider/endpointUrl/models/active/connection/pendingChanges及keys。keys每项为keyId/name/keyConfigured/maskedKey/modelCodes/status/message/models，模型结果含code/status/message；只给尾号与安全状态，不回显Key、密文、ENV或内部版本搭配。pendingChanges表示修改待测试，原active仍可继续使用；原成功结果不冒充新材料成功。
+
+TestRun新增keys逐Key结果，models仍提供逐模型聚合；同模型任一实际关联Key通过即可用，失败Key仍显示原因。只有声明的关联进入测试，未变且有效的证明可复用。具备启用权限且仍匹配当前草稿时，可自动启用真实通过的关联；PARTIAL说明部分成功，零通过/取消/草稿变化保留原active。保存不发生成请求，连接测试才会实际调用。
+
+多个渠道可同时active；场景模型候选包含configId/configName/providerCode/modelCode。运行先尝试当前模型合格Key，再按场景允许的备用模型/渠道顺序执行，总尝试/时限/令牌预算共享。Key材料401后隔离并需重新验证；已输出部分内容、取消、当前授权失败或不可重试错误不切换，不拼接其他模型回答。技术执行细节见[扩展说明](../development/ai-extension.md#多-key-配置与运行切换)。
+
+会话message最长2048字符。TEST的test为expectedSceneRevision/modelIndex/confirmedCosts；同mutation同内容重放原结果，不同内容409，同会话已有在途返回CONVERSATION_BUSY。Accepted含conversationId/revision/requestId/sceneVersionId/userMessageId/assistantMessageId/status/contextTruncated/contextStartMessageId。Detail.messages按sequence排列，含role/content/status/errorCode/partial/时间，失败不伪造成功回答。只有成对成功轮参与后续上下文，最近最多20个成功轮次并受容量上限约束；截断明确说明，不删除展示历史。
+
+旧请求标记LEGACY_NO_BODY，提示“旧记录未保留对话”。原SSE与取消路径继续使用，仍检查owner、tenant及当前数据权限；审计查看不是本人续聊授权。
+
+### 模型目录与 Key 扫描
+
+Controller为`controller/AiModelCatalogController.java`，Java请求/响应为`ai.config.AiModelCatalogDtos`。以下接口均需平台身份，响应`Cache-Control:no-store`，沿用Result外层；扫描不保存配置、不启用模型、不调用生成接口。
+
+| 方法路径 | 输入与最小动作 | 成功data |
+| --- | --- | --- |
+| GET `/system/ai/model-catalog` | search/pageNum/pageSize；config:query或model:query | OpenRouter公共Page，不发送Key |
+| POST `/system/ai/model-catalog/scan` | configId/keyId/expectedRevision/search/pageNum/pageSize；config:test或model:test | 已保存当前草稿中选定Key的Page |
+| POST `/system/ai/model-catalog/draft-scan` | provider/apiKey/search/pageNum/pageSize；config:add/edit/test或对应model动作任一 | 未保存Key的Page，可先扫描、选择模型再保存 |
+
+草稿扫描`provider`仅openrouter/deepseek，apiKey为WRITE_ONLY且toString脱敏；只在内存用于本次认证，不入库/操作日志或响应。仅接收application/json，正文最多16KiB，严格拒绝未知/重复字段、过深JSON及尾随内容。完整Key最多8192字符，不能包含控制字符；模型扫描不允许指定endpointUrl。保存Key扫描不接收Key材料或keyVersion，只在当前配置草稿内按keyId映射读取；请求前后核对revision，发生更改409，不能把旧Key结果标成新Key结果。
+
+pageNum至少1，pageSize为1..100（GET默认1/20，POST显式提供），search可省略、最多128字符；在本次有界目录内按模型名称/代码搜索与分页。Page字段为records/total/pageNum/pageSize/refreshedAt/source/provider/configId/keyId/revision/generationVerified，其中total为整数；records每项为code/name/contextLength/maxCompletionTokens/inputModalities/outputModalities/supportedParameters。未提供的元数据为null或空数组，缺少名称回退code，不猜测工具或JSON能力。
+
+Page另含scannedCount/filteredCount/filterReasons，统计整个上游有界目录，不受搜索与分页影响；total仍是可选模型中按当前搜索匹配的数量。与配置/执行代码规则不兼容的路由别名（例如以`~`开头）、显式无text输出的模型、不支持的元数据形状及重复code按条过滤，原因分别为UNSUPPORTED_MODEL_CODE/NON_TEXT_OUTPUT/INVALID_METADATA/DUPLICATE_MODEL_CODE。一条新别名不导致其他合法聊天模型丢失；返回列表中的代码仍须能通过实际配置校验，不扩大生成适配器支持范围。秘密回显、非法控制字符、严格JSON解析及响应大小限制继续失败关闭，不以条目兼容为由放宽。
+
+contextLength和maxCompletionTokens为可空Java Long，实际REST遵循全局Long序列化规则，以十进制字符串返回，例如`"262144"`；客户端类型需兼容null/字符串及数字形式，不应强制断言为number。scannedCount、filteredCount、total、pageNum和pageSize为int，仍是JSON数字。
+
+source为PUBLIC（无Key OpenRouter公共目录）、USER_FILTERED（OpenRouter带Key）或PROVIDER_KEY（DeepSeek带Key）。公共与草稿扫描的configId/keyId/revision均null，保存Key扫描返回这三项。refreshedAt为本次目录读取完成时间；不缓存跨Key结果，每次重新请求会刷新目录，不承诺分页间快照相同。generationVerified固定false。
+
+官方端点来自唯一`AiProviderPresets`：OpenRouter公共`GET /api/v1/models`，带Key`GET /api/v1/models/user`；DeepSeek带Key`GET /models`。OpenRouter带Key结果按用户供应商偏好、隐私和防护规则过滤；DeepSeek采用id/name/context_window/max_output_tokens及声明的输入输出模态。目录可选性不保证余额、额度、推理时服务可用或生成成功。依据：[OpenRouter目录](https://openrouter.ai/docs/api/api-reference/models/list-models-filtered-by-user-provider-preferences-privacy-settings-and-guardrails)、[DeepSeek模型列表](https://api-docs.deepseek.com/api/list-models/)。
+
+单次出站最多15秒、响应最多4MiB/5000条模型、并发4；仅官方HTTPS固定地址，禁止重定向及调用者URL，沿用公网地址规则与运维代理配置。错误message为固定`AI_MODEL_CATALOG:`前缀，无供应商原始正文/Key/堆栈：400 INVALID_INPUT/KEY_REQUIRED；413 REQUEST_LIMIT；404 KEY_NOT_FOUND；409 CONFIG_CHANGED/CONFIG_UNAVAILABLE；422 PROVIDER_UNSUPPORTED；429 RATE_LIMITED；502 UPSTREAM_UNAUTHORIZED/UPSTREAM_FORBIDDEN/UPSTREAM_FAILED/UPSTREAM_REDIRECT/UPSTREAM_INVALID/RESPONSE_LIMIT；503 CREDENTIAL_UNAVAILABLE/NETWORK_UNAVAILABLE/BUSY；504 TIMEOUT。上游401/403映射502，不能据此清除本系统登录态；本地动作拒绝仍403。扫描Controller失败Result.code为202，权限处理为309，HTTP状态和安全message同时保留。
+
+### 数据库引用与实际值预览
+
+以下均要求平台身份和ai:scene:query/add/edit/test任一管理动作。db.来源还需独立ai:data:database:read，低代码来源另需record:query，集合候选另需record:list；运行时仍重新检查，不由场景选中扩权。
+
+| 方法路径 | 输入 | data |
+| --- | --- | --- |
+| GET `/system/ai/scene-data/database/tables` | keyword/pageNum/pageSize | `Page<DatabaseTable>`：sourceKey/tableName/label/comment/primaryKey |
+| GET `/system/ai/scene-data/database/fields` | sourceKey | DatabaseFields：fields含field/label/comment/type/nullable/primaryKey |
+| GET `/system/ai/scene-data/database/relations` | sourceKey | DatabaseRelation[]：name/parentSourceKey/parentField/childSourceKey/childField/foreignKey |
+| POST `/system/ai/scene-data/database/records` | sourceKey/filters/limit | DatabaseRecords：records含key/label/values/businessRef，另含truncated |
+| POST `/system/ai/scene-data/bindings/preview` | bindings/businessRef | BindingPreview：values、reads、notices；实际普通授权值 |
+
+DataBinding为variable/label/sourceKey/mode/fields/filters/limit/row/relation。模式FIELD返回单值，ROW对象，TABLE/CHILDREN数组；空fields固定该次编译所有可读字段。ROW/FIELD的row为currentRecord/key，固定key须匹配真实主键；CHILDREN的relation为parentVariable/parentField/childField，引用前面的ROW并实际用主值约束子行。
+
+sourceKey为db.加真实表名或lowcode.加表单ID。filters为field/operator/value列表，operator为EQ/NE/GT/GE/LT/LE/CONTAINS/IS_NULL/NOT_NULL；最多16个AND条件，null操作value须null。表及字段只接受真实元数据，值参数化。没有任意SQL或动态表达式入口。
+
+Definition新增同型dataBindings，并映射EditorInput.bindings；CompiledScene.bindings保存完整BindingSnapshot及查询依赖指纹，未投影的过滤/PK/关联字段也复核。已保存场景预览使用同次渲染的RenderedScene.bindingPreview，不重新编译原Definition或二次查询。支持中文与点号的变量可由选择器一键插入，单次替换。原outputRequirement若非空先无损合并进promptText；新界面只编辑合并正文。
+
+候选返回的businessRef可直接用于预览与运行：低代码为lowcode.record及formId:recordId；通用数据库为database.record及db1.前缀base64url引用，承载sourceKey和主键映射，最长2048字符。服务端解析、核对权限与真实来源，引用本身不授予读取权；后续请求/会话持久化与重连须保留完整内容。
+
+最多16绑定、64字段和每绑定200行；两POST仅application/json及identity编码，128KiB正文上限。读取最多10秒且受调用deadline，选择器独立数据预览值上限256KiB；已保存场景渲染与模型总消息（提示词、数据及历史）合计上限64KiB。长文本字段8192字符截断有提示，结构化JSON解析失败或超限明确拒绝。response为no-store/private，values保留数字/null/数组；reads含variable/sourceKey/rowCount/truncated。低代码旧记录缺少后来新增字段时返回null及FIELD_NOT_IN_RECORD_SCHEMA。
+
+通用目录排除认证/凭据/配置等基础设施和秘密字段；JSON/\_json列递归过滤秘密键。已知业务动作、实际tenant与软删条件继续执行。单列FK可直接发现，复合FK不按单列冒充；无可读主键的表仅支持有界TABLE。详细接缝见[数据绑定扩展](../development/ai-extension.md)。
+
 ## 场景工作区与直接保存接口
 
 本节描述一期工作区改造合同，精确源码与验证边界见[版本组合](../releases/versions.md)。sceneKey由服务端生成，sceneVersionId为不可变执行版本，均与旧appId不同；所有ID及分页total为字符串。旧版接口在下一节按原源码保留，不能把旧发布操作当作新场景的保存前置。
 
-工作区新增映射按下列实际Controller核对；SSE复用既有路径，不重复计入新增20条。
+下表保留2026-10-17一期工作区20条映射的盘点；本轮对话、设置和5条数据库绑定接口另列前节，SSE沿用原路径。
 
 | Controller | 源码（后端system-admin/src/main/java/com/xinghuiTec/下） | 新增映射数 |
 | --- | --- | --- |
@@ -874,14 +989,14 @@ Definition含name、purpose、promptText、outputRequirement、dataObjects及mod
 | --- | --- | --- |
 | `/system/ai/scene-data/catalog` | 无 | objects及inputVariables；无记录查询权时objects为空 |
 | `/system/ai/scene-data/forms` | `keyword,pageNum,pageSize` | Page，记录为formId/name/schemaVersion |
-| `/system/ai/scene-data/fields` | `objectKey,formId` | objectKey/formId/schemaVersion/fields；仅subject/summary白名单与schema交集 |
+| `/system/ai/scene-data/fields` | `objectKey,formId` | objectKey/formId/schemaVersion/fields；当前实际schema可读字段，排除秘密字段 |
 | `/system/ai/scene-data/samples` | `objectKey,formId,keyword,pageNum,pageSize` | Page，记录为recordId/label/schemaVersion/revision；当前tenant范围 |
 
-页码1–100000，pageSize1–100，keyword最多100字符并按字面搜索。样本仅以记录原schema中存在的subject最多80字符或编号作标签，不返回整行或internal_note。候选不可替代实际调用授权。
+页码1–100000，pageSize1–100，keyword最多100字符并按字面搜索。该旧样本DTO仅以记录原schema中存在的subject最多80字符或编号作标签，不是业务投影；实际值由新增数据库记录/绑定预览返回。候选不可替代实际调用授权。
 
 ### 监控摘要的分项权限
 
-`GET /system/ai/monitor/summary` 的方法注解为 `@aiWorkspaceAccess.canEnterMonitor()`：平台身份且拥有ai:request:list或ai:config:list/query/add/edit/test/enable任一真实动作。ai:monitor:enter仅表示导航，不单独授予统计或配置权限。
+`GET /system/ai/monitor/summary` 的方法注解为 `@aiWorkspaceAccess.canEnterMonitor()`：平台身份且拥有ai:scene:invoke、ai:request:list或ai:config:list/query/add/edit/test/enable任一真实动作。仅invoke可使用本人对话索引，调用统计仍单独授权。ai:monitor:enter仅表示导航，不单独授予统计或配置权限。
 
 调用统计calls和未归属尝试数另需ai:request:list，否则为null；当前启用Key统计另需ai:config:list或ai:config:query，否则为null并说明CONFIG_QUERY_REQUIRED。AUDIT范围额外要求ai:request:audit；调用统计仍受日志list权限限制。OWN不展示全局“异常Key为0”，recentlyFailedKeyVersions保持null/AUDIT_REQUIRED；全局异常交集需AUDIT及日志list与配置查询权限。没有相应动作时不把未知写成0，也不扩大详情/导出权限。
 
@@ -903,7 +1018,7 @@ Definition含name、purpose、promptText、outputRequirement、dataObjects及mod
 - 业务提交、状态、事件和取消的方法注解仅要求认证，服务层另验真实用户/tenant、应用准入、owner和业务引用。`FRONTEND/BACKGROUND/BOTH` 是应用使用范围，`TEST` 忽略这个前后台范围但不忽略允许主体和真实记录读取权限。当前HTTP没有接收客户端servicePrincipal的接口，也没有可直接使用的后台服务身份解析器。
 - 日志scope默认为 `OWN`，限定当前owner/tenant及当前允许的应用/版本；伪造其他tenantRef/subjectRef被拒绝。`AUDIT` 额外要求平台身份和 `ai:request:audit`，仍需list/query/export对应动作；审计只读元数据，不授予模型调用、业务取数或取消他人请求。
 - appId/requestId/configVersion/templateId/resourceId/各versionId及Key引用按字符串处理，即使Java路径参数为long也不要在JavaScript中转Number。revision、draftRevision、schemaVersion、modelIndex和页码为整数，不能与ID互换；分页total等Long在JSON按项目序列化规则为字符串。
-- 新AI响应no-store；preview及模板/资源、日志含private限制。凭据只写不回显，日志不存提示词/输入/输出正文；业务调用的record正文由服务端重取，不能在inputs中伪造身份或授权。
+- 新AI响应no-store；preview及模板/资源、日志含private限制。凭据只写不回显，技术请求日志不存提示词/输入/输出正文；新对话正文另按本人/审计规则持久化。业务调用的record正文由服务端重取，不能在inputs中伪造身份或授权。
 
 ### JSON DTO与返回摘要
 

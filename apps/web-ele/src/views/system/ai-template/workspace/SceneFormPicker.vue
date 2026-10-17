@@ -3,19 +3,24 @@ import type { SceneDataForm } from '#/api/system/ai-scene-data';
 
 import { onBeforeUnmount, onMounted, ref } from 'vue';
 
+import { ElAlert, ElButton, ElOption, ElSelect } from 'element-plus';
+
 import { sceneDataForms } from '#/api/system/ai-scene-data';
 
-defineProps<{ disabled: boolean; value: string }>();
+const props = defineProps<{ disabled: boolean; value: string }>();
 const emit = defineEmits<{ change: [value: string] }>();
 const forms = ref<SceneDataForm[]>([]);
 const keyword = ref('');
 const page = ref(1);
 const total = ref('0');
 const error = ref('');
+const loading = ref(false);
 let generation = 0;
 let disposed = false;
+let timer: ReturnType<typeof setTimeout> | undefined;
 async function load() {
   const run = ++generation;
+  loading.value = true;
   try {
     const result = await sceneDataForms({
       keyword: keyword.value,
@@ -29,105 +34,105 @@ async function load() {
     }
   } catch {
     if (!disposed && run === generation) error.value = '表单读取失败，请重试。';
+  } finally {
+    if (!disposed && run === generation) loading.value = false;
   }
 }
-function choose(event: Event) {
-  const value = (event.target as HTMLSelectElement).value;
-  if (forms.value.some((form) => form.formId === value)) emit('change', value);
+function search(value: string) {
+  keyword.value = value;
+  page.value = 1;
+  generation++;
+  clearTimeout(timer);
+  timer = setTimeout(() => void load(), 250);
+}
+function choose(value: string) {
+  if (!props.disabled && forms.value.some((form) => form.formId === value))
+    emit('change', value);
 }
 onMounted(load);
 onBeforeUnmount(() => {
   disposed = true;
   generation++;
+  clearTimeout(timer);
 });
 </script>
 <template>
-  <section aria-label="选择绑定表单">
-    <div class="search">
-      <input
-        v-model="keyword"
-        aria-label="搜索绑定表单"
-        maxlength="100"
-        placeholder="按表单名称搜索"
-        :disabled="disabled"
-      />
-      <button
-        type="button"
-        :disabled="disabled"
-        @click="
-          page = 1;
-          load();
-        "
-      >
-        搜索
-      </button>
-    </div>
-    <select
+  <div class="scene-form-picker" aria-label="选择绑定表单">
+    <ElSelect
       aria-label="绑定表单"
-      :value="value"
+      :model-value="value"
       :disabled="disabled"
+      filterable
+      remote
+      :remote-method="search"
+      :loading="loading"
+      placeholder="按表单名称搜索"
       @change="choose"
     >
-      <option value="" disabled>选择表单</option>
-      <option v-for="form in forms" :key="form.formId" :value="form.formId">
-        {{ form.name }}
-      </option>
-    </select>
-    <div class="pages">
-      <button
-        type="button"
-        :disabled="disabled || page <= 1"
-        @click="
-          page--;
-          load();
-        "
-      >
-        上一页
-      </button>
-      <span>第 {{ page }} 页</span>
-      <button
-        type="button"
-        :disabled="disabled || BigInt(page * 20) >= BigInt(total)"
-        @click="
-          page++;
-          load();
-        "
-      >
-        下一页
-      </button>
-    </div>
-    <p v-if="error" role="alert">{{ error }}</p>
-  </section>
+      <ElOption
+        v-if="value && !forms.some((form) => form.formId === value)"
+        :value="value"
+        label="已保存表单"
+      />
+      <ElOption
+        v-for="form in forms"
+        :key="form.formId"
+        :label="form.name"
+        :value="form.formId"
+      />
+      <template #footer>
+        <div class="form-pages">
+          <ElButton
+            link
+            :disabled="disabled || page <= 1 || loading"
+            @click="
+              page--;
+              load();
+            "
+          >
+            上一页
+          </ElButton>
+          <span>第 {{ page }} 页</span>
+          <ElButton
+            link
+            :disabled="
+              disabled || BigInt(page * 20) >= BigInt(total) || loading
+            "
+            @click="
+              page++;
+              load();
+            "
+          >
+            下一页
+          </ElButton>
+        </div>
+      </template>
+    </ElSelect>
+    <ElAlert
+      v-if="error"
+      :title="error"
+      type="error"
+      closable
+      @close="error = ''"
+    />
+  </div>
 </template>
 <style scoped>
-.search,
-.pages {
+.scene-form-picker {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+}
+
+.scene-form-picker :deep(.el-select) {
+  width: 100%;
+}
+
+.form-pages {
   display: flex;
   gap: 12px;
   align-items: center;
-  margin: 10px 0;
-}
-
-input,
-select {
-  width: 100%;
-  padding: 9px;
-  background: hsl(var(--background));
-  border: 1px solid hsl(var(--border));
-  border-radius: 6px;
-}
-
-button {
-  color: hsl(var(--primary));
-  white-space: nowrap;
-}
-
-button:disabled {
-  opacity: 0.45;
-}
-
-.pages,
-[role='alert'] {
+  justify-content: space-between;
   font-size: 12px;
 }
 </style>

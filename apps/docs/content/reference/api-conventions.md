@@ -104,6 +104,12 @@ curl --fail-with-body -H "Authorization: ${TOKEN}" \
 
 监控导航可从真实日志或配置动作派生，入口可见不授予日志list、配置query或AUDIT。缺少相应统计权限时字段为null并附安全原因，不能解释为0。新接口响应禁缓存，预览及数据候选包含private；查询监控不会重发供应商请求。
 
+## 对话与实际数据预览增量
+
+新对话用户/助手正文持久化，刷新后按本人或明确审计范围查询；不以浏览器localStorage或短期SSE缓存代替数据库历史。旧无正文请求仍明确提示未保留。新对话/续聊使用clientMutationId，重复提交复用原结果，同会话已有在途时明确冲突，不并发拼接回答。
+
+数据库引用与实际值预览见[实用改造API](./api-catalog.md#数据库引用与实际值预览)。POST records/preview接受128KiB以内JSON及identity编码；普通授权值保持实际结构，秘密在读取投影中排除。通用database.record业务引用为C行候选生成的有界类型化引用，不能用旧短ID格式校验或截断；它仍不构成数据授权。
+
 ## 源码依据
 
 后端 `common/common-core/src/main/java/com/xinghuiTec/utils/Result.java`、`system-framework/src/main/java/com/xinghuiTec/config/JacksonConfig.java`、`filter/LoginFilter.java`；`system-admin/src/main/java/com/xinghuiTec/` 下的 `controller/SysOssController.java`、`NotificationInboxController.java`、`BusinessConfigController.java`、`ai/prompt/AiSceneReadBoundaryFilter.java`、`AiSceneReadService.java`、`lowcode/LowcodeService.java`。前端 `apps/web-ele/src/api/request.ts`、`src/api/system/news.ts`、`src/views/system/notification/target-navigation.ts`。

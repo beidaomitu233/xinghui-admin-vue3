@@ -24,6 +24,8 @@ component如 `system/news/index`对应views文件，不带.vue；path保持已�
 
 本人通知菜单不依赖模板管理权限；不要为它增发平台模板权限。当前源码四个一级导航为系统管理、通用能力、运行维护、AI管理；目录授权不单独赋予页面/API能力，也不是四种权限角色。V170三组布局属于旧基线，V180增加AI管理，V210补齐AI动作权限。
 
+V244将AI配置恢复为独立二级页`/ai/configurations`，复用原页面与动作授权。配置列表、详情、保存、扫描、测试和启用分别按实际动作检查；草稿Key扫描允许平台add/edit/test任一，不因此获得配置query或已存Key读取能力。菜单可见、前端隐藏按钮和扫描目录结果都不能替代服务端授权与连接验证。
+
 ## 源码依据
 
 前端 `apps/web-ele/src/router/routes/core.ts`、`routes-helper.ts`、`routes/modules/lowcode.ts`、`routes/legacy-wechat.ts`；后端 `system-admin/src/main/java/com/xinghuiTec/security/PlatformVisibilityService.java`、`lowcode/LowcodeRecordController.java`。

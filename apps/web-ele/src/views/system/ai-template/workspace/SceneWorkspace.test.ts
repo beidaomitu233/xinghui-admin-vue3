@@ -7,8 +7,12 @@ import type {
 import { flushPromises, mount } from '@vue/test-utils';
 import { h, KeepAlive, ref } from 'vue';
 
+import { ElPopconfirm } from 'element-plus';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { button } from '#/test-utils/element-controls';
+
+import DatabaseBindingEditor from './DatabaseBindingEditor.vue';
 import SceneWorkspace from './SceneWorkspace.vue';
 
 const api = vi.hoisted(() => ({
@@ -17,6 +21,7 @@ const api = vi.hoisted(() => ({
   getSceneWorkspace: vi.fn(),
   saveScene: vi.fn(),
   sceneModels: vi.fn(),
+  previewScene: vi.fn(),
   setSceneEnabled: vi.fn(),
 }));
 const access = vi.hoisted(() => ({ accessCodes: [] as string[] }));
@@ -157,6 +162,61 @@ afterEach(() => {
 });
 
 describe('scene workspace actual editing and autosave', () => {
+  it('previews confirmed bindings with a nonempty preview-only user request and reuses the compiled snapshot response', async () => {
+    access.accessCodes.push('ai:scene:test', 'ai:scene:invoke');
+    const value = {
+      ...definition('first'),
+      promptText: '{{user_request}} {{order}}',
+      dataBindings: [
+        {
+          variable: 'order',
+          label: '订单',
+          sourceKey: 'db.orders',
+          mode: 'ROW' as const,
+          fields: ['id'],
+          filters: [],
+          limit: 1,
+          row: { currentRecord: false, key: { id: '19' } },
+          relation: null,
+        },
+      ],
+    };
+    api.getScene.mockResolvedValueOnce(detail('first', 4, value));
+    const values = { order: { id: '19' } };
+    const reads = [
+      {
+        variable: 'order',
+        sourceKey: 'db.orders',
+        rowCount: 1,
+        truncated: false,
+      },
+    ];
+    api.previewScene.mockImplementationOnce(async (_key, input) => {
+      if (!input.inputs.user_request) throw new Error('MISSING_VARIABLE');
+      return {
+        dataValues: values,
+        reads,
+        notices: [],
+        sceneVersionId: 'version-4',
+      };
+    });
+    const wrapper = await open();
+    const editor = wrapper.getComponent(DatabaseBindingEditor);
+    await expect(editor.props('preparePreview')?.()).resolves.toEqual(
+      value.dataBindings,
+    );
+    await expect(editor.props('readPreview')?.(null)).resolves.toEqual({
+      values,
+      reads,
+      notices: [],
+    });
+    expect(api.previewScene).toHaveBeenCalledWith('first', {
+      expectedRevision: 4,
+      businessRef: null,
+      inputs: { user_request: '仅预览引用数据，不调用模型。' },
+    });
+    expect(api.saveScene).not.toHaveBeenCalled();
+  });
   it('maps whitelisted definition and array field diagnostics into local editor errors', async () => {
     api.saveScene.mockRejectedValue({
       response: {
@@ -252,8 +312,10 @@ describe('scene workspace actual editing and autosave', () => {
       .findAll('button')
       .find((button) => button.text() === '新建场景')
       ?.trigger('click');
-    await wrapper.get('.create-dialog input').setValue('结果未知的新建');
-    await wrapper.get('form.create-dialog').trigger('submit');
+    await wrapper
+      .get('input[aria-label="新建场景名称"]')
+      .setValue('结果未知的新建');
+    await wrapper.get('form[aria-label="新建场景"]').trigger('submit');
     await flushPromises();
     const leaving = navigation.guard?.();
     await flushPromises();
@@ -316,8 +378,8 @@ describe('scene workspace actual editing and autosave', () => {
       .findAll('button')
       .find((button) => button.text() === '新建场景')
       ?.trigger('click');
-    await wrapper.get('.create-dialog input').setValue('新场景');
-    await wrapper.get('.create-dialog').trigger('submit');
+    await wrapper.get('input[aria-label="新建场景名称"]').setValue('新场景');
+    await wrapper.get('form[aria-label="新建场景"]').trigger('submit');
     await flushPromises();
     await vi.advanceTimersByTimeAsync(1000);
     expect(api.createScene.mock.calls[0]?.[0]).toMatchObject({
@@ -337,14 +399,14 @@ describe('scene workspace actual editing and autosave', () => {
       .findAll('button')
       .find((button) => button.text() === '新建场景')
       ?.trigger('click');
-    await wrapper.get('.create-dialog input').setValue('新场景');
-    await wrapper.get('.create-dialog').trigger('submit');
+    await wrapper.get('input[aria-label="新建场景名称"]').setValue('新场景');
+    await wrapper.get('form[aria-label="新建场景"]').trigger('submit');
     await flushPromises();
     expect(
-      wrapper.get('.create-dialog input').attributes('disabled'),
+      wrapper.get('input[aria-label="新建场景名称"]').attributes('disabled'),
     ).toBeDefined();
     const original = api.createScene.mock.calls[0]?.[0];
-    await wrapper.get('.create-dialog').trigger('submit');
+    await wrapper.get('form[aria-label="新建场景"]').trigger('submit');
     await flushPromises();
     expect(api.createScene.mock.calls[1]?.[0]).toEqual(original);
   });
@@ -517,9 +579,9 @@ describe('scene workspace actual editing and autosave', () => {
     );
     await wrapper.find('[data-phase="conflict"] button').trigger('click');
     await flushPromises();
-    expect(wrapper.get('.conflict pre').text()).toBe('其他用户的新内容');
+    expect(wrapper.get('.conflict-content').text()).toBe('其他用户的新内容');
     expect(api.saveScene).toHaveBeenCalledTimes(1);
-    await wrapper.findAll('.conflict button')[1]?.trigger('click');
+    await button('保留本地并重新保存', wrapper.element).trigger('click');
     await flushPromises();
     expect(api.saveScene.mock.calls[1]?.[1]).toMatchObject({
       expectedRevision: 5,
@@ -563,10 +625,12 @@ describe('scene workspace actual editing and autosave', () => {
     expect(
       wrapper.get('textarea[aria-label="提示词"]').attributes('readonly'),
     ).toBeDefined();
-    await wrapper.get('header > button').trigger('click');
+    wrapper
+      .getComponent(ElPopconfirm)
+      .vm.$emit('confirm', new MouseEvent('click'));
     await flushPromises();
     expect(api.setSceneEnabled).toHaveBeenCalledOnce();
     expect(api.saveScene).not.toHaveBeenCalled();
-    expect(wrapper.get('header > button').text()).toBe('启用场景');
+    expect(button('启用场景', wrapper.element).exists()).toBe(true);
   });
 });
