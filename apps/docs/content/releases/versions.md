@@ -4,7 +4,7 @@
 
 ## 静态站点发布与应用版本
 
-已发布 Pages 入口为[后台静态演示](https://beidaomitu233.github.io/xinghui-admin-vue3/)与[文档](https://beidaomitu233.github.io/xinghui-admin-vue3/docs/)，公开首页已核对部署产物。后续部署结果按[公开仓库 Actions](https://github.com/beidaomitu233/xinghui-admin-vue3/actions)及实际HTTP确认。公开仓库现在同时承载前端源码和审核后的 `site/`；演示仍使用浏览器本地数据，不运行真实后端/供应商。源码更新不自动重建或部署静态快照，本次文档同步也不修改既有 `site/`。
+已发布 Pages 入口为[后台静态演示](https://beidaomitu233.github.io/xinghui-admin-vue3/)与[文档](https://beidaomitu233.github.io/xinghui-admin-vue3/docs/)。公开仓库同时承载前端源码和审核后的 `site/`；源码更新不自动重建静态产物。2026-10-17 一期更新重新构建演示与本套文档，展示 AI 独立一级导航及只读虚构示例；模型调用、测试、审批和发布不会在静态站运行。部署结果以[公开仓库 Actions](https://github.com/beidaomitu233/xinghui-admin-vue3/actions)和实际HTTP为准。
 
 静态站点部署提交与下面的应用教程基线分别记录，不能把 demo SHA 当后端版本。Pages 工作流通过不代表应用质量 CI、数据库容器矩阵或正式后端发行通过。
 
