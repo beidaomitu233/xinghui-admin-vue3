@@ -439,6 +439,7 @@ async function generateSql() {
     (!props.configured && !props.initialModel)
   )
     return;
+  const retrying = Boolean(pendingStart);
   pendingStart ??= {
     sceneKey: props.sceneKey,
     expectedSceneRevision: props.revision,
@@ -454,7 +455,7 @@ async function generateSql() {
   const run = generation;
   const actor = identity.value;
   requestIdentity = actor;
-  generatedAgainst = fingerprint.value;
+  if (!retrying) generatedAgainst = fingerprint.value;
   generationBusy.value = true;
   error.value = '';
   notice.value = '';

@@ -14,6 +14,8 @@ const emit = defineEmits<{ 'update:modelValue': [value: string] }>();
 const input = ref<HTMLTextAreaElement>();
 const mirror = ref<HTMLPreElement>();
 const value = ref(props.modelValue);
+// v-model's native composition guard owns the DOM draft; history tracks accepted text.
+const nativeDraft = ref(props.modelValue);
 const composing = ref(false);
 const segments = computed(() => promptSegments(value.value, props.variables));
 interface Snapshot {
@@ -56,6 +58,7 @@ function commit(kind: string, group = true) {
   if (!element) return;
   if (props.readonly) {
     element.value = value.value;
+    nativeDraft.value = value.value;
     return;
   }
   if (element.value === value.value) return;
@@ -89,6 +92,7 @@ function commit(kind: string, group = true) {
   lastInput = kind;
   lastTime = now;
   value.value = snapshot.value;
+  nativeDraft.value = snapshot.value;
   emit('update:modelValue', snapshot.value);
   void nextTick(syncScroll);
 }
@@ -110,6 +114,7 @@ async function restore(direction: number) {
   position = target;
   lastInput = '';
   value.value = snapshot.value;
+  nativeDraft.value = snapshot.value;
   emit('update:modelValue', snapshot.value);
   await nextTick();
   input.value?.setSelectionRange(snapshot.start, snapshot.end);
@@ -167,6 +172,7 @@ watch(
   (next) => {
     if (next === value.value || composing.value) return;
     value.value = next;
+    nativeDraft.value = next;
     history = [{ value: next, start: 0, end: 0 }];
     position = 0;
     lastInput = '';
@@ -186,7 +192,7 @@ defineExpose({ insertVariable });
     ><template v-for="(segment, index) in segments" :key="index"><span :class="{ 'prompt-token': segment.variable, 'is-unknown': segment.variable && !segment.known }">{{ segment.text }}</span></template>{{ '\n' }}</pre>
     <textarea
       ref="input"
-      :value="value"
+      v-model="nativeDraft"
       :readonly="readonly"
       class="prompt-input"
       aria-label="提示词"

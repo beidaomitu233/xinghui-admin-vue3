@@ -13,6 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { button } from '#/test-utils/element-controls';
 
 import DataReferenceTable from './DataReferenceTable.vue';
+import PromptEditor from './PromptEditor.vue';
 import SceneWorkspace from './SceneWorkspace.vue';
 
 const api = vi.hoisted(() => ({
@@ -171,6 +172,51 @@ afterEach(() => {
 });
 
 describe('scene workspace actual editing and autosave', () => {
+  it.each([false, true])(
+    'refreshes model metadata on KeepAlive return while preserving the correct body and CAS base (dirty=%s)',
+    async (dirty) => {
+      const shown = ref(true);
+      const wrapper = mount({
+        setup: () => () =>
+          h(KeepAlive, () => (shown.value ? h(SceneWorkspace) : h('div'))),
+      });
+      wrappers.push(wrapper);
+      await flushPromises();
+      await wrapper.get('.scene-item').trigger('click');
+      await flushPromises();
+      if (dirty)
+        await wrapper
+          .get('textarea[aria-label="提示词"]')
+          .setValue('本地未保存正文');
+      const remote = definition('first');
+      remote.promptText = '服务端新正文';
+      remote.modelPolicy.models = remote.modelPolicy.models.map((binding) => ({
+        ...binding,
+        model: { modelRef: '9', configVersion: '10' },
+      }));
+      api.getScene.mockResolvedValue(detail('first', 9, remote));
+      api.sceneModels.mockClear();
+      shown.value = false;
+      await flushPromises();
+      shown.value = true;
+      await flushPromises();
+      const editor = wrapper.getComponent(PromptEditor);
+      expect(api.sceneModels).toHaveBeenCalledTimes(1);
+      expect(editor.props('routingOverview')).toEqual(remote.modelPolicy);
+      expect(editor.props('value').promptText).toBe(
+        dirty ? '本地未保存正文' : '服务端新正文',
+      );
+      await wrapper.get('textarea[aria-label="提示词"]').setValue('继续编辑');
+      await vi.advanceTimersByTimeAsync(600);
+      await flushPromises();
+      expect(api.saveScene.mock.calls[0]?.[1].expectedRevision).toBe(
+        dirty ? 1 : 9,
+      );
+      expect(
+        api.saveScene.mock.calls[0]?.[1].definition.modelPolicy,
+      ).toBeUndefined();
+    },
+  );
   it('shows descriptive references and removes main-page preview, refresh and enable controls', async () => {
     const value = {
       ...definition('first'),

@@ -326,9 +326,16 @@ describe('bounded SQL reference assistant', () => {
     await generate();
     const original = api.start.mock.calls[0]?.[0];
     expect(document.body.textContent).toContain('受理未确认');
+    await manualQuery();
+    const edited = 'SELECT amount FROM orders_view WHERE amount > :minimum';
+    await fill('只读 SQL', edited);
     await click('重试原生成请求');
     expect(api.start.mock.calls[1]?.[0]).toEqual(original);
     expect(api.start).toHaveBeenCalledTimes(2);
+    expect(
+      document.querySelector<HTMLTextAreaElement>('[aria-label="只读 SQL"]')
+        ?.value,
+    ).toBe(edited);
   });
   it('cancels the original generated request and confirms the terminal state by polling without trial execution', async () => {
     api.poll

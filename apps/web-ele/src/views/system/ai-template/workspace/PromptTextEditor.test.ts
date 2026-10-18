@@ -56,13 +56,21 @@ describe('plain-text prompt editor with safe variable highlighting', () => {
     const input = wrapper.get('textarea');
     input.element.setSelectionRange(1, 1);
     await input.trigger('compositionstart');
-    await input.setValue('甲客乙');
+    input.element.value = '甲客乙';
+    await input.trigger('input', {
+      inputType: 'insertCompositionText',
+      isComposing: true,
+    });
     input.element.setSelectionRange(2, 2);
     await input.trigger('beforeinput', {
       inputType: 'insertCompositionText',
       isComposing: true,
     });
-    await input.setValue('甲客户甲乙');
+    input.element.value = '甲客户甲乙';
+    await input.trigger('input', {
+      inputType: 'insertCompositionText',
+      isComposing: true,
+    });
     input.element.setSelectionRange(4, 4);
     expect(wrapper.classes()).toContain('is-composing');
     expect(wrapper.emitted('update:modelValue')).toBeUndefined();
@@ -71,6 +79,47 @@ describe('plain-text prompt editor with safe variable highlighting', () => {
     expect(wrapper.classes()).not.toContain('is-composing');
     expect(wrapper.emitted('update:modelValue')).toEqual([['甲客户甲乙']]);
     await input.trigger('keydown', { key: 'z', ctrlKey: true });
+    expect(input.element.value).toBe('甲乙');
+    expect(input.element.selectionStart).toBe(1);
+    wrapper.unmount();
+  });
+  it('preserves the live IME draft and selection during an asynchronous variable metadata rerender', async () => {
+    const wrapper = render('甲乙');
+    const input = wrapper.get('textarea');
+    input.element.setSelectionRange(1, 1);
+    await input.trigger('compositionstart');
+    input.element.value = '甲客乙';
+    input.element.setSelectionRange(2, 2);
+    await input.trigger('input', {
+      inputType: 'insertCompositionText',
+      isComposing: true,
+    });
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined();
+    await Promise.resolve();
+    await wrapper.setProps({
+      readonly: false,
+      variables: [
+        { name: 'order', label: '更新后的订单说明' },
+        { name: 'customer', label: '新读取的客户说明' },
+      ],
+    });
+    expect(input.element.value).toBe('甲客乙');
+    expect(input.element.selectionStart).toBe(2);
+    expect(input.element.selectionEnd).toBe(2);
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined();
+    input.element.value = '甲客户乙';
+    input.element.setSelectionRange(3, 3);
+    await input.trigger('input', {
+      inputType: 'insertCompositionText',
+      isComposing: true,
+    });
+    await input.trigger('compositionend');
+    await input.trigger('input', { inputType: 'insertText' });
+    expect(input.element.value).toBe('甲客户乙');
+    expect(input.element.selectionStart).toBe(3);
+    expect(wrapper.emitted('update:modelValue')).toEqual([['甲客户乙']]);
+    await input.trigger('keydown', { key: 'z', ctrlKey: true });
+    await flushPromises();
     expect(input.element.value).toBe('甲乙');
     expect(input.element.selectionStart).toBe(1);
     wrapper.unmount();
