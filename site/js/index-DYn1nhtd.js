@@ -1,0 +1,1 @@
+import{c as o}from"./index-9pB5Q9uW.js";import"./load-D9YNru0E.js";const g=o("svg:download"),n=o("svg:card"),a=o("svg:bell"),t=o("svg:cake"),v=o("svg:github"),e=o("svg:google"),I=o("svg:qqchat"),S=o("svg:wechat"),i=o("svg:dingding");export{n as S,t as a,g as b,a as c,i as d,S as e,I as f,v as g,e as h};
