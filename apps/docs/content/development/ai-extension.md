@@ -22,7 +22,7 @@ Definition保留dataBindings兼容，并增加sqlBindings。旧dataObjects继续
 
 设置保存可传规范UUID clientMutationId，在主体/租户范围防止结果未知时重复创建；同内容重放返回当前可读配置，内容改变409。只修改名称不产生新连接测试；更换Key或模型保留原active，pendingChanges明确新内容待测。当前使用的模型必须有合法验证关联才能维护执行指针，受限旧场景无法安全维护时保留原连接并给出原因。
 
-`AiProviderPresets`是设置、聊天适配器与扫描共同的官方地址白名单。Preset提供code/name/chatEndpoint/modelsEndpoint/publicModelsEndpoint/suggestedModels，require(code,chatEndpoint)核对完全相同的官方地址；当前只有OpenRouter和DeepSeek，不接受任意兼容URL或以建议模型代替实时目录。
+`AiProviderPresets`是设置、聊天适配器与扫描共同的官方地址白名单。Preset提供code/name/chatEndpoint/modelsEndpoint/publicModelsEndpoint/suggestedModels，require(code,chatEndpoint)核对完全相同的官方地址；支持OpenRouter、DeepSeek、OpenAI及SiliconFlow，不接受任意兼容URL或以建议模型代替实时目录。自定义地址尚缺安全DNS固定传输，不显示为可用接入。
 
 AiConfiguredProviderRuntime只提供仍启用、关联匹配且证明有效的目标；失效Key材料不会被后续候选重新取回。AiRequestExecutor按场景允许的模型/渠道顺序，先消耗当前模型合格Key，再尝试下一候选。预算依据实际剩余目标数分配，总maxAttempts、deadline和token不因切换重置；仅一个目标时不预留不存在的备用份额。网络错误、408/504、429及可重试供应商错误在没有输出时可继续；实际取消、授权/内容拒绝及非重试错误终止。
 
@@ -42,7 +42,9 @@ AiConfiguredProviderRuntime只提供仍启用、关联匹配且证明有效的�
 
 首次配置可走POST `/system/ai/model-catalog/draft-scan`，输入provider/apiKey后先扫描再选模型，避免保存必须先有模型的循环。DraftScan.apiKey为WRITE_ONLY、toString为REDACTED，原始JSON有16KiB、深度、未知/重复字段和尾随内容限制；明文仅本次内存使用，不进入默认操作日志、数据库、浏览器持久化或响应。仅有add/edit/test动作可草稿扫描，不因此取得配置query权限；已保存Key扫描独立要求test。
 
-AiModelCatalogTransport只对共享预设发GET，区分OpenRouter公共/models和认证/models/user、DeepSeek认证/models，后两者都不发推理请求。生产固定HTTPS、公网地址检查、禁止重定向，并复用运维代理配置；本地测试接缝只允许127.0.0.1随机端口，不注册生产mock。请求总限时15秒，响应4MiB、最多5000模型、并发4及有界DNS队列。
+AiModelCatalogTransport只对共享预设发GET，区分OpenRouter公共/models和认证/models/user、DeepSeek/OpenAI认证/models及SiliconFlow聊天目录；扫描均不发推理请求。生产固定HTTPS、公网地址检查、禁止重定向，并复用运维代理配置；本地测试接缝只允许127.0.0.1随机端口，不注册生产mock。请求总限时15秒，响应4MiB、最多5000模型、并发4及有界DNS队列。
+
+扫描生成绑定当前主体、供应商、规范端点与凭据指纹的票据。已存Key扫描自动持久化；草稿票据在实际Key保存后以configId/keyId/revision明确附着，不能冒用其他用户或其他材料。持久结果不保存明文Key，读取不再次访问上游；换Key或端点后来源标记STALE。未附着票据24小时失效，已附着目录保留来源、扫描时间和目录URL，仍不构成推理成功证明。
 
 响应仅白名单可读名称、代码、上下文/输出上限、模态及声明参数；搜索分页在本次有界目录内完成，不混用其他Key缓存。source/refreshedAt明确目录来源与时间，generationVerified始终false。OpenRouter用户目录仅按服务端用户偏好/隐私/防护规则过滤，不证明余额和实际调用可用；DeepSeek可选元数据缺失时保留未知。上游401/403转为502加固定安全分类，避免触发本系统重新登录；原始错误、Key和异常原因不出响应。精确DTO、权限和错误见[模型扫描HTTP](../reference/api-catalog.md#模型目录与-key-扫描)。
 

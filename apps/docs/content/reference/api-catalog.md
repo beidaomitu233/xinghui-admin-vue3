@@ -898,9 +898,12 @@ Controller为`controller/AiModelCatalogController.java`，Java请求/响应为`a
 | --- | --- | --- |
 | GET `/system/ai/model-catalog` | search/pageNum/pageSize；config:query或model:query | OpenRouter公共Page，不发送Key |
 | POST `/system/ai/model-catalog/scan` | configId/keyId/expectedRevision/search/pageNum/pageSize；config:test或model:test | 已保存当前草稿中选定Key的Page |
-| POST `/system/ai/model-catalog/draft-scan` | provider/apiKey/search/pageNum/pageSize；config:add/edit/test或对应model动作任一 | 未保存Key的Page，可先扫描、选择模型再保存 |
+| POST `/system/ai/model-catalog/draft-scan` | provider/apiKey/可选endpointUrl/search/pageNum/pageSize；config:add/edit/test或对应model动作任一 | 未保存Key的Page，可先扫描、选择模型再保存 |
+| GET `/system/ai/model-catalog/scans/{scanId}` | search/pageNum/pageSize；config:add/edit/test或对应model动作任一 | 本人未过期扫描票据的Page，分页不再提交Key |
+| POST `/system/ai/model-catalog/attach` | configId/keyId/expectedRevision/catalogScanId；config:add/edit/test或对应model动作任一 | 票据绑定实际保存材料后的StoredCatalog |
+| GET `/system/ai/model-catalog/channels/{configId}` | 可选keyId/search/pageNum/pageSize；config:query或model:query | 持久StoredCatalog，不访问上游 |
 
-草稿扫描`provider`仅openrouter/deepseek，apiKey为WRITE_ONLY且toString脱敏；只在内存用于本次认证，不入库/操作日志或响应。仅接收application/json，正文最多16KiB，严格拒绝未知/重复字段、过深JSON及尾随内容。完整Key最多8192字符，不能包含控制字符；模型扫描不允许指定endpointUrl。保存Key扫描不接收Key材料或keyVersion，只在当前配置草稿内按keyId映射读取；请求前后核对revision，发生更改409，不能把旧Key结果标成新Key结果。
+草稿扫描`provider`为openrouter/deepseek/openai/siliconflow，apiKey为WRITE_ONLY且toString脱敏；只在内存用于本次认证，不入库/操作日志或响应。仅接收application/json，正文最多16KiB，严格拒绝未知/重复字段、过深JSON及尾随内容。完整Key最多8192字符，不能包含控制字符；可选endpointUrl必须等于对应官方规范地址，不能提交任意兼容URL。保存Key扫描不接收Key材料或keyVersion，只在当前配置草稿内按keyId映射读取；请求前后核对revision，发生更改409，不能把旧Key结果标成新Key结果。
 
 pageNum至少1，pageSize为1..100（GET默认1/20，POST显式提供），search可省略、最多128字符；在本次有界目录内按模型名称/代码搜索与分页。Page字段为records/total/pageNum/pageSize/refreshedAt/source/provider/configId/keyId/revision/generationVerified，其中total为整数；records每项为code/name/contextLength/maxCompletionTokens/inputModalities/outputModalities/supportedParameters。未提供的元数据为null或空数组，缺少名称回退code，不猜测工具或JSON能力。
 
@@ -908,9 +911,11 @@ Page另含scannedCount/filteredCount/filterReasons，统计整个上游有界目
 
 contextLength和maxCompletionTokens为可空Java Long，实际REST遵循全局Long序列化规则，以十进制字符串返回，例如`"262144"`；客户端类型需兼容null/字符串及数字形式，不应强制断言为number。scannedCount、filteredCount、total、pageNum和pageSize为int，仍是JSON数字。
 
-source为PUBLIC（无Key OpenRouter公共目录）、USER_FILTERED（OpenRouter带Key）或PROVIDER_KEY（DeepSeek带Key）。公共与草稿扫描的configId/keyId/revision均null，保存Key扫描返回这三项。refreshedAt为本次目录读取完成时间；不缓存跨Key结果，每次重新请求会刷新目录，不承诺分页间快照相同。generationVerified固定false。
+source为PUBLIC（无Key OpenRouter公共目录）、USER_FILTERED（OpenRouter带Key）或PROVIDER_KEY（其他官方带Key）。公共与草稿扫描的configId/keyId/revision均null，保存Key扫描返回这三项。Page另有可选catalogScanId；按票据分页读取相同有界结果，主动scan才刷新上游。generationVerified固定false。
 
-官方端点来自唯一`AiProviderPresets`：OpenRouter公共`GET /api/v1/models`，带Key`GET /api/v1/models/user`；DeepSeek带Key`GET /models`。OpenRouter带Key结果按用户供应商偏好、隐私和防护规则过滤；DeepSeek采用id/name/context_window/max_output_tokens及声明的输入输出模态。目录可选性不保证余额、额度、推理时服务可用或生成成功。依据：[OpenRouter目录](https://openrouter.ai/docs/api/api-reference/models/list-models-filtered-by-user-provider-preferences-privacy-settings-and-guardrails)、[DeepSeek模型列表](https://api-docs.deepseek.com/api/list-models/)。
+StoredCatalog包含configId/revision/provider/endpointUrl/state/catalog/sources。state为NOT_FETCHED/FETCHED/PARTIAL/STALE；每项sources为catalogScanId/keyId/refreshedAt/source/current/scannedCount/filteredCount/filterReasons/catalogEndpoint。current仅表示凭据与端点关联仍当前有效，不等于Key推理通过。已保存扫描自动附着，草稿附着必须匹配主体、规范端点、供应商与凭据指纹；未附着票据24小时有效，Key或端点改变后结果过期。目录持久化不保存Key明文，分页读取不重新提交Key。
+
+官方端点来自唯一`AiProviderPresets`：OpenRouter公共`GET /api/v1/models`，带Key`GET /api/v1/models/user`；DeepSeek带Key`GET /models`，OpenAI带Key`GET /v1/models`，SiliconFlow带Key`GET /v1/models?sub_type=chat`。OpenRouter带Key结果按用户供应商偏好、隐私和防护规则过滤；元数据仅采用服务端明确声明值。目录可选性不保证余额、额度、推理时服务可用或生成成功。
 
 单次出站最多15秒、响应最多4MiB/5000条模型、并发4；仅官方HTTPS固定地址，禁止重定向及调用者URL，沿用公网地址规则与运维代理配置。错误message为固定`AI_MODEL_CATALOG:`前缀，无供应商原始正文/Key/堆栈：400 INVALID_INPUT/KEY_REQUIRED；413 REQUEST_LIMIT；404 KEY_NOT_FOUND；409 CONFIG_CHANGED/CONFIG_UNAVAILABLE；422 PROVIDER_UNSUPPORTED；429 RATE_LIMITED；502 UPSTREAM_UNAUTHORIZED/UPSTREAM_FORBIDDEN/UPSTREAM_FAILED/UPSTREAM_REDIRECT/UPSTREAM_INVALID/RESPONSE_LIMIT；503 CREDENTIAL_UNAVAILABLE/NETWORK_UNAVAILABLE/BUSY；504 TIMEOUT。上游401/403映射502，不能据此清除本系统登录态；本地动作拒绝仍403。扫描Controller失败Result.code为202，权限处理为309，HTTP状态和安全message同时保留。
 
