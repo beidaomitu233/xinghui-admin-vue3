@@ -165,6 +165,13 @@ const selectedChannel = computed(() =>
     (channel) => channel.configId === selectedChannelId.value,
   ),
 );
+const boundModelCount = computed(() => {
+  const channelId = selectedChannel.value?.configId;
+  if (!channelId) return 0;
+  return models.value.filter((model) =>
+    model.routes.some((route) => route.channelId === channelId),
+  ).length;
+});
 const filteredModels = computed(() =>
   models.value.filter((model) =>
     `${model.name} ${model.slug}`
@@ -560,8 +567,9 @@ function saveMetadata(value: ModelMetadata) {
     void saveModel();
     return;
   }
-  if (!/^[a-z0-9][\w.:-]{0,79}$/i.test(value.slug)) {
-    editorError.value = '调用名称只支持字母、数字、点、短横线、下划线和冒号。';
+  if (!/^[a-z0-9][a-z0-9._:-]{0,79}$/.test(value.slug)) {
+    editorError.value =
+      '调用名称只支持小写字母、数字、点、短横线、下划线和冒号。';
     return;
   }
   const model = editingModel.value;
@@ -627,6 +635,10 @@ async function removeModel() {
 }
 function openRoute(routeId = '') {
   if (busy.value || !can('edit')) return;
+  if (!routeId && (selectedModel.value?.routes.length ?? 0) >= 16) {
+    error.value = '每个模型最多配置 16 个供应商接入。';
+    return;
+  }
   const route = selectedModel.value?.routes.find(
     (item) => item.routeId === routeId,
   );
@@ -655,6 +667,17 @@ function saveRoute() {
   }
   const routes = hubModelChange(model).routes;
   const values = { ...routeDraft };
+  if (
+    routes.some(
+      (route) =>
+        route.routeId !== editingRouteId.value &&
+        route.channelId === values.channelId &&
+        route.upstreamModel === values.upstreamModel,
+    )
+  ) {
+    error.value = '当前模型已配置相同渠道与上游模型。';
+    return;
+  }
   const index = routes.findIndex(
     (route) => route.routeId === editingRouteId.value,
   );
@@ -753,7 +776,10 @@ async function pollTest(run = testGeneration) {
   try {
     const result = await getHubModelTest(model.modelId, requestId);
     if (!alive || run !== testGeneration || !testOpen.value) return;
-    if (result.requestId !== requestId) { testError.value = '原测试状态尚未确认，请重新查询。'; return; }
+    if (result.requestId !== requestId) {
+      testError.value = '原测试状态尚未确认，请重新查询。';
+      return;
+    }
     testResult.value = result;
     if (['ACCEPTED', 'QUEUED', 'RUNNING'].includes(result.status)) {
       if (!result.deadline || Date.now() < Date.parse(result.deadline))
@@ -811,15 +837,30 @@ async function cancelTest() {
     if (!alive || run !== testGeneration || !testOpen.value) return;
     if (result.requestId === requestId) testResult.value = result;
     await pollTest(run);
-  } catch { if (alive && run === testGeneration) testError.value = '取消尚未确认，请查询原测试状态。'; }
-  finally { if (alive && run === testGeneration) testBusy.value = false; }
+  } catch {
+    if (alive && run === testGeneration)
+      testError.value = '取消尚未确认，请查询原测试状态。';
+  } finally {
+    if (alive && run === testGeneration) testBusy.value = false;
+  }
 }
 async function closeTest() {
   if (testBusy.value) return false;
   const run = testGeneration;
   if (testUnknown.value) {
-    try { await ElMessageBox.confirm('测试受理尚未确认。关闭不会取消已受理请求，请先保留原请求的查询信息。', '关闭测试', { confirmButtonText: '关闭', cancelButtonText: '继续查询', type: 'warning' }); }
-    catch { return false; }
+    try {
+      await ElMessageBox.confirm(
+        '测试受理尚未确认。关闭不会取消已受理请求，请先保留原请求的查询信息。',
+        '关闭测试',
+        {
+          confirmButtonText: '关闭',
+          cancelButtonText: '继续查询',
+          type: 'warning',
+        },
+      );
+    } catch {
+      return false;
+    }
   }
   if (!alive || run !== testGeneration) return false;
   testGeneration++;
@@ -831,8 +872,19 @@ async function leave() {
   if (saving.value || testBusy.value) return false;
   const actor = identity.value;
   if (unknown.value && !modelEditorOpen.value) {
-    try { await ElMessageBox.confirm('配置保存结果尚未确认，服务端可能已经保存。离开后请重新读取状态。', '离开配置', { confirmButtonText: '离开', cancelButtonText: '留在当前页', type: 'warning' }); }
-    catch { return false; }
+    try {
+      await ElMessageBox.confirm(
+        '配置保存结果尚未确认，服务端可能已经保存。离开后请重新读取状态。',
+        '离开配置',
+        {
+          confirmButtonText: '离开',
+          cancelButtonText: '留在当前页',
+          type: 'warning',
+        },
+      );
+    } catch {
+      return false;
+    }
   }
   if (!alive || actor !== identity.value) return false;
   if (testOpen.value && !(await closeTest())) return false;
@@ -842,7 +894,15 @@ async function leave() {
   return true;
 }
 function beforeUnload(event: BeforeUnloadEvent) {
-  if (saving.value || unknown.value || modelEditor.value?.hasUnsaved() || testUnknown.value) { event.preventDefault(); event.returnValue = ''; }
+  if (
+    saving.value ||
+    unknown.value ||
+    modelEditor.value?.hasUnsaved() ||
+    testUnknown.value
+  ) {
+    event.preventDefault();
+    event.returnValue = '';
+  }
 }
 async function showRouting() {
   if (await leave()) emit('routing');
@@ -876,7 +936,10 @@ watch(identity, () => {
   message.value = '';
   if (can('list')) void load();
 });
-onMounted(() => { window.addEventListener('beforeunload', beforeUnload); void load(); });
+onMounted(() => {
+  window.addEventListener('beforeunload', beforeUnload);
+  void load();
+});
 onBeforeUnmount(() => {
   window.removeEventListener('beforeunload', beforeUnload);
   alive = false;
@@ -1068,13 +1131,7 @@ onBeforeUnmount(() => {
       v-else-if="view === 'suppliers' && selectedChannel"
       :channel="selectedChannel"
       :provider-name="providerName(selectedChannel.provider)"
-      :bound-models="
-        models.filter((model) =>
-          model.routes.some(
-            (route) => route.channelId === selectedChannel.configId,
-          ),
-        ).length
-      "
+      :bound-models="boundModelCount"
       :can-edit="can('edit')"
       :can-enable="can('enable')"
       :can-scan="can('test')"
@@ -1245,10 +1302,14 @@ onBeforeUnmount(() => {
     <p v-if="!testResult" class="hub-dialog-help">
       使用当前模型已保存的供应商顺序与策略进行真实调用。
     </p>
-    <p class="hub-dialog-help">关闭面板不会取消已受理的测试；需要停止时请点击“取消测试”。</p>
+    <p class="hub-dialog-help">
+      关闭面板不会取消已受理的测试；需要停止时请点击“取消测试”。
+    </p>
     <template #footer>
       <ElButton :disabled="testBusy" @click="closeTest">关闭</ElButton>
-      <ElButton v-if="testRunning" :disabled="testBusy" @click="cancelTest">取消测试</ElButton>
+      <ElButton v-if="testRunning" :disabled="testBusy" @click="cancelTest">
+        取消测试
+      </ElButton>
       <ElButton v-if="testResult" :disabled="testBusy" @click="pollTest()">
         查询原状态
       </ElButton>

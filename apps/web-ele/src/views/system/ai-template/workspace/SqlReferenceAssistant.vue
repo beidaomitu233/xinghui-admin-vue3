@@ -54,8 +54,8 @@ import { queryParameterText, readQueryParameters } from './query-parameters';
 
 const props = defineProps<{
   binding?: QueryBinding;
-  configured: boolean;
   businessModel?: null | string;
+  configured: boolean;
   initialModel?: ModelReference | null;
   open: boolean;
   readonly: boolean;
@@ -447,7 +447,9 @@ async function generateSql() {
     description: description.value,
     ...context.value,
     initialModel: props.configured ? null : (props.initialModel ?? null),
-    ...(!props.configured && props.businessModel ? { businessModel: props.businessModel } : {}),
+    ...(!props.configured && props.businessModel
+      ? { businessModel: props.businessModel }
+      : {}),
     expectedSchemaFingerprint: schema.value.fingerprint,
     confirmedCosts: true,
     clientMutationId: crypto.randomUUID(),

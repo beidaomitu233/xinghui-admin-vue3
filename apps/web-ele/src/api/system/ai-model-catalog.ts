@@ -12,7 +12,7 @@ export interface CatalogModel {
   supportedParameters: string[];
 }
 export interface ModelCatalogPage {
-  catalogScanId?: string;
+  catalogScanId?: null | string;
   scannedCount?: number;
   filteredCount?: number;
   filterReasons?: Record<string, number>;
@@ -44,6 +44,7 @@ export interface DraftCatalogScan extends CatalogQuery {
   endpointUrl?: string;
 }
 export interface CatalogSource {
+  catalogEndpoint: string;
   catalogScanId: string;
   keyId: string;
   refreshedAt: string;
@@ -95,9 +96,13 @@ export const attachModelCatalog = (input: {
 }) => requestClient.post<unknown>(`${base}/attach`, input);
 
 const errors: Record<string, string> = {
+  CATALOG_CHANGED: 'Key 或渠道地址已变化，请重新获取目录。',
+  CATALOG_EXPIRED: '扫描票据已过期，请主动重新获取目录。',
   CONFIG_CHANGED: '渠道已更新，请刷新后重新获取目录。',
   CONFIG_UNAVAILABLE: '此渠道暂不可用。',
   CREDENTIAL_UNAVAILABLE: '该 Key 暂不可用，请检查后重试。',
+  ENDPOINT_UNSUPPORTED:
+    '当前仅支持服务商官方预设地址，请恢复官方地址后重新获取。',
   KEY_NOT_FOUND: '此 Key 已变化，请刷新渠道。',
   KEY_REQUIRED: '请先填写 API Key。',
   NETWORK_UNAVAILABLE: '目录服务暂时无法连接。',

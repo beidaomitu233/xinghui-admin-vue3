@@ -178,7 +178,7 @@ function dismissNotice() {
   message.value = '';
 }
 function getCatalog(key: ChannelKeyDraft): KeyCatalog {
-  return (catalogs[key.localId] ??= {
+  return (catalogs[key.localId] ??= reactive<KeyCatalog>({
     error: '',
     generation: 0,
     labels: {},
@@ -192,7 +192,7 @@ function getCatalog(key: ChannelKeyDraft): KeyCatalog {
     source: '',
     status: 'UNSCANNED',
     total: 0,
-  });
+  }));
 }
 function invalidateCatalog(key: ChannelKeyDraft) {
   const previous = getCatalog(key);
@@ -233,6 +233,18 @@ function changeProvider() {
   form.endpointUrl =
     providers.value.find((provider) => provider.code === form.provider)
       ?.defaultEndpoint ?? form.endpointUrl;
+  for (const key of form.keys) {
+    key.apiKey = '';
+    invalidateCatalog(key);
+  }
+}
+function restoreOfficialEndpoint() {
+  if (readonly.value) return;
+  const preset = providers.value.find(
+    (provider) => provider.code === form.provider,
+  );
+  if (!preset) return;
+  form.endpointUrl = preset.defaultEndpoint;
   for (const key of form.keys) {
     key.apiKey = '';
     invalidateCatalog(key);
@@ -662,7 +674,7 @@ async function scanModels(key: ChannelKeyDraft, pageNum = 1) {
     state.page = result.pageNum;
     state.refreshedAt = result.refreshedAt;
     state.source = result.source;
-    state.catalogScanId = result.catalogScanId;
+    state.catalogScanId = result.catalogScanId ?? undefined;
     state.status = 'READY';
   } catch (error_) {
     if (valid() && !controller.signal.aborted) {
@@ -1005,7 +1017,23 @@ defineExpose({ open, requestClose, busy, isOpen: editorOpen });
             </ElSelect>
           </ElFormItem>
         </div>
-        <p class="channel-secondary">服务地址：{{ form.endpointUrl }}</p>
+        <p class="channel-secondary">
+          服务地址：{{ form.endpointUrl }}
+          <ElButton
+            v-if="
+              providers.some(
+                (provider) =>
+                  provider.code === form.provider &&
+                  provider.defaultEndpoint !== form.endpointUrl,
+              )
+            "
+            link
+            :disabled="readonly"
+            @click="restoreOfficialEndpoint"
+          >
+            恢复官方地址
+          </ElButton>
+        </p>
         <div ref="keyArea" class="channel-keys-area">
           <div class="channel-key-heading">
             <div>

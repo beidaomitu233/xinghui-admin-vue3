@@ -314,7 +314,9 @@ beforeEach(() => {
       },
     ],
   });
-  vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue('confirm');
+  vi.spyOn(ElMessageBox, 'confirm').mockImplementation(
+    vi.fn().mockResolvedValue('confirm'),
+  );
 });
 afterEach(async () => {
   wrappers.splice(0).forEach((wrapper) => wrapper.unmount());
@@ -324,6 +326,113 @@ afterEach(async () => {
 });
 
 describe('model-centered AI configuration from the approved prototype', () => {
+  it('cancels only the original accepted test and confirms the backend terminal state', async () => {
+    const running = {
+      requestId: 'request-1',
+      status: 'RUNNING',
+      errorCode: null,
+      attemptCount: 0,
+      deadline: '2099-01-01T00:00:00Z',
+      attempts: [],
+    };
+    const cancelled = { ...running, status: 'CANCELLED' };
+    api.poll.mockResolvedValueOnce(running).mockResolvedValue(cancelled);
+    api.cancelTest.mockResolvedValue(cancelled);
+    const wrapper = await render();
+    await chooseModel(wrapper);
+    await click('测试调用');
+    await click('开始测试');
+    await click('取消测试');
+    expect(api.cancelTest).toHaveBeenCalledWith('business-1', 'request-1');
+    expect(api.startTest).toHaveBeenCalledTimes(1);
+    expect(document.body.textContent).toContain('已取消');
+  });
+  it('keeps the saved call name readonly and preserves genuinely unknown metadata', async () => {
+    api.model.mockResolvedValue({
+      ...model(),
+      capabilities: '',
+      contextWindow: '',
+    });
+    const wrapper = await render();
+    await chooseModel(wrapper);
+    expect(wrapper.text().match(/未提供/g)).toHaveLength(2);
+    await click('编辑模型');
+    expect(
+      document.querySelector<HTMLInputElement>(
+        'input[aria-label="业务模型调用名称"]',
+      )?.readOnly,
+    ).toBe(true);
+    expect(document.body.textContent).toContain('创建后保持稳定');
+    await click('保存设置');
+    expect(api.update.mock.calls[0]?.[1]).toMatchObject({
+      slug: 'customer-chat',
+      capabilities: '',
+      contextWindow: '',
+    });
+  });
+  it('rejects uppercase call names before submitting a new business model', async () => {
+    await render();
+    await click('添加模型');
+    await fill('业务模型名称', '客服');
+    await fill('业务模型调用名称', 'Customer-Chat');
+    await click('创建模型');
+    expect(api.create).not.toHaveBeenCalled();
+    expect(document.body.textContent).toContain('小写字母');
+  });
+  it('uses the server summary for global totals and retains every model beyond the first API page', async () => {
+    const records = Array.from({ length: 21 }, (_, index) => ({
+      ...model(),
+      modelId: `model-${index}`,
+      name: `业务模型${index}`,
+      slug: `business-${index}`,
+    }));
+    api.models.mockImplementation(async ({ pageNum }) => ({
+      records: records.slice((pageNum - 1) * 20, pageNum * 20),
+      total: '21',
+    }));
+    api.summary.mockResolvedValue({
+      totalModels: 21,
+      enabledModels: 21,
+      readyModels: 19,
+      unconfiguredModels: 2,
+      disabledModels: 0,
+      multiProviderModels: 17,
+      assuranceNeededModels: 4,
+      modelLimit: 512,
+      observedAt: '2026-10-18T01:00:00Z',
+    });
+    const wrapper = await render();
+    expect(api.models).toHaveBeenCalledWith({ pageNum: 2, pageSize: 20 });
+    expect(
+      wrapper.get('.overview-metrics button:nth-child(1) strong').text(),
+    ).toBe('19 / 21');
+    expect(wrapper.findAll('.hub-list-item')).toHaveLength(22);
+    expect(wrapper.find('.el-pagination').exists()).toBe(true);
+  });
+  it('rejects duplicate supplier bindings and adding a seventeenth route without sending a write', async () => {
+    const wrapper = await render();
+    await chooseModel(wrapper);
+    await click('添加供应商');
+    await selectValue(wrapper, '业务模型接入渠道', '101');
+    await selectValue(wrapper, '供应商上游模型', 'openrouter/upstream-a');
+    await click('保存配置');
+    expect(api.update).not.toHaveBeenCalled();
+    expect(document.body.textContent).toContain('相同渠道与上游模型');
+    await click('取消');
+    const first = model().routes[0];
+    if (!first) throw new Error('Missing route fixture');
+    api.model.mockResolvedValue({
+      ...model(),
+      routes: Array.from({ length: 16 }, (_, index) => ({
+        ...first,
+        routeId: `route-${index}`,
+      })),
+    });
+    await chooseModel(wrapper);
+    await click('添加供应商');
+    expect(wrapper.text()).toContain('最多配置 16');
+    expect(api.update).not.toHaveBeenCalled();
+  });
   it('defaults to the model overview and uses server health without calling providers or creating bindings', async () => {
     const wrapper = await render();
     expect(wrapper.text()).toContain('模型汇总');

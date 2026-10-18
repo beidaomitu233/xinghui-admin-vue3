@@ -584,20 +584,33 @@ describe('independent multi-key channel management', () => {
     const wrapper = render();
     await flushPromises();
     await click('编辑');
+    await flushPromises();
     api.savedScan.mockResolvedValueOnce(
       catalog('vendor/first', '主账号目录', 'openrouter', 1, 60),
     );
-    const scans = [...document.querySelectorAll('button')].filter(
-      (button) => button.textContent?.trim() === '获取模型目录',
-    );
-    if (!scans[0] || !scans[1]) throw new Error('Missing key scan buttons');
-    scans[0].click();
+    const firstScan = wrapper
+      .get('section[aria-label="Key 1"]')
+      .findAll('button')
+      .find((button) => button.text() === '获取模型目录');
+    if (!firstScan) throw new Error('Missing first key scan button');
+    expect(firstScan.classes()).not.toContain('is-loading');
+    await firstScan.trigger('click');
     await flushPromises();
+    expect(api.savedScan.mock.calls[0]?.[0]).toMatchObject({
+      keyId: '111',
+      configId: '101',
+      expectedRevision: 7,
+    });
     await selectValue(wrapper, 'Key 1 模型', ['vendor/first']);
     api.savedScan.mockResolvedValueOnce(
       catalog('vendor/second-key', '备用账号目录'),
     );
-    scans[1].click();
+    const secondScan = wrapper
+      .get('section[aria-label="Key 2"]')
+      .findAll('button')
+      .find((button) => button.text() === '获取模型目录');
+    if (!secondScan) throw new Error('Missing second key scan button');
+    await secondScan.trigger('click');
     await flushPromises();
     expect(api.savedScan.mock.calls[1]?.[0]).toMatchObject({
       configId: '101',

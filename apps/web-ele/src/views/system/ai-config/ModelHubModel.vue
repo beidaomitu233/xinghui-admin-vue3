@@ -116,11 +116,11 @@ function changeStrategy(value: unknown) {
     <dl class="model-metadata">
       <div>
         <dt>模型能力</dt>
-        <dd>{{ model.capabilities || '未填写' }}</dd>
+        <dd>{{ model.capabilities || '未提供' }}</dd>
       </div>
       <div>
         <dt>上下文窗口</dt>
-        <dd>{{ model.contextWindow || '未填写' }}</dd>
+        <dd>{{ model.contextWindow || '未提供' }}</dd>
       </div>
       <div>
         <dt>可用供应商</dt>

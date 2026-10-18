@@ -129,4 +129,8 @@ export const getHubModelTest = (modelId: string, requestId: string) =>
   requestClient.get<HubModelTest>(
     `${base}/${encodeURIComponent(modelId)}/tests/${encodeURIComponent(requestId)}`,
   );
-export const cancelHubModelTest = (modelId: string, requestId: string) => requestClient.post<HubModelTest>(`${base}/${encodeURIComponent(modelId)}/tests/${encodeURIComponent(requestId)}/cancel`, {});
+export const cancelHubModelTest = (modelId: string, requestId: string) =>
+  requestClient.post<HubModelTest>(
+    `${base}/${encodeURIComponent(modelId)}/tests/${encodeURIComponent(requestId)}/cancel`,
+    {},
+  );
