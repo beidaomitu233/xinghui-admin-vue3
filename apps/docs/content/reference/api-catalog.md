@@ -938,6 +938,55 @@ Definition新增同型dataBindings，并映射EditorInput.bindings；CompiledSce
 
 通用目录排除认证/凭据/配置等基础设施和秘密字段；JSON/\_json列递归过滤秘密键。已知业务动作、实际tenant与软删条件继续执行。单列FK可直接发现，复合FK不按单列冒充；无可读主键的表仅支持有界TABLE。详细接缝见[数据绑定扩展](../development/ai-extension.md)。
 
+### 业务模型中心
+
+以下接口前缀为`/system/ai/settings/model-hub/models`，均要求平台身份，动作权限独立核对；不会开放给租户编辑。
+
+| 方法与相对路径 | 动作权限 | 请求与结果 |
+| --- | --- | --- |
+| GET `/` | ai:config:query | pageNum/pageSize/search；真实Page分页，total为字符串 |
+| GET `/summary` | ai:config:query | 全量有界配置汇总，含模型总数、启用/就绪/停用、多供应商保障及observedAt；非实时网络探测 |
+| GET `/{id}` | ai:config:query | Model及安全的routes/health |
+| POST `/` | ai:config:add | Change；创建，启用还需enable |
+| PUT `/{id}` | ai:config:edit | Change+expectedRevision；CAS及主体内mutation幂等 |
+| POST `/{id}/enabled` | ai:config:enable | expectedRevision/clientMutationId/enabled |
+| DELETE `/{id}` | ai:config:edit | expectedRevision；当前场景引用返回409 |
+| POST `/{id}/tests` | ai:config:test | expectedRevision/clientMutationId/confirmedCosts:true；202真实TestView |
+| GET `/{id}/tests/{requestId}` | ai:config:test | 本人/租户专属TestView与真实attempts，不授予普通对话读取权 |
+| POST `/{id}/tests/{requestId}/cancel` | ai:config:test | 空JSON；取消原请求，重复操作与已结束状态稳定，不产生新调用 |
+
+Change含name、slug、capabilities、contextWindow、enabled、strategy（PRIORITY/ROUND_ROBIN）、fallback、routes及clientMutationId；route含routeId、channelId、upstreamModel、enabled。能力与上下文说明可空，不猜供应商规格；slug创建后稳定，当前最多512个未删除业务模型，每模型最多16个绑定。上游必须是该渠道实际配置的关联；纯目录元数据不会自动获得执行资格。
+
+TestView含requestId/status/errorCode/attemptCount/deadline/attempts；每次尝试含number、providerCode、upstreamModel、status、errorCode、switchReason和elapsedMs。未知字段保持null，不含Key、隐藏提示词或供应商原始正文。生成请求费用需显式确认，受理不等于成功。
+
+Definition新增可空businessModel（稳定slug），新场景选择时与initialModel/modelPolicy互斥；已配置场景正文缺省保持原选择，更换仍走scene-routes。旧固定Key路线不自动迁移。SQL助手未配置场景可选businessModel替代initialModel，已有场景不接受临时改路由；业务模型在每个新请求准入时冻结，执行与历史不随编辑改变。
+
+### 提示词查询助手与独立路由
+
+以下路径分别来自后端`ai/query/SceneQueryController`、`ai/scene/SqlAssistanceController`和`ai/scene/SceneRoutingController`。SQL入口是受控业务数据集查询，不向用户开放数据库连接或权限登记。
+
+| 方法 | 后端路径 | 权限与边界 | 请求与返回 |
+| --- | --- | --- | --- |
+| GET | `/system/ai/scene-data/sql/catalog` | scene query/add/edit/test/invoke任一；目录再按实际业务政策过滤 | keyword/pageNum/pageSize；Page&lt;DatasetOption&gt; |
+| POST | `/system/ai/scene-data/sql/schema` | 同上，datasetKeys只缩小已有权限 | QueryContext；AuthorizedSchema |
+| POST | `/system/ai/scene-data/sql/validate` | 同上；仅语法、权限元数据检查，不读样本 | QueryRequest；SqlValidation |
+| POST | `/system/ai/scene-data/sql/preview` | 同上；每来源强制租户/个人政策与软删除，数据库强制只读 | QueryRequest；QueryResult |
+| POST | `/ai/scenes/sql-assistance` | 平台+scene:test及scene:add/edit任一 | Start；202 Accepted |
+| GET | `/ai/scenes/sql-assistance/{requestId}` | 同上+本人/租户及当前数据授权 | View；仅SUCCEEDED公开审核后的query |
+| POST | `/ai/scenes/sql-assistance/{requestId}/cancel` | 同上；不产生新模型调用 | 空JSON；View |
+| GET | `/system/ai/settings/scene-routes/{sceneKey}` | 平台+config:query+scene:query | View，含revision/currentVersionId/modelPolicy |
+| PUT | `/system/ai/settings/scene-routes/{sceneKey}` | 平台+config:edit+scene:edit，共用场景CAS | expectedRevision/clientMutationId/modelPolicy；Saved |
+
+本表省略的权限前缀均为`ai:`，例如scene:query即`ai:scene:query`。低代码数据仍要求`lowcode:record:list/query`；泛用数据库数据集还需要平台身份和`ai:data:database:read`，不能以scene权限替代。服务端登记的租户或个人业务政策只开放相应数据集。
+
+QueryContext为datasetKeys/businessRef，QueryRequest在此基础上增加query。SqlQuery包含sql（最多16000字符）、parameters（最多32个业务参数）和maxRows（1–200）。当前用户/租户/记录保留参数由服务端绑定，客户端同名值拒绝。SQL请求最多64KiB，返回值不缓存；只读试查最多256KiB和10秒。无效SQL不能直接进入JDBC，数据库强制只读失败会停止查询。
+
+AuthorizedSchema含datasets、supportedSyntax、trustedParameters、scopeDescription和fingerprint；DatasetOption给出可读名称及范围，具体schema增加columns及schemaFingerprint。SqlValidation返回valid/normalizedSql/columns/diagnostics/schemaFingerprint/currentRecordDatasetKey/usedDatasetKeys，最后一项来自实际AST依赖，供保存和说明缩小到真正使用的来源。动态当前记录查询可先静态校验，不以缺少样本记录假装取数成功；实际read才核对业务记录。QueryResult为columns/rows/rowCount/truncated/notices；rows中的数值以精确字符串返回，SQL类型由columns说明，null及布尔值保留。参数中的精确数值采用`{"$number":"9007199254740993123"}`，不能先转为JavaScript Number。
+
+SQL辅助Start为sceneKey/expectedSceneRevision/description/datasetKeys/businessRef/initialModel/expectedSchemaFingerprint/confirmedCosts/clientMutationId/maxRows。已有场景使用完整现有路由，initialModel仅用于未配置场景。Accepted为requestId/status/scopeDescription/schemaFingerprint，View另含query、diagnostics、errorCode和deadline。状态为QUEUED/RUNNING/VALIDATING/SUCCEEDED/FAILED/CANCELLED/TIMED_OUT/INCOMPLETE；生成不会执行SQL或保存引用，不通过普通SSE公开原始模型输出。
+
+语法诊断使用QueryIssue固定枚举；鉴权403、静态定义变化409、执行非法语法422、内容类型415、体积413、查询超时504、强制只读不可用503。不要将模型生成成功、HTTP202受理或静态valid当成业务数据查询成功。
+
 ## 场景工作区与直接保存接口
 
 本节描述一期工作区改造合同，精确源码与验证边界见[版本组合](../releases/versions.md)。sceneKey由服务端生成，sceneVersionId为不可变执行版本，均与旧appId不同；所有ID及分页total为字符串。旧版接口在下一节按原源码保留，不能把旧发布操作当作新场景的保存前置。

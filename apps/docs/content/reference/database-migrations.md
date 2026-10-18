@@ -58,6 +58,9 @@ V130 曾建立网站内容表；V140 已退役这些表/菜单。应保留历史
 | `V20261018_243__settings_key_rotation_receipt.sql` | 增加Key更换的内部执行维护回执，不存明文凭据 |
 | `V20261018_244__restore_standalone_ai_configuration.sql` | 恢复独立AI配置二级菜单与原组件，保留原页面/动作关联和操作者停用状态，不增加角色API或数据授权 |
 | `V20261018_245__ai_key_health.sql` | 按不可变Key版本记录失效隔离状态，并保存设置mutation的主体范围与带密钥指纹；不存提交正文或Key |
+| `V20261018_247__sql_assistance_safe_results.sql` | 查询助手请求、安全状态与已校验SQL；不持久化隐藏系统提示词、原始供应商输出或查询结果 |
+| `V20261018_248__business_model_hub.sql` | 独立业务模型、主体内mutation幂等及每请求冻结的具体调用策略；不改写旧场景Key限制 |
+| `V20261018_249__ai_channel_catalog_receipts.sql` | 扫描元数据票据与渠道Key绑定，保存来源/时间和凭据HMAC，不复制Key或密文；未挂票据按时清理 |
 
 数据绑定和模型扫描不另建业务表或凭据库；本轮没有V241或V246脚本需求，不手工补号。按实际目标分支逐条核对迁移，不以历史总数或某个文件存在代替迁移成功。Key密文仍依赖原CONFIG_MASTER_KEY，升级时必须保留该值；隔离Key应通过修复与正常连接测试恢复，不直接删状态来绕过验证。
 
