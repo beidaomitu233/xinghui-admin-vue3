@@ -1,0 +1,1 @@
+import t from"./ConversationWorkspace-DGlentz5.js";import{l as n,n as i,E as o}from"../jse/index-index-u9g3MsT4.js";const c=n({__name:"MonitorWorkspace",props:{initialKeySettings:{type:Boolean}},setup(e){return(s,a)=>(i(),o(t,{"initial-key-settings":e.initialKeySettings},null,8,["initial-key-settings"]))}});export{c as _};

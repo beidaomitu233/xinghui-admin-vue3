@@ -8,6 +8,7 @@ import type {
   ConfigurationVersion,
 } from '../api/system/ai-configuration';
 import type { ConversationSummary } from '../api/system/ai-conversation';
+import type { HubModel } from '../api/system/ai-model-hub';
 import type {
   RequestLogDetail,
   RequestLogRow,
@@ -32,6 +33,26 @@ export const AI_DEMO_IDS = {
   request: '9100000000000000501',
 };
 const time = '2026-10-16 09:00:00';
+const hubModel: HubModel = {
+  modelId: 'fictional-business-model',
+  revision: 1,
+  name: '[虚构只读] 演示业务模型',
+  slug: 'fictional-demo-chat',
+  capabilities: '虚构布局示例',
+  contextWindow: '未连接',
+  enabled: false,
+  strategy: 'PRIORITY',
+  fallback: true,
+  routes: [],
+  health: {
+    ready: false,
+    readyRoutes: 0,
+    distinctProviders: 0,
+    multiProviderProtected: false,
+    reasons: [],
+  },
+  updatedAt: '2026-10-16T01:00:00Z',
+};
 const conversation: ConversationSummary = {
   conversationId: 'fictional-conversation',
   title: '[虚构只读] 订单分析对话',
@@ -107,7 +128,20 @@ const scene: SceneDetail = {
     name: '[虚构只读] 记录摘要场景',
     purpose: '静态布局示例，不保存或执行',
     promptText:
-      '这是虚构提示词。静态演示不会自动保存、读取业务数据或调用模型。',
+      '这是虚构提示词。结合 {{demo_order_summary:订单汇总示例}} 回答 {{user_request:用户要求}}。静态演示不会保存、读取业务数据或调用模型。',
+    sqlBindings: [
+      {
+        variable: 'demo_order_summary',
+        label: '订单汇总示例',
+        description: '虚构只读示例：按地区汇总订单金额，不连接数据库。',
+        datasetKeys: [],
+        query: {
+          sql: 'SELECT region_name, SUM(order_amount) AS total_amount FROM demo_orders GROUP BY region_name',
+          parameters: {},
+          maxRows: 20,
+        },
+      },
+    ],
     outputRequirement: '',
     dataObjects: [],
     modelPolicy: {
@@ -403,6 +437,60 @@ export function readOnlyAiDemo(
         params,
       ),
     );
+  if (path === '/system/ai/settings/model-hub/models')
+    return send(
+      paged(
+        [hubModel].filter(
+          (model) =>
+            !params.search ||
+            `${model.name} ${model.slug}`.includes(String(params.search)),
+        ),
+        params,
+      ),
+    );
+  if (path === '/system/ai/settings/model-hub/models/summary')
+    return send({
+      totalModels: 1,
+      enabledModels: 0,
+      readyModels: 0,
+      unconfiguredModels: 0,
+      disabledModels: 1,
+      multiProviderModels: 0,
+      assuranceNeededModels: 0,
+      modelLimit: 512,
+      observedAt: '2026-10-16T01:00:00Z',
+    });
+  if (path === `/system/ai/settings/model-hub/models/${hubModel.modelId}`)
+    return send(hubModel);
+  if (path === `/system/ai/model-catalog/channels/${settings.configId}`)
+    return send({
+      configId: settings.configId,
+      revision: settings.revision,
+      provider: settings.provider,
+      endpointUrl: settings.endpointUrl,
+      state: 'NOT_FETCHED',
+      sources: [],
+      catalog: {
+        configId: settings.configId,
+        keyId: null,
+        revision: settings.revision,
+        provider: settings.provider,
+        records: [],
+        total: 0,
+        pageNum: Number(params.pageNum ?? 1),
+        pageSize: Number(params.pageSize ?? 20),
+        generationVerified: false,
+        refreshedAt: '',
+        source: 'PUBLIC',
+      },
+    });
+  if (path === `/system/ai/settings/scene-routes/${scene.scene.sceneKey}`)
+    return send({
+      sceneKey: scene.scene.sceneKey,
+      revision: scene.scene.revision,
+      currentVersionId: null,
+      modelPolicy: null,
+    });
   if (path === `/system/ai/settings/${settings.configId}`)
     return send(settings);
   if (path === '/ai/scenes/record-summary') return send(null);

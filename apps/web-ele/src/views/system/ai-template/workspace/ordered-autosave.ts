@@ -64,6 +64,7 @@ interface Options<T> {
   equal: (left: T, right: T) => boolean;
   mutationId: () => string;
   persist: (command: SaveCommand<T>) => Promise<SaveAcknowledgement<T>>;
+  reconcile?: (local: T, confirmed: T) => T;
   validate?: (value: T) => Record<string, string>;
 }
 
@@ -316,6 +317,8 @@ export class OrderedSceneAutosave<T> {
     e.error = null;
     if (e.generation === pending.generation)
       e.value = this.options.clone(ack.value);
+    else if (this.options.reconcile)
+      e.value = this.options.reconcile(e.value, this.options.clone(ack.value));
     if (!e.editable) {
       e.phase = 'readonly';
       this.notify(sceneKey);

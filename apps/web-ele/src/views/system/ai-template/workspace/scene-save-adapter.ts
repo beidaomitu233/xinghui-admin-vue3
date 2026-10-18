@@ -1,7 +1,11 @@
 import type { SaveCommand } from './ordered-autosave';
 
 import type { DatabaseValue, DataBinding } from '#/api/system/ai-database';
-import type { SceneDefinition, SceneSaveResult } from '#/api/system/ai-scene';
+import type {
+  SceneDefinition,
+  SceneEditableDefinition,
+  SceneSaveResult,
+} from '#/api/system/ai-scene';
 
 import { saveScene } from '#/api/system/ai-scene';
 
@@ -42,6 +46,23 @@ export function cloneDataBinding(binding: DataBinding): DataBinding {
 export function cloneScene(value: SceneDefinition): SceneDefinition {
   return {
     ...value,
+    ...(value.sqlBindings
+      ? {
+          sqlBindings: value.sqlBindings.map((binding) => ({
+            ...binding,
+            datasetKeys: [...binding.datasetKeys],
+            query: {
+              ...binding.query,
+              parameters: Object.fromEntries(
+                Object.entries(binding.query.parameters).map(([key, item]) => [
+                  key,
+                  cloneData(item),
+                ]),
+              ),
+            },
+          })),
+        }
+      : {}),
     ...(value.dataBindings
       ? {
           dataBindings: value.dataBindings.map((binding) =>
@@ -88,7 +109,7 @@ export function sceneSaveProblem(error: unknown) {
           typeof path === 'string' ? path.replace(/^definition\./, '') : path;
         if (
           typeof name === 'string' &&
-          /^(?:name|purpose|promptText|outputRequirement|dataObjects|dataBindings|modelPolicy)(?:\.\w+|\[\d{1,3}\])*$/.test(
+          /^(?:name|purpose|promptText|outputRequirement|dataObjects|dataBindings|sqlBindings|initialModel|businessModel|modelPolicy)(?:\.\w+|\[\d{1,3}\])*$/.test(
             name,
           )
         ) {
@@ -98,6 +119,9 @@ export function sceneSaveProblem(error: unknown) {
             purpose: '用途',
             promptText: '提示词',
             outputRequirement: '输出规则',
+            sqlBindings: '查询引用',
+            initialModel: '使用模型',
+            businessModel: '使用模型',
             dataObjects: '数据对象或允许字段',
             dataBindings: '数据库引用',
             modelPolicy: '模型及调用设置',
@@ -119,10 +143,14 @@ export async function persistScene(
   confirmedLegacyConversion = false,
 ) {
   try {
+    const definition: SceneEditableDefinition = { ...command.value };
+    delete definition.modelPolicy;
+    if (definition.businessModel || !definition.initialModel)
+      delete definition.initialModel;
     const result = await saveScene(command.sceneKey, {
       clientMutationId: command.clientMutationId,
       confirmedLegacyConversion,
-      definition: command.value,
+      definition,
       expectedRevision: command.expectedRevision,
     });
     if (

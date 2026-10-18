@@ -6,7 +6,7 @@
 
 场景由服务端生成稳定sceneKey，合法保存携带expectedRevision/clientMutationId，事务内静态编译、生成不可变sceneVersion并切当前指针。无效定义不切旧有效版本；模型暂不可用不阻止合法保存，保存不调用模型或读取样本。客户端只在对应内容获服务端确认后显示已保存，409保留本地编辑。
 
-新Definition增加dataBindings，使用下面C接缝的DataBinding列表。旧dataObjects保留兼容，新的数据库绑定不与旧Selection混在同一编译输入中。历史outputRequirement非空时，场景服务将其无损合并到promptText后返回编辑；新保存使用单一正文和空outputInstructions。
+Definition保留dataBindings兼容，并增加sqlBindings。旧dataObjects继续读取；新的SQL引用不是客户端提供的编译快照。历史outputRequirement非空时，场景服务将其无损合并到promptText后返回编辑；新保存使用单一正文和空outputInstructions。
 
 新运行通过 `/ai/conversations` 创建对话或向既有会话追加消息。会话与消息正文真实持久化，续聊只允许本人及原租户/场景/业务来源；同一会话单轮在途。仅成对成功轮次参与后续模型上下文，失败或部分输出保留真实状态。历史上下文截断有安全元数据，旧无正文记录不补造。
 
@@ -14,13 +14,15 @@
 
 ## 多 Key 配置与运行切换
 
+提示词正文保存与路由维护分别处理。已有场景省略definition.modelPolicy时保留原完整策略；旧客户端传同值兼容，试图从正文接口更改策略返回409 ROUTING_MANAGEMENT_REQUIRED。新场景可用initialModel指定单一初始模型，不能同时提交modelPolicy。独立AI配置使用GET/PUT `/system/ai/settings/scene-routes/{sceneKey}`；路由更新与正文共用revision及mutation幂等，复制原编译快照，冲突返回409，不能以旧正文覆盖另一位管理员的新修改。
+
 独立AI配置页对应`/ai/configurations`，普通管理使用`/system/ai/settings`，不让使用者填写配置版本或Key配对ID。AiSettingsDtos.Change增加keys及可选clientMutationId；keys是完整目标集合，KeyChange使用keyId/name/apiKey/modelCodes，keyId只在本配置内映射。Key与模型关联实际保存在不可变快照中，运行不能退回所有Key与所有模型的任意组合。上限为每渠道16个Key、16个模型、64组关联。
 
 新增Key需明文材料，已有Key留空保留；keys省略兼容原单Key请求，多Key时顶层apiKey不允许含糊替换首项。Change、KeyChange的apiKey为WRITE_ONLY且toString脱敏。普通View.keys及TestRun.keys提供每Key/每模型的安全结果，原models保持聚合；同模型任一明确关联Key通过即可用，不能把某Key的成功转算给另一个Key。
 
 设置保存可传规范UUID clientMutationId，在主体/租户范围防止结果未知时重复创建；同内容重放返回当前可读配置，内容改变409。只修改名称不产生新连接测试；更换Key或模型保留原active，pendingChanges明确新内容待测。当前使用的模型必须有合法验证关联才能维护执行指针，受限旧场景无法安全维护时保留原连接并给出原因。
 
-`AiProviderPresets`是设置、聊天适配器与扫描共同的官方地址白名单。Preset提供code/name/chatEndpoint/modelsEndpoint/publicModelsEndpoint/suggestedModels，require(code,chatEndpoint)核对完全相同的官方地址；当前只有OpenRouter和DeepSeek，不接受任意兼容URL或以建议模型代替实时目录。
+`AiProviderPresets`是设置、聊天适配器与扫描共同的官方地址白名单。Preset提供code/name/chatEndpoint/modelsEndpoint/publicModelsEndpoint/suggestedModels，require(code,chatEndpoint)核对完全相同的官方地址；支持OpenRouter、DeepSeek、OpenAI及SiliconFlow，不接受任意兼容URL或以建议模型代替实时目录。自定义地址尚缺安全DNS固定传输，不显示为可用接入。
 
 AiConfiguredProviderRuntime只提供仍启用、关联匹配且证明有效的目标；失效Key材料不会被后续候选重新取回。AiRequestExecutor按场景允许的模型/渠道顺序，先消耗当前模型合格Key，再尝试下一候选。预算依据实际剩余目标数分配，总maxAttempts、deadline和token不因切换重置；仅一个目标时不预留不存在的备用份额。网络错误、408/504、429及可重试供应商错误在没有输出时可继续；实际取消、授权/内容拒绝及非重试错误终止。
 
@@ -28,11 +30,21 @@ AiConfiguredProviderRuntime只提供仍启用、关联匹配且证明有效的�
 
 ## 模型发现与凭据边界
 
+### 业务模型与冻结调用
+
+`ModelHubService`维护独立业务模型身份，slug为稳定调用名称；供应商绑定使用既有configId与该渠道实际配置的modelCode，不以目录记录直接获得执行资格。模型可先无绑定保存；运行要求启用、文本能力及至少一个已验证active关联。Key集合继续由既有配置版本保护，未迁移旧场景的限制不变。
+
+新场景可选择`definition.businessModel`，与初始直接模型选择互斥；后续提示词保存缺省时保持原选择。路由编辑仍走独立AI配置和相同revision。每个新请求在准入时解析当前业务模型与渠道active版本，保存具体执行策略及模型revision，再把不可变策略交给Work；在途不读取后续编辑。轮询使用持久游标，优先级与自动切换沿用预算和partial输出边界。
+
+模型测试要求明确确认费用，复用实际provider、executor和attempt账本，原始正文不通过普通对话/SSE输出。专属owner/tenant测试读取只返回安全状态及实际provider/model/切换原因/耗时；config:test并不授予查询普通业务对话权限。平台身份、query/add/edit/test/enable分别授权，修改或创建启用状态不能绕过enable；当前场景引用中的模型删除返回409。
+
 `AiModelCatalogService`与配置同包，保存Key扫描复用AiConfigurationService.head/snapshot/resolveSecret：限定当前已保存草稿的configId/keyId成员，取Key前后和返回前核对revision。公开HTTP不接受keyVersion、密文、ENV名或任意URL；不会另建凭据库或改变启用状态。
 
 首次配置可走POST `/system/ai/model-catalog/draft-scan`，输入provider/apiKey后先扫描再选模型，避免保存必须先有模型的循环。DraftScan.apiKey为WRITE_ONLY、toString为REDACTED，原始JSON有16KiB、深度、未知/重复字段和尾随内容限制；明文仅本次内存使用，不进入默认操作日志、数据库、浏览器持久化或响应。仅有add/edit/test动作可草稿扫描，不因此取得配置query权限；已保存Key扫描独立要求test。
 
-AiModelCatalogTransport只对共享预设发GET，区分OpenRouter公共/models和认证/models/user、DeepSeek认证/models，后两者都不发推理请求。生产固定HTTPS、公网地址检查、禁止重定向，并复用运维代理配置；本地测试接缝只允许127.0.0.1随机端口，不注册生产mock。请求总限时15秒，响应4MiB、最多5000模型、并发4及有界DNS队列。
+AiModelCatalogTransport只对共享预设发GET，区分OpenRouter公共/models和认证/models/user、DeepSeek/OpenAI认证/models及SiliconFlow聊天目录；扫描均不发推理请求。生产固定HTTPS、公网地址检查、禁止重定向，并复用运维代理配置；本地测试接缝只允许127.0.0.1随机端口，不注册生产mock。请求总限时15秒，响应4MiB、最多5000模型、并发4及有界DNS队列。
+
+扫描生成绑定当前主体、供应商、规范端点与凭据指纹的票据。已存Key扫描自动持久化；草稿票据在实际Key保存后以configId/keyId/revision明确附着，不能冒用其他用户或其他材料。持久结果不保存明文Key，读取不再次访问上游；换Key或端点后来源标记STALE。未附着票据24小时失效，已附着目录保留来源、扫描时间和目录URL，仍不构成推理成功证明。
 
 响应仅白名单可读名称、代码、上下文/输出上限、模态及声明参数；搜索分页在本次有界目录内完成，不混用其他Key缓存。source/refreshedAt明确目录来源与时间，generationVerified始终false。OpenRouter用户目录仅按服务端用户偏好/隐私/防护规则过滤，不证明余额和实际调用可用；DeepSeek可选元数据缺失时保留未知。上游401/403转为502加固定安全分类，避免触发本系统重新登录；原始错误、Key和异常原因不出响应。精确DTO、权限和错误见[模型扫描HTTP](../reference/api-catalog.md#模型目录与-key-扫描)。
 
@@ -63,7 +75,31 @@ DataBinding包含variable、label、sourceKey、mode、fields、filters、limit�
 
 CHILDREN的relation包含parentVariable、parentField、childField。parentVariable必须引用前面同组ROW绑定，字段真实存在且类型兼容。实现读取主记录真实parentField，用参数化等值条件约束子表childField，并叠加其tenant、软删及用户过滤。主键可内部用于关联而不额外暴露到用户选择的投影。主值null返回空子行数组。
 
-过滤只支持固定比较、字面包含与null操作，最多16个AND条件；不存在任意SQL、URL、函数、Bean或表达式入口。动态标识符经实际元数据确认后引用，值使用参数。字段元数据逐行匹配TABLE_NAME及当前目录，防止下划线等JDBC模式字符混入相似表的列。
+旧dataBindings过滤继续只支持固定比较、字面包含与null操作，最多16个AND条件；不通过旧入口执行SQL、URL、Bean或任意表达式。动态标识符经实际元数据确认后引用，值使用参数。字段元数据逐行匹配TABLE_NAME及当前目录，防止下划线等JDBC模式字符混入相似表的列。新的SQL入口采用下述独立授权与执行边界。
+
+## SQL查询引用与权限边界
+
+`AiSceneQueryRuntime`负责authorizedSchema、validateGeneratedSql、compile、preview、read和authorize。Schema只返回当前真实账号获准的数据集结构，datasetKeys只缩小范围；业务政策决定平台、租户或个人范围。客户端不能提交actor、tenant、owner或scope来获得权限，未知政策拒绝。当前框架的低代码政策是动作权限加租户范围，不因存在creator列就自动推断其他业务的个人可读规则。
+
+SQL只引用授权数据集名称与字段；服务端为每个来源构造获准投影及租户、个人、软删除谓词，再对单条SELECT的AST生成执行计划。JOIN/OR作用于这些投影，不能取消来源内部条件。系统表和秘密字段不可用于返回、筛选、关联或表达式。支持语法由authorizedSchema给出；UNION、子查询、CTE、多语句、写入、文件、锁、会话操作以及未知函数整条拒绝。所有业务值绑定为JDBC参数，受控当前用户/租户/记录参数只从可信调用上下文取得。
+
+执行使用专属强制只读事务，与外层读写事务隔离。Connector/J传播只读状态，并在同一连接核对MySQL会话只读变量；传播被禁用或状态不明时拒绝查询。保留Druid Wall，不为自定义SQL关闭防护。可另配SELECT-only数据库账号加强部署边界，但普通使用者无需新增连接页面。结果最多200行、256KiB并受10秒及调用deadline限制，超时、只读不可用和schema变化有明确失败状态。
+
+`SqlDatasetPolicyProvider`是业务代码的扩展入口，以Spring Bean登记明确的租户列、个人归属列、字段映射与动作权限；HTTP不能注册政策。尚未接入业务政策的租户表拒绝读取，不能通过模型猜测品牌或个人权限。通用平台来源仍需平台身份与独立数据库读取动作。当前记录定位使用实际主键元数据，复合主键和不受支持的字段类型明确拒绝，不假设名为id的列就是主键。
+
+SQL参数精确数值采用`{"$number":"9007199254740993123"}`封套，服务端解析为BigDecimal；SQL查询结果仅在HTTP序列化时将Number转换为精确字符串，保留列类型，内部模型上下文继续使用原数值。字符串前导零、布尔值与null不改变。固定快照恢复重新编译并核对规范化查询、依赖与指纹；规范化必须幂等，不能通过忽略比较来掩盖定义变化。
+
+SQL引用以QueryBinding保存variable、label、description、datasetKeys和query（sql、parameters、maxRows）。静态编译生成QuerySnapshot，固定实际字段、查询依赖与政策；compiled内容不接受公共请求提交。EditorInput第5字段为sqlBindings，CompiledScene第7字段为sqlBindings快照，缺失字段兼容空列表；新旧引用合计最多16。每次读取重查当前caller权限和依赖，不继承创建者平台身份，也不把编译时的租户值固定给其他业务调用者。
+
+新标记例如 <code v-pre>{{order_summary:订单汇总}}</code>，冒号前英文是稳定身份，后面是可读标签。原 <code v-pre>{{user_request}}</code> 和中文旧变量继续解析；历史中文身份未转换时保留其旧标记，不插入编译器不接受的混合格式。普通数据只作一次替换并作为数据内容传递，不成为SYSTEM指令。
+
+## AI辅助编写SQL
+
+`POST /ai/scenes/sql-assistance`显式发起生成，绑定sceneKey/revision、描述、选定数据范围和mutation。已有场景沿用完整路由，未配置场景可传initialModel；助手不能把受限Key策略改为AUTO。服务端隐藏系统提示词仅使用代码规则和当前authorizedSchema，用户描述放入USER消息，不能提供替代系统提示词。
+
+生成复用既有执行队列、预算、Key准入和故障切换。原始模型输出只在受限内存中处理，通过validateGeneratedSql后才返回候选；生成不调用preview/read、不保存提示词，也不建立普通业务对话。GET `/ai/scenes/sql-assistance/{requestId}`轮询安全状态，POST同路径`/cancel`显式取消；该请求不能通过通用SSE取得未经审查的原始输出。
+
+只有SUCCEEDED返回query，其他状态提供安全错误分类。轮询和取消验证本人、租户及当前数据授权，scopeDescription来自代码；权限或schema变化不能继续使用旧候选。SQL、业务结果、隐藏系统提示词与供应商原始正文不进入通用操作日志。只读试查、保存引用和实际场景生成仍分别校验，不将生成合法SQL视为已经成功读取业务数据。
 
 ## 当前记录与身份
 

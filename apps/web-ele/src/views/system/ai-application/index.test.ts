@@ -27,7 +27,10 @@ vi.mock('@vben/stores', () => ({ useAccessStore: () => access }));
 vi.mock('@vben/common-ui', () => ({
   Page: { template: '<section><slot /></section>' },
 }));
-vi.mock('vue-router', () => ({ onBeforeRouteLeave: vi.fn() }));
+vi.mock('vue-router', () => ({
+  useRouter: () => ({ push: vi.fn() }),
+  onBeforeRouteLeave: vi.fn(),
+}));
 vi.mock('#/api/system/ai-scene', () => scenes);
 vi.mock('#/api/system/ai-template', () => legacy);
 vi.mock('#/api/system/ai-application', () => applications);
@@ -107,7 +110,12 @@ beforeEach(() => {
     effectiveFrom: '2026-10-17T00:01:00Z',
     detail: {
       ...detail,
-      definition: input.definition,
+      // The body endpoint preserves routing omitted by the prompt editor.
+      definition: {
+        ...detail.definition,
+        ...input.definition,
+        initialModel: null,
+      },
       scene: {
         ...detail.scene,
         revision: input.expectedRevision + 1,

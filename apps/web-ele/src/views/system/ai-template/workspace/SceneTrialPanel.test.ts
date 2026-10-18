@@ -18,6 +18,7 @@ const api = vi.hoisted(() => ({
   testScene: vi.fn(),
   getSceneRequest: vi.fn(),
   cancelSceneRequest: vi.fn(),
+  sceneEntries: vi.fn(),
 }));
 const samples = vi.hoisted(() => vi.fn());
 const stream = vi.hoisted(() => vi.fn());
@@ -54,6 +55,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   access.accessCodes = ['ai:scene:test', 'ai:scene:invoke'];
   samples.mockResolvedValue({ records: [], total: '0' });
+  api.sceneEntries.mockResolvedValue([]);
   api.previewScene.mockResolvedValue({
     sceneKey: 'scene.a',
     sceneVersionId: 'version-4',
@@ -71,6 +73,63 @@ beforeEach(() => {
   });
 });
 describe('explicit scene trial', () => {
+  it('resolves dynamic SQL record context from the authorized entry without scanning SQL text', async () => {
+    const value = definition();
+    value.sqlBindings = [
+      {
+        variable: 'current_order',
+        label: '本次订单',
+        description: '读取当前业务记录',
+        datasetKeys: ['lowcode.42'],
+        query: {
+          sql: 'SELECT subject FROM form_42 WHERE record_id = :current_record_id',
+          parameters: {},
+          maxRows: 20,
+        },
+      },
+    ];
+    api.sceneEntries.mockResolvedValue([
+      {
+        sceneKey: 'scene.a',
+        revision: 4,
+        contextRequired: true,
+        contextSourceKey: 'lowcode.42',
+        contextSourceLabel: '本次订单',
+      },
+    ]);
+    const wrapper = mount(SceneTrialPanel, {
+      props: {
+        sceneKey: 'scene.a',
+        revision: 4,
+        definition: value,
+        versionId: 'version-4',
+      },
+    });
+    await button(wrapper, '试运行').trigger('click');
+    await flushPromises();
+    expect(wrapper.getComponent(DatabaseRecordPicker).props('sourceKey')).toBe(
+      'lowcode.42',
+    );
+    expect(button(wrapper, '授权预览').attributes('disabled')).toBeDefined();
+    wrapper.getComponent(DatabaseRecordPicker).vm.$emit('update:modelValue', {
+      key: { id: '7' },
+      label: '授权记录',
+      values: {},
+      businessRef: { type: 'lowcode.record', id: '42:7' },
+    });
+    await flushPromises();
+    await button(wrapper, '授权预览').trigger('click');
+    await flushPromises();
+    expect(api.previewScene).toHaveBeenCalledWith(
+      'scene.a',
+      expect.objectContaining({
+        expectedRevision: 4,
+        businessRef: { type: 'lowcode.record', id: '42:7' },
+      }),
+    );
+    expect(api.testScene).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
   it('shows actual authorized data and rendered messages from the saved snapshot without invoking a provider', async () => {
     api.previewScene.mockResolvedValueOnce({
       sceneKey: 'scene.a',

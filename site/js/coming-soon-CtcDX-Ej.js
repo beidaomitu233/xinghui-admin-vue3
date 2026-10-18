@@ -1,0 +1,1 @@
+import{_ as o}from"./fallback.vue_vue_type_script_setup_true_lang-CH01pbHq.js";import{l as n,n as t,E as r,u as s}from"../jse/index-index-u9g3MsT4.js";import"./bootstrap-BgkeWSAx.js";import"./load-D9YNru0E.js";import"./rotate-cw-D63WEDUX.js";const u=n({__name:"coming-soon",setup(e){return(a,m)=>(t(),r(s(o),{status:"coming-soon"}))}});export{u as default};
