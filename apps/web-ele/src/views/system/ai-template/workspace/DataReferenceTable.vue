@@ -449,7 +449,7 @@ h2 {
   white-space: pre-wrap;
 }
 
-:global(.dark) .reference-table code {
+:global(.dark .reference-table code) {
   color: color-mix(in srgb, hsl(var(--primary)) 55%, white);
 }
 

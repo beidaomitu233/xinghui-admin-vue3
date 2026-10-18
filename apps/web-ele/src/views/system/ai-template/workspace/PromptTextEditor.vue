@@ -280,7 +280,7 @@ defineExpose({ insertVariable });
   color: var(--el-color-warning);
 }
 
-:global(.dark) .prompt-token:not(.is-unknown) {
+:global(.dark .prompt-token:not(.is-unknown)) {
   color: color-mix(in srgb, hsl(var(--primary)) 55%, white);
 }
 

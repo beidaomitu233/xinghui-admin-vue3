@@ -113,7 +113,7 @@ const panes = [
   color: hsl(var(--foreground));
 }
 
-:global(.dark) .model-hub {
+:global(.dark .model-hub) {
   --hub-accent: color-mix(in srgb, hsl(var(--primary)) 55%, white);
 }
 
