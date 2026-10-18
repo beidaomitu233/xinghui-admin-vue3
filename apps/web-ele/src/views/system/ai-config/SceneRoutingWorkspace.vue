@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { RouteKeyOption } from './scene-routing-state';
 
+import type { HubModel } from '#/api/system/ai-model-hub';
 import type {
   SceneModelOption,
   SceneModelPolicy,
@@ -26,6 +27,7 @@ import {
   ElSkeleton,
 } from 'element-plus';
 
+import { listHubModels } from '#/api/system/ai-model-hub';
 import {
   getSceneWorkspace,
   sceneKeys,
@@ -63,6 +65,9 @@ const policy = ref<SceneModelPolicy>();
 const models = ref<SceneModelOption[]>([]);
 const keys = ref<Record<string, RouteKeyOption[]>>({});
 const baseline = ref('');
+const businessModel = ref('');
+const baselineBusinessModel = ref('');
+const businessModels = ref<HubModel[]>([]);
 const loading = ref(false);
 const saving = ref(false);
 const unknown = ref(false);
@@ -75,9 +80,12 @@ let listGeneration = 0;
 let selectionGeneration = 0;
 let searchTimer: ReturnType<typeof setTimeout> | undefined;
 let alive = true;
-const dirty = computed(() =>
-  Boolean(policy.value && JSON.stringify(policy.value) !== baseline.value),
+const dirty = computed(
+  () =>
+    Boolean(policy.value && JSON.stringify(policy.value) !== baseline.value) ||
+    businessModel.value !== baselineBusinessModel.value,
 );
+defineExpose({ canLeave: discardAllowed });
 const sceneOptions = computed(() =>
   selected.value &&
   !scenes.value.some((scene) => scene.sceneKey === selected.value)
@@ -117,6 +125,8 @@ async function loadScene(key: string) {
   pending = undefined;
   unknown.value = false;
   policy.value = undefined;
+  businessModel.value = '';
+  baselineBusinessModel.value = '';
   current.value = undefined;
   baseline.value = '';
   error.value = '';
@@ -129,6 +139,7 @@ async function loadScene(key: string) {
   const results = await Promise.allSettled([
     getSceneRouting(key),
     sceneModels('TEXT'),
+    listHubModels({ pageNum: 1, pageSize: 100 }),
   ]);
   if (!alive || run !== generation || !canRead.value) return;
   const routing = results[0];
@@ -139,8 +150,13 @@ async function loadScene(key: string) {
       ? copyRoute(routing.value.modelPolicy)
       : undefined;
     baseline.value = policy.value ? JSON.stringify(policy.value) : '';
+    businessModel.value = routing.value.businessModel ?? '';
+    baselineBusinessModel.value = businessModel.value;
   } else error.value = '场景调用顺序未读到，请检查权限后重试。';
   models.value = options.status === 'fulfilled' ? options.value : [];
+  const business = results[2];
+  businessModels.value =
+    business.status === 'fulfilled' ? business.value.records : [];
   if (options.status === 'rejected')
     error.value = '模型候选未读到，已保存的调用顺序继续保留。';
   loading.value = false;
@@ -192,16 +208,23 @@ async function save() {
     saving.value ||
     loading.value ||
     !current.value ||
-    !policy.value
+    (!policy.value && !businessModel.value)
   )
     return;
-  if (!pending && (!dirty.value || policy.value.models.length === 0)) return;
+  if (
+    !pending &&
+    (!dirty.value || (!businessModel.value && !policy.value?.models.length))
+  )
+    return;
+  const routePolicy =
+    !businessModel.value && policy.value ? copyRoute(policy.value) : null;
   pending ??= {
     sceneKey: current.value.sceneKey,
     body: {
       expectedRevision: current.value.revision,
       clientMutationId: crypto.randomUUID(),
-      modelPolicy: copyRoute(policy.value),
+      modelPolicy: routePolicy,
+      ...(businessModel.value ? { businessModel: businessModel.value } : {}),
     },
   };
   const attempt = pending;
@@ -216,12 +239,16 @@ async function save() {
       result.clientMutationId !== attempt.body.clientMutationId ||
       result.routing.sceneKey !== attempt.sceneKey ||
       result.routing.revision <= attempt.body.expectedRevision ||
-      !result.routing.modelPolicy
+      (!result.routing.modelPolicy && !result.routing.businessModel)
     )
       throw new Error('Unconfirmed routing acknowledgement');
     current.value = result.routing;
-    policy.value = copyRoute(result.routing.modelPolicy);
-    baseline.value = JSON.stringify(policy.value);
+    policy.value = result.routing.modelPolicy
+      ? copyRoute(result.routing.modelPolicy)
+      : undefined;
+    baseline.value = policy.value ? JSON.stringify(policy.value) : '';
+    businessModel.value = result.routing.businessModel ?? '';
+    baselineBusinessModel.value = businessModel.value;
     pending = undefined;
     unknown.value = false;
     message.value = '调用顺序已保存。';
@@ -265,6 +292,9 @@ watch(
     scenes.value = [];
     current.value = undefined;
     policy.value = undefined;
+    businessModel.value = '';
+    baselineBusinessModel.value = '';
+    businessModels.value = [];
     keys.value = {};
     models.value = [];
     pending = undefined;
@@ -328,7 +358,7 @@ onBeforeUnmount(() => {
           重新读取
         </ElButton>
         <ElButton
-          v-if="canWrite && policy"
+          v-if="canWrite && (policy || businessModel)"
           type="primary"
           :disabled="saving || loading || (!dirty && !unknown)"
           :loading="saving"
@@ -348,16 +378,43 @@ onBeforeUnmount(() => {
         "
       />
       <ElSkeleton v-if="loading" :rows="4" animated />
+      <ElSelect
+        v-if="current && !loading"
+        v-model="businessModel"
+        :disabled="!canWrite || saving || unknown"
+        aria-label="场景逻辑业务模型"
+        filterable
+        placeholder="选择业务模型"
+      >
+        <ElOption v-if="policy" value="" label="保留历史精确调用顺序" />
+        <ElOption
+          v-for="model in businessModels"
+          :key="model.modelId"
+          :value="model.slug"
+          :label="model.name"
+        />
+        <ElOption
+          v-if="
+            businessModel &&
+            !businessModels.some((model) => model.slug === businessModel)
+          "
+          :value="businessModel"
+          :label="`已保存业务模型 · ${businessModel}`"
+        />
+      </ElSelect>
       <SceneRouteEditor
-        v-else-if="policy"
+        v-if="!loading && policy && !businessModel"
         :value="policy"
         :models="models"
         :keys="keys"
         :readonly="!canWrite || saving || unknown"
         @change="changePolicy"
       />
+      <p v-else-if="businessModel" class="routing-business-description">
+        供应商顺序、Key 与故障切换由模型中心统一维护，提示词正文独立保存。
+      </p>
       <ElEmpty
-        v-else
+        v-else-if="!loading"
         :description="
           current
             ? '请先在提示词页选择初始模型并保存场景'

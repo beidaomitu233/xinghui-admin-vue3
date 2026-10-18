@@ -1,3 +1,4 @@
+import type { HubModel } from '#/api/system/ai-model-hub';
 import type { SceneDefinition, SceneModelOption } from '#/api/system/ai-scene';
 
 import { mount } from '@vue/test-utils';
@@ -26,6 +27,44 @@ const value = {
   },
 };
 describe('one editable prompt document', () => {
+  it('selects a stable business model identity for a new scene without creating a provider/key route', async () => {
+    const model: HubModel = {
+      modelId: 'business-1',
+      revision: 1,
+      name: '客服模型',
+      slug: 'customer-chat',
+      capabilities: '',
+      contextWindow: '',
+      enabled: true,
+      strategy: 'PRIORITY',
+      fallback: true,
+      routes: [],
+      health: {
+        ready: false,
+        readyRoutes: 0,
+        distinctProviders: 0,
+        multiProviderProtected: false,
+        reasons: [],
+      },
+      updatedAt: '2026-10-18T01:00:00Z',
+    };
+    const wrapper = mount(PromptEditor, {
+      props: {
+        value,
+        models: [],
+        businessModels: [model],
+        fields: {},
+        readonly: false,
+        initialModel: true,
+      },
+    });
+    await selectValue(wrapper, '使用模型', 'business:customer-chat');
+    const changed = wrapper.emitted('change')?.at(-1)?.[0] as SceneDefinition;
+    expect(changed.businessModel).toBe('customer-chat');
+    expect(changed.initialModel).toBeNull();
+    expect(changed.modelPolicy).toEqual(value.modelPolicy);
+    wrapper.unmount();
+  });
   it('keeps existing fixed-key routing untouched while editing text and exposes only the configuration jump', async () => {
     const routed: SceneDefinition = {
       ...value,

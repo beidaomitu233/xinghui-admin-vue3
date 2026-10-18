@@ -63,6 +63,7 @@ export interface QueryDiagnostic {
   code: QueryIssue;
 }
 export interface SqlValidation {
+  usedDatasetKeys: string[];
   currentRecordDatasetKey: null | string;
   valid: boolean;
   normalizedSql: string;

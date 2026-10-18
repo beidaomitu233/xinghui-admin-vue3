@@ -67,6 +67,82 @@ afterEach(() => {
   wrappers.splice(0).forEach((wrapper) => wrapper.unmount());
 });
 describe('readable data reference descriptions', () => {
+  it('does not expand a legacy unrestricted query into the entire authorized catalog', async () => {
+    const wrapper = mount(DataReferenceTable, {
+      props: {
+        bindings: [],
+        legacyObjects: [],
+        readonly: false,
+        sqlBindings: [
+          {
+            variable: 'summary',
+            label: '历史查询',
+            description: '',
+            datasetKeys: [],
+            query: {
+              sql: 'SELECT amount FROM orders',
+              parameters: {},
+              maxRows: 20,
+            },
+          },
+        ],
+      },
+    });
+    wrappers.push(wrapper);
+    await flushPromises();
+    expect(wrapper.text()).toContain('历史查询范围，编辑后可更新实际来源');
+    expect(api.schema).not.toHaveBeenCalled();
+    expect(api.validate).not.toHaveBeenCalled();
+  });
+  it('shows only the saved actual sources concisely while retaining server scope in a tooltip', async () => {
+    api.schema.mockResolvedValue({
+      datasets: [
+        {
+          datasetKey: 'orders',
+          label: '订单',
+          scope: 'TENANT',
+          scopeDescription: '服务端限定的本租户订单读取范围',
+        },
+      ],
+      scopeDescription: '全部授权目录不应作为这条SQL的来源',
+    });
+    api.validate.mockResolvedValue({
+      valid: true,
+      usedDatasetKeys: ['orders'],
+      columns: [{ label: '订单金额' }],
+    });
+    const wrapper = mount(DataReferenceTable, {
+      props: {
+        bindings: [],
+        legacyObjects: [],
+        readonly: false,
+        sqlBindings: [
+          {
+            variable: 'summary',
+            label: '订单汇总',
+            description: '',
+            datasetKeys: ['orders'],
+            query: {
+              sql: 'SELECT amount FROM orders',
+              parameters: {},
+              maxRows: 20,
+            },
+          },
+        ],
+      },
+    });
+    wrappers.push(wrapper);
+    await flushPromises();
+    expect(api.schema).toHaveBeenCalledWith({
+      datasetKeys: ['orders'],
+      businessRef: null,
+    });
+    expect(wrapper.text()).toContain('订单 · 租户授权');
+    expect(wrapper.text()).not.toContain('全部授权目录');
+    expect(
+      wrapper.find('[title="订单 · 服务端限定的本租户订单读取范围"]').exists(),
+    ).toBe(true);
+  });
   it('shows builtin input and readable field/source labels with a per-source metadata cache', async () => {
     const wrapper = mount(DataReferenceTable, {
       props: {

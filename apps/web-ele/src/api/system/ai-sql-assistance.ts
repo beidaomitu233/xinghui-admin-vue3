@@ -13,6 +13,7 @@ export type SqlAssistanceStatus =
   | 'TIMED_OUT'
   | 'VALIDATING';
 export interface SqlAssistanceStart extends QueryContext {
+  businessModel?: null | string;
   sceneKey: string;
   expectedSceneRevision: number;
   description: string;

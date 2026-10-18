@@ -55,6 +55,7 @@ import { queryParameterText, readQueryParameters } from './query-parameters';
 const props = defineProps<{
   binding?: QueryBinding;
   configured: boolean;
+  businessModel?: null | string;
   initialModel?: ModelReference | null;
   open: boolean;
   readonly: boolean;
@@ -436,7 +437,7 @@ async function generateSql() {
     !schema.value ||
     !description.value.trim() ||
     props.sceneSaving ||
-    (!props.configured && !props.initialModel)
+    (!props.configured && !props.initialModel && !props.businessModel)
   )
     return;
   const retrying = Boolean(pendingStart);
@@ -446,6 +447,7 @@ async function generateSql() {
     description: description.value,
     ...context.value,
     initialModel: props.configured ? null : (props.initialModel ?? null),
+    ...(!props.configured && props.businessModel ? { businessModel: props.businessModel } : {}),
     expectedSchemaFingerprint: schema.value.fingerprint,
     confirmedCosts: true,
     clientMutationId: crypto.randomUUID(),
@@ -592,6 +594,14 @@ async function save() {
       );
       return;
     }
+    if (
+      !Array.isArray(validation.usedDatasetKeys) ||
+      validation.usedDatasetKeys.some((key) => typeof key !== 'string')
+    ) {
+      error.value = '实际查询来源尚未确认，请重新校验后保存。';
+      return;
+    }
+    binding.datasetKeys = [...validation.usedDatasetKeys];
     const saved = await props.saveBinding(binding);
     if (!alive || run !== generation) return;
     if (!saved) {
@@ -768,7 +778,7 @@ onBeforeUnmount(() => {
             !scopeReady ||
             !description.trim() ||
             sceneSaving ||
-            (!configured && !initialModel) ||
+            (!configured && !initialModel && !businessModel) ||
             generating
           "
           :loading="generationBusy"

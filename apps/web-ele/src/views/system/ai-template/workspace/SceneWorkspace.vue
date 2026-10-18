@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { SaveView } from './ordered-autosave';
 
+import type { HubModel } from '#/api/system/ai-model-hub';
 import type { QueryBinding } from '#/api/system/ai-query';
 import type {
   SceneCreate,
@@ -39,6 +40,7 @@ import {
   ElRadioGroup,
 } from 'element-plus';
 
+import { listHubModels } from '#/api/system/ai-model-hub';
 import {
   createScene,
   getScene,
@@ -66,6 +68,8 @@ const listPage = ref(1);
 const listTotal = ref('0');
 const models = ref<SceneModelOption[]>([]);
 const routingOverview = ref<SceneModelPolicy>();
+const businessModelOverview = ref<null | string>(null);
+const businessModels = ref<HubModel[]>([]);
 const loading = ref(false);
 const switching = ref(false);
 const message = ref('');
@@ -233,6 +237,7 @@ const autosave = new OrderedSceneAutosave<SceneDefinition>({
   reconcile: (local, confirmed) => ({
     ...local,
     initialModel: confirmed.initialModel,
+    businessModel: confirmed.businessModel,
     modelPolicy: confirmed.modelPolicy,
   }),
   mutationId: () => crypto.randomUUID(),
@@ -250,8 +255,11 @@ const autosave = new OrderedSceneAutosave<SceneDefinition>({
         if (!result.detail.legacy) conversionConsent.delete(command.sceneKey);
         if (selected.value?.sceneKey === command.sceneKey)
           legacy.value = result.detail.legacy ?? null;
-        if (selected.value?.sceneKey === command.sceneKey)
+        if (selected.value?.sceneKey === command.sceneKey) {
           routingOverview.value = result.detail.definition?.modelPolicy;
+          businessModelOverview.value =
+            result.detail.definition?.businessModel ?? null;
+        }
       },
       mutationConsent.get(command.clientMutationId),
     );
@@ -260,7 +268,11 @@ const autosave = new OrderedSceneAutosave<SceneDefinition>({
     const errors: Record<string, string> = {};
     if (!value.name.trim()) errors.name = '请输入场景名称';
     if (!value.promptText.trim()) errors.promptText = '请输入提示词';
-    if (!value.initialModel && value.modelPolicy.models.length === 0)
+    if (
+      !value.businessModel &&
+      !value.initialModel &&
+      value.modelPolicy.models.length === 0
+    )
       errors.modelPolicy = '请选择模型';
     return errors;
   },
@@ -423,6 +435,7 @@ async function selectScene(key: string) {
     converted.value = conversionConsent.has(key);
     view.value = autosave.view(key);
     routingOverview.value = detail.definition?.modelPolicy;
+    businessModelOverview.value = detail.definition?.businessModel ?? null;
     conflict.value = undefined;
   } catch {
     if (!disposed && run === detailGeneration)
@@ -499,6 +512,7 @@ async function resolve(choice: 'keep-local' | 'use-server') {
   );
   updateSummary(conflict.value.scene);
   routingOverview.value = conflict.value.definition.modelPolicy;
+  businessModelOverview.value = conflict.value.definition.businessModel ?? null;
   conflict.value = undefined;
   if (choice === 'keep-local') await autosave.retry(key);
 }
@@ -507,9 +521,12 @@ async function refreshMetadata() {
   const run = ++metadataGeneration;
   const actor = access.accessToken;
   const key = view.value?.sceneKey;
-  const [options, detail] = await Promise.allSettled([
+  const [options, detail, business] = await Promise.allSettled([
     sceneModels('TEXT'),
     key ? getScene(key) : Promise.resolve(undefined),
+    access.accessCodes.includes('ai:config:query')
+      ? listHubModels({ pageNum: 1, pageSize: 100 })
+      : Promise.resolve(undefined),
   ] as const);
   if (
     disposed ||
@@ -520,6 +537,9 @@ async function refreshMetadata() {
     return;
   if (options.status === 'fulfilled') models.value = options.value;
   else message.value = '模型概况暂未读到，请稍后重新进入场景。';
+  if (business.status === 'fulfilled')
+    businessModels.value =
+      business.value?.records.filter((model) => model.enabled) ?? [];
   if (
     key &&
     detail.status === 'fulfilled' &&
@@ -527,6 +547,8 @@ async function refreshMetadata() {
     view.value?.sceneKey === key
   ) {
     routingOverview.value = detail.value.definition?.modelPolicy;
+    businessModelOverview.value =
+      detail.value.definition?.businessModel ?? null;
     const local = autosave.view(key);
     if (
       !local.dirty &&
@@ -680,6 +702,8 @@ onBeforeUnmount(() => {
           :value="view.value"
           :readonly="!view.editable"
           :models="models"
+          :business-models="businessModels"
+          :business-model-overview="businessModelOverview"
           :routing-overview="routingOverview"
           :initial-model="!selected.currentVersionId"
           :saving="view.phase === 'saving'"
@@ -723,6 +747,7 @@ onBeforeUnmount(() => {
           :revision="view.revision"
           :configured="Boolean(selected.currentVersionId)"
           :initial-model="view.value.initialModel"
+          :business-model="view.value.businessModel"
           :scene-saving="view.phase === 'saving'"
           :used-variables="allVariables.map((variable) => variable.name)"
           :save-binding="saveQueryBinding"

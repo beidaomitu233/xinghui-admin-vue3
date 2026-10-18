@@ -15,6 +15,7 @@ import type {
 
 import {
   computed,
+  nextTick,
   onBeforeUnmount,
   onMounted,
   reactive,
@@ -50,7 +51,10 @@ import {
   getConfiguration,
 } from '#/api/system/ai-configuration';
 import {
+  attachModelCatalog,
   catalogError,
+  getCatalogScan,
+  getStoredCatalog,
   scanDraftModels,
   scanSavedModels,
 } from '#/api/system/ai-model-catalog';
@@ -72,6 +76,8 @@ import {
   channelPayload,
 } from './channel-state';
 
+const props = defineProps<{ editorOnly?: boolean }>();
+const emit = defineEmits<{ changed: [] }>();
 const access = useAccessStore();
 const can = (action: string) =>
   access.accessCodes.includes(`ai:config:${action}`) ||
@@ -94,6 +100,7 @@ const error = ref('');
 const message = ref('');
 const test = ref<SettingsTestRun>();
 interface KeyCatalog {
+  catalogScanId?: string;
   filteredCount?: number;
   error: string;
   generation: number;
@@ -198,6 +205,7 @@ function invalidateCatalog(key: ChannelKeyDraft) {
   );
   catalogs[key.localId] = {
     ...previous,
+    catalogScanId: undefined,
     filteredCount: undefined,
     generation: previous.generation + 1,
     error: '',
@@ -308,6 +316,10 @@ function apply(value?: AiSettingsView) {
   message.value = '';
 }
 async function load() {
+  if (props.editorOnly) {
+    emit('changed');
+    return;
+  }
   if (!can('list')) return;
   clearTimeout(searchTimer);
   const run = ++listGeneration;
@@ -329,7 +341,8 @@ async function load() {
     if (alive && run === listGeneration) loading.value = false;
   }
 }
-async function open(value?: AiSettingsView) {
+const keyArea = ref<HTMLElement>();
+async function open(value?: AiSettingsView, focusKeys = false) {
   if (
     busy.value ||
     (saveUnconfirmed.value && !value) ||
@@ -345,6 +358,15 @@ async function open(value?: AiSettingsView) {
     if (!alive || run !== selection) return;
     apply(detail);
     editorOpen.value = true;
+    if (detail && can('query'))
+      for (const key of form.keys) void readSavedCatalog(key);
+    if (focusKeys) {
+      await nextTick();
+      keyArea.value?.scrollIntoView({ block: 'start' });
+      keyArea.value
+        ?.querySelector<HTMLInputElement>('input[type="password"]')
+        ?.focus();
+    }
     const connection = detail?.connection;
     if (
       detail &&
@@ -417,10 +439,47 @@ async function save() {
       ? await updateAiSettings(attempt.configId, attempt.body)
       : await createAiSettings(attempt.body);
     if (!alive || run !== selection) return;
+    const receipts = form.keys.flatMap((key) => {
+      const catalogScanId = catalogs[key.localId]?.catalogScanId;
+      return key.apiKey && catalogScanId
+        ? [
+            {
+              catalogScanId,
+              keyId: key.keyId,
+              name: key.name.trim(),
+              modelCodes: key.modelCodes.toSorted(),
+            },
+          ]
+        : [];
+    });
     const consent = confirmedCosts.value;
     apply(value);
     confirmedCosts.value = consent;
     message.value = '渠道已保存。测试连接后启用通过的 Key 与模型。';
+    const attachments = await Promise.allSettled(
+      receipts.map(async (receipt) => {
+        if (!alive || run !== selection) return;
+        const matches = value.keys.filter((key) =>
+          receipt.keyId
+            ? key.keyId === receipt.keyId
+            : key.name === receipt.name &&
+              JSON.stringify(key.modelCodes.toSorted()) ===
+                JSON.stringify(receipt.modelCodes),
+        );
+        const key = matches[0];
+        if (matches.length !== 1 || !key)
+          throw new Error('Catalog key association is ambiguous');
+        await attachModelCatalog({
+          configId: value.configId,
+          keyId: key.keyId,
+          expectedRevision: value.revision,
+          catalogScanId: receipt.catalogScanId,
+        });
+      }),
+    );
+    if (!alive || run !== selection) return;
+    if (attachments.some((result) => result.status === 'rejected'))
+      message.value = '渠道已保存；部分目录未能挂接，请重新获取目录。';
     void load();
     return value;
   } catch (error_) {
@@ -556,12 +615,14 @@ async function scanModels(key: ChannelKeyDraft, pageNum = 1) {
   catalogControllers.set(key.localId, controller);
   const run = selection;
   const provider = form.provider;
+  const endpoint = form.endpointUrl;
   const generation = state.generation;
   const request = ++state.request;
   const valid = () =>
     alive &&
     run === selection &&
     provider === form.provider &&
+    endpoint === form.endpointUrl &&
     form.keys.some((item) => item.localId === key.localId) &&
     catalogs[key.localId]?.generation === generation &&
     catalogs[key.localId]?.request === request;
@@ -572,7 +633,7 @@ async function scanModels(key: ChannelKeyDraft, pageNum = 1) {
     let result: ModelCatalogPage;
     if (material)
       result = await scanDraftModels(
-        { ...query, provider, apiKey: material },
+        { ...query, provider, endpointUrl: form.endpointUrl, apiKey: material },
         controller.signal,
       );
     else if (saved && savedKeyId)
@@ -601,12 +662,108 @@ async function scanModels(key: ChannelKeyDraft, pageNum = 1) {
     state.page = result.pageNum;
     state.refreshedAt = result.refreshedAt;
     state.source = result.source;
+    state.catalogScanId = result.catalogScanId;
     state.status = 'READY';
   } catch (error_) {
     if (valid() && !controller.signal.aborted) {
       state.error = catalogError(error_);
       state.status = 'ERROR';
     }
+  } finally {
+    if (valid()) state.loading = false;
+  }
+}
+async function readSavedCatalog(key: ChannelKeyDraft, pageNum = 1) {
+  const saved = current.value;
+  if (!saved || !key.keyId || !can('query') || key.apiKey) return;
+  const state = getCatalog(key);
+  const run = selection;
+  const request = ++state.request;
+  state.loading = true;
+  try {
+    const stored = await getStoredCatalog(saved.configId, {
+      keyId: key.keyId,
+      search: state.search || undefined,
+      pageNum,
+      pageSize: 50,
+    });
+    if (
+      !alive ||
+      run !== selection ||
+      request !== state.request ||
+      !form.keys.some((item) => item.localId === key.localId)
+    )
+      return;
+    const currentSource = stored.sources.some(
+      (source) => source.keyId === key.keyId && source.current,
+    );
+    const usable =
+      stored.state !== 'STALE' &&
+      stored.state !== 'NOT_FETCHED' &&
+      currentSource;
+    state.records = usable ? stored.catalog.records : [];
+    state.labels = Object.fromEntries([
+      ...key.modelCodes.flatMap((code) =>
+        state.labels[code] ? [[code, state.labels[code]]] : [],
+      ),
+      ...stored.catalog.records.map((model) => [model.code, model]),
+    ]);
+    state.total = usable ? stored.catalog.total : 0;
+    state.page = stored.catalog.pageNum;
+    state.source = stored.catalog.source;
+    state.refreshedAt = stored.catalog.refreshedAt;
+    if (usable) state.status = 'READY';
+    else state.status = stored.state === 'STALE' ? 'STALE' : 'UNSCANNED';
+  } catch {
+    if (alive && run === selection && request === state.request)
+      state.error = '已保存目录暂未读到，可主动重新获取。';
+  } finally {
+    if (alive && run === selection && request === state.request)
+      state.loading = false;
+  }
+}
+function changeCatalogPage(key: ChannelKeyDraft, pageNum: number) {
+  const state = getCatalog(key);
+  if (!key.apiKey) {
+    void readSavedCatalog(key, pageNum);
+    return;
+  }
+  const ticket = state.catalogScanId;
+  if (ticket) {
+    void readScanPage(key, ticket, pageNum);
+    return;
+  }
+  if (state.status === 'READY') void scanModels(key, pageNum);
+}
+async function readScanPage(
+  key: ChannelKeyDraft,
+  ticket: string,
+  pageNum: number,
+) {
+  const state = getCatalog(key);
+  const run = selection;
+  const generation = state.generation;
+  const request = ++state.request;
+  const valid = () =>
+    alive &&
+    run === selection &&
+    catalogs[key.localId]?.generation === generation &&
+    catalogs[key.localId]?.request === request;
+  state.loading = true;
+  try {
+    const result = await getCatalogScan(ticket, {
+      search: state.search || undefined,
+      pageNum,
+      pageSize: 50,
+    });
+    if (!valid()) return;
+    state.records = result.records;
+    state.total = result.total;
+    state.page = result.pageNum;
+    for (const model of result.records) state.labels[model.code] = model;
+  } catch {
+    if (valid())
+      state.error = '扫描目录暂未读到，票据可能已过期；请主动重新获取。';
   } finally {
     if (valid()) state.loading = false;
   }
@@ -618,7 +775,7 @@ function searchModels(key: ChannelKeyDraft, search: string) {
   clearTimeout(catalogTimers.get(key.localId));
   catalogTimers.set(
     key.localId,
-    setTimeout(() => void scanModels(key, 1), 300),
+    setTimeout(() => changeCatalogPage(key, 1), 300),
   );
 }
 function catalogSource(source: string) {
@@ -645,7 +802,7 @@ onMounted(async () => {
   } catch {
     if (alive) error.value = '服务商选项暂不可用，请重试。';
   }
-  await load();
+  if (!props.editorOnly) await load();
 });
 watch(
   () => access.accessToken,
@@ -678,133 +835,140 @@ onBeforeUnmount(() => {
   pendingSave = undefined;
   resetCatalogs();
 });
+defineExpose({ open, requestClose, busy, isOpen: editorOpen });
 </script>
 
 <template>
-  <section class="channel-workspace" aria-label="AI渠道管理">
-    <header class="channel-header">
-      <div>
-        <h1>AI 配置</h1>
-        <p>管理多个渠道、命名 Key 与可用模型，场景可按优先级自动切换。</p>
-      </div>
-      <ElButton
-        v-if="can('add')"
-        type="primary"
-        :disabled="busy || saveUnconfirmed"
-        @click="open()"
-      >
-        新增渠道
-      </ElButton>
-    </header>
-    <ElAlert
-      v-if="notice && !editorOpen"
-      :title="notice.text"
-      :type="notice.type"
-      show-icon
-      closable
-      @close="dismissNotice"
-    />
-    <div class="channel-toolbar">
-      <ElInput
-        v-model="query"
-        aria-label="搜索渠道"
-        placeholder="搜索渠道"
-        clearable
-        class="channel-search"
+  <section
+    class="channel-workspace"
+    :class="{ 'is-editor-only': editorOnly }"
+    aria-label="AI渠道管理"
+  >
+    <template v-if="!editorOnly">
+      <header class="channel-header">
+        <div>
+          <h1>AI 配置</h1>
+          <p>管理多个渠道、命名 Key 与可用模型，场景可按优先级自动切换。</p>
+        </div>
+        <ElButton
+          v-if="can('add')"
+          type="primary"
+          :disabled="busy || saveUnconfirmed"
+          @click="open()"
+        >
+          新增渠道
+        </ElButton>
+      </header>
+      <ElAlert
+        v-if="notice && !editorOpen"
+        :title="notice.text"
+        :type="notice.type"
+        show-icon
+        closable
+        @close="dismissNotice"
       />
-      <ElButton :loading="loading" @click="load">刷新</ElButton>
-    </div>
-    <ElTable
-      v-loading="loading"
-      :data="rows"
-      row-key="configId"
-      class="channel-table"
-    >
-      <ElTableColumn label="渠道名称" min-width="180">
-        <template #default="{ row }">
-          <strong>{{ row.name }}</strong>
-          <p v-if="row.pendingChanges" class="channel-secondary">
-            修改待测试，当前仍使用原配置
-          </p>
+      <div class="channel-toolbar">
+        <ElInput
+          v-model="query"
+          aria-label="搜索渠道"
+          placeholder="搜索渠道"
+          clearable
+          class="channel-search"
+        />
+        <ElButton :loading="loading" @click="load">刷新</ElButton>
+      </div>
+      <ElTable
+        v-loading="loading"
+        :data="rows"
+        row-key="configId"
+        class="channel-table"
+      >
+        <ElTableColumn label="渠道名称" min-width="180">
+          <template #default="{ row }">
+            <strong>{{ row.name }}</strong>
+            <p v-if="row.pendingChanges" class="channel-secondary">
+              修改待测试，当前仍使用原配置
+            </p>
+          </template>
+        </ElTableColumn>
+        <ElTableColumn label="服务商" min-width="120">
+          <template #default="{ row }">
+            {{
+              providers.find((item) => item.code === row.provider)?.name ??
+              row.provider
+            }}
+          </template>
+        </ElTableColumn>
+        <ElTableColumn label="启用" width="95">
+          <template #default="{ row }">
+            <ElTag :type="row.active ? 'success' : 'info'" effect="light">
+              {{ row.active ? '已启用' : '未启用' }}
+            </ElTag>
+          </template>
+        </ElTableColumn>
+        <ElTableColumn label="可用 Key" width="110">
+          <template #default="{ row }">
+            {{ keyCount(row) }} / {{ row.keys?.length ?? 0 }}
+          </template>
+        </ElTableColumn>
+        <ElTableColumn label="模型" width="80">
+          <template #default="{ row }">{{ row.models.length }}</template>
+        </ElTableColumn>
+        <ElTableColumn label="连接状态" min-width="130">
+          <template #default="{ row }">
+            <ElTag :type="tone(row.connection?.status)" effect="plain">
+              {{ label(row.connection?.status) }}
+            </ElTag>
+          </template>
+        </ElTableColumn>
+        <ElTableColumn label="操作" width="140" fixed="right">
+          <template #default="{ row }">
+            <ElButton link type="primary" :disabled="busy" @click="open(row)">
+              {{ can('edit') ? '编辑' : '查看' }}
+            </ElButton>
+            <ElButton
+              v-if="
+                can('enable') &&
+                can('query') &&
+                !row.active &&
+                ['SUCCEEDED', 'PARTIAL'].includes(row.connection?.status ?? '')
+              "
+              link
+              type="primary"
+              :disabled="busy"
+              @click="enable(row)"
+            >
+              启用已验证项
+            </ElButton>
+            <ElPopconfirm
+              v-if="can('enable') && can('query') && row.active"
+              title="停用此渠道？其他渠道不受影响。"
+              confirm-button-text="停用"
+              cancel-button-text="保留"
+              @confirm="disable(row)"
+            >
+              <template #reference>
+                <ElButton link type="danger" :disabled="busy">停用</ElButton>
+              </template>
+            </ElPopconfirm>
+          </template>
+        </ElTableColumn>
+        <template #empty>
+          <ElEmpty description="尚无可查看的渠道" :image-size="72" />
         </template>
-      </ElTableColumn>
-      <ElTableColumn label="服务商" min-width="120">
-        <template #default="{ row }">
-          {{
-            providers.find((item) => item.code === row.provider)?.name ??
-            row.provider
-          }}
-        </template>
-      </ElTableColumn>
-      <ElTableColumn label="启用" width="95">
-        <template #default="{ row }">
-          <ElTag :type="row.active ? 'success' : 'info'" effect="light">
-            {{ row.active ? '已启用' : '未启用' }}
-          </ElTag>
-        </template>
-      </ElTableColumn>
-      <ElTableColumn label="可用 Key" width="110">
-        <template #default="{ row }">
-          {{ keyCount(row) }} / {{ row.keys?.length ?? 0 }}
-        </template>
-      </ElTableColumn>
-      <ElTableColumn label="模型" width="80">
-        <template #default="{ row }">{{ row.models.length }}</template>
-      </ElTableColumn>
-      <ElTableColumn label="连接状态" min-width="130">
-        <template #default="{ row }">
-          <ElTag :type="tone(row.connection?.status)" effect="plain">
-            {{ label(row.connection?.status) }}
-          </ElTag>
-        </template>
-      </ElTableColumn>
-      <ElTableColumn label="操作" width="140" fixed="right">
-        <template #default="{ row }">
-          <ElButton link type="primary" :disabled="busy" @click="open(row)">
-            {{ can('edit') ? '编辑' : '查看' }}
-          </ElButton>
-          <ElButton
-            v-if="
-              can('enable') &&
-              can('query') &&
-              !row.active &&
-              ['SUCCEEDED', 'PARTIAL'].includes(row.connection?.status ?? '')
-            "
-            link
-            type="primary"
-            :disabled="busy"
-            @click="enable(row)"
-          >
-            启用已验证项
-          </ElButton>
-          <ElPopconfirm
-            v-if="can('enable') && can('query') && row.active"
-            title="停用此渠道？其他渠道不受影响。"
-            confirm-button-text="停用"
-            cancel-button-text="保留"
-            @confirm="disable(row)"
-          >
-            <template #reference>
-              <ElButton link type="danger" :disabled="busy">停用</ElButton>
-            </template>
-          </ElPopconfirm>
-        </template>
-      </ElTableColumn>
-      <template #empty>
-        <ElEmpty description="尚无可查看的渠道" :image-size="72" />
-      </template>
-    </ElTable>
-    <ElPagination
-      :current-page="page"
-      :page-size="20"
-      :total="Number(total)"
-      layout="total, prev, pager, next"
-      class="channel-pagination"
-      @current-change="
-        page = $event;
-        load();
-      "
-    />
+      </ElTable>
+      <ElPagination
+        :current-page="page"
+        :page-size="20"
+        :total="Number(total)"
+        layout="total, prev, pager, next"
+        class="channel-pagination"
+        @current-change="
+          page = $event;
+          load();
+        "
+      />
+    </template>
     <ElDrawer
       :model-value="editorOpen"
       :title="current ? `渠道 · ${current.name}` : '新增渠道'"
@@ -842,195 +1006,201 @@ onBeforeUnmount(() => {
           </ElFormItem>
         </div>
         <p class="channel-secondary">服务地址：{{ form.endpointUrl }}</p>
-        <div class="channel-key-heading">
-          <div>
-            <h2>Key 与模型</h2>
-            <p class="channel-secondary">
-              每个 Key 可选择多个模型，同一模型也可使用不同 Key。
-              可复用本渠道已选模型，新关联仍需独立测试。
-            </p>
-          </div>
-          <ElButton
-            :disabled="readonly || form.keys.length >= 16"
-            @click="form.keys.push(channelKey(form.keys.length + 1))"
-          >
-            添加 Key
-          </ElButton>
-        </div>
-        <section
-          v-for="(key, index) in form.keys"
-          :key="key.localId"
-          class="channel-key"
-          :aria-label="`Key ${index + 1}`"
-        >
-          <div class="channel-key-title">
-            <strong>Key {{ index + 1 }}</strong>
-            <ElPopconfirm
-              v-if="form.keys.length > 1"
-              title="保存后将移除此 Key 的模型关联，确认移除？"
-              confirm-button-text="移除"
-              cancel-button-text="保留"
-              @confirm="removeKey(index)"
+        <div ref="keyArea" class="channel-keys-area">
+          <div class="channel-key-heading">
+            <div>
+              <h2>Key 与模型</h2>
+              <p class="channel-secondary">
+                每个 Key 可选择多个模型，同一模型也可使用不同 Key。
+                可复用本渠道已选模型，新关联仍需独立测试。
+              </p>
+            </div>
+            <ElButton
+              :disabled="readonly || form.keys.length >= 16"
+              @click="form.keys.push(channelKey(form.keys.length + 1))"
             >
-              <template #reference>
-                <ElButton type="danger" link :disabled="readonly">
-                  移除
-                </ElButton>
-              </template>
-            </ElPopconfirm>
+              添加 Key
+            </ElButton>
           </div>
-          <div class="channel-basics">
-            <ElFormItem label="Key 名称" required>
-              <ElInput
-                v-model="key.name"
-                :disabled="readonly"
-                :aria-label="`Key ${index + 1} 名称`"
-                maxlength="80"
-                placeholder="例如：主账号、备用账号"
-              />
-            </ElFormItem>
-            <ElFormItem label="API Key" :required="!key.keyConfigured">
-              <ElInput
-                v-model="key.apiKey"
-                :disabled="readonly"
-                :aria-label="`Key ${index + 1} 密钥`"
-                type="password"
-                autocomplete="new-password"
-                show-password
-                maxlength="8192"
-                @input="invalidateCatalog(key)"
-                :placeholder="
-                  key.keyConfigured
-                    ? `留空保留原 Key ${key.maskedKey}`
-                    : '粘贴 API Key'
-                "
-              />
-            </ElFormItem>
-          </div>
-          <ElFormItem label="可使用的模型" required>
-            <div class="channel-model-picker">
-              <ElSelect
-                v-model="key.modelCodes"
-                :disabled="readonly"
-                :aria-label="`Key ${index + 1} 模型`"
-                multiple
-                filterable
-                remote
-                :remote-method="(value) => searchModels(key, value)"
-                :loading="getCatalog(key).loading"
-                collapse-tags
-                collapse-tags-tooltip
-                placeholder="搜索目录或选择本渠道模型"
+          <section
+            v-for="(key, index) in form.keys"
+            :key="key.localId"
+            class="channel-key"
+            :aria-label="`Key ${index + 1}`"
+          >
+            <div class="channel-key-title">
+              <strong>Key {{ index + 1 }}</strong>
+              <ElPopconfirm
+                v-if="form.keys.length > 1"
+                title="保存后将移除此 Key 的模型关联，确认移除？"
+                confirm-button-text="移除"
+                cancel-button-text="保留"
+                @confirm="removeKey(index)"
               >
-                <ElOption
-                  v-for="model in modelChoices(key)"
-                  :key="model.code"
-                  :value="model.code"
-                  :label="model.name"
-                >
-                  <span>{{ model.name }}</span>
-                  <small class="model-code">
-                    {{ model.code
-                    }}{{
-                      model.contextLength
-                        ? ` · 上下文 ${contextSize(model.contextLength)}`
-                        : ''
-                    }}
-                  </small>
-                </ElOption>
-                <template #empty>
-                  <div class="catalog-empty">
-                    {{
-                      getCatalog(key).status === 'UNSCANNED'
-                        ? '填写 Key 后获取模型目录'
-                        : getCatalog(key).status === 'STALE'
-                          ? 'Key 已变化，请重新获取目录'
-                          : '暂无匹配模型'
-                    }}
-                  </div>
+                <template #reference>
+                  <ElButton type="danger" link :disabled="readonly">
+                    移除
+                  </ElButton>
                 </template>
-                <template #footer>
-                  <div class="catalog-pager">
-                    <ElButton
-                      link
-                      :disabled="
-                        getCatalog(key).page <= 1 || getCatalog(key).loading
-                      "
-                      @click.stop="scanModels(key, getCatalog(key).page - 1)"
-                    >
-                      上一页
-                    </ElButton>
-                    <span>
-                      扫描目录 {{ getCatalog(key).total }} 项{{
-                        getCatalog(key).filteredCount
-                          ? ` · 忽略 ${getCatalog(key).filteredCount} 项`
+              </ElPopconfirm>
+            </div>
+            <div class="channel-basics">
+              <ElFormItem label="Key 名称" required>
+                <ElInput
+                  v-model="key.name"
+                  :disabled="readonly"
+                  :aria-label="`Key ${index + 1} 名称`"
+                  maxlength="80"
+                  placeholder="例如：主账号、备用账号"
+                />
+              </ElFormItem>
+              <ElFormItem label="API Key" :required="!key.keyConfigured">
+                <ElInput
+                  v-model="key.apiKey"
+                  :disabled="readonly"
+                  :aria-label="`Key ${index + 1} 密钥`"
+                  type="password"
+                  autocomplete="new-password"
+                  show-password
+                  maxlength="8192"
+                  @input="invalidateCatalog(key)"
+                  :placeholder="
+                    key.keyConfigured
+                      ? `留空保留原 Key ${key.maskedKey}`
+                      : '粘贴 API Key'
+                  "
+                />
+              </ElFormItem>
+            </div>
+            <ElFormItem label="可使用的模型" required>
+              <div class="channel-model-picker">
+                <ElSelect
+                  v-model="key.modelCodes"
+                  :disabled="readonly"
+                  :aria-label="`Key ${index + 1} 模型`"
+                  multiple
+                  filterable
+                  remote
+                  :remote-method="(value) => searchModels(key, value)"
+                  :loading="getCatalog(key).loading"
+                  collapse-tags
+                  collapse-tags-tooltip
+                  placeholder="搜索目录或选择本渠道模型"
+                >
+                  <ElOption
+                    v-for="model in modelChoices(key)"
+                    :key="model.code"
+                    :value="model.code"
+                    :label="model.name"
+                  >
+                    <span>{{ model.name }}</span>
+                    <small class="model-code">
+                      {{ model.code
+                      }}{{
+                        model.contextLength
+                          ? ` · 上下文 ${contextSize(model.contextLength)}`
                           : ''
                       }}
-                      · 第 {{ getCatalog(key).page }} 页
-                    </span>
-                    <ElButton
-                      link
-                      :disabled="
-                        getCatalog(key).page * 50 >= getCatalog(key).total ||
-                        getCatalog(key).loading
-                      "
-                      @click.stop="scanModels(key, getCatalog(key).page + 1)"
-                    >
-                      下一页
-                    </ElButton>
-                  </div>
-                </template>
-              </ElSelect>
-              <ElButton
-                :loading="getCatalog(key).loading"
-                :disabled="!canScan(key)"
-                @click="scanModels(key)"
-              >
+                    </small>
+                  </ElOption>
+                  <template #empty>
+                    <div class="catalog-empty">
+                      {{
+                        getCatalog(key).status === 'UNSCANNED'
+                          ? '填写 Key 后获取模型目录'
+                          : getCatalog(key).status === 'STALE'
+                            ? 'Key 已变化，请重新获取目录'
+                            : '暂无匹配模型'
+                      }}
+                    </div>
+                  </template>
+                  <template #footer>
+                    <div class="catalog-pager">
+                      <ElButton
+                        link
+                        :disabled="
+                          getCatalog(key).page <= 1 || getCatalog(key).loading
+                        "
+                        @click.stop="
+                          changeCatalogPage(key, getCatalog(key).page - 1)
+                        "
+                      >
+                        上一页
+                      </ElButton>
+                      <span>
+                        扫描目录 {{ getCatalog(key).total }} 项{{
+                          getCatalog(key).filteredCount
+                            ? ` · 忽略 ${getCatalog(key).filteredCount} 项`
+                            : ''
+                        }}
+                        · 第 {{ getCatalog(key).page }} 页
+                      </span>
+                      <ElButton
+                        link
+                        :disabled="
+                          getCatalog(key).page * 50 >= getCatalog(key).total ||
+                          getCatalog(key).loading
+                        "
+                        @click.stop="
+                          changeCatalogPage(key, getCatalog(key).page + 1)
+                        "
+                      >
+                        下一页
+                      </ElButton>
+                    </div>
+                  </template>
+                </ElSelect>
+                <ElButton
+                  :loading="getCatalog(key).loading"
+                  :disabled="!canScan(key)"
+                  @click="scanModels(key)"
+                >
+                  {{
+                    getCatalog(key).status === 'READY'
+                      ? '刷新目录'
+                      : '获取模型目录'
+                  }}
+                </ElButton>
+              </div>
+            </ElFormItem>
+            <ElAlert
+              v-if="getCatalog(key).error"
+              :title="getCatalog(key).error"
+              type="warning"
+              closable
+              show-icon
+              @close="getCatalog(key).error = ''"
+            />
+            <p v-if="getCatalog(key).refreshedAt" class="channel-secondary">
+              {{ catalogSource(getCatalog(key).source) }} ·
+              {{ metadataTime(getCatalog(key).refreshedAt) }} ·
+              目录不代表生成验证。
+            </p>
+            <p v-if="keyPending(key)" class="channel-secondary">
+              当前 Key 或模型关联待保存与验证。
+            </p>
+            <div
+              v-for="result in !keyPending(key)
+                ? ((test?.keys ?? current?.keys ?? []).find(
+                    (item) => item.keyId === key.keyId,
+                  )?.models ?? [])
+                : []"
+              :key="result.code"
+              class="channel-proof"
+            >
+              <span>
                 {{
-                  getCatalog(key).status === 'READY'
-                    ? '刷新目录'
-                    : '获取模型目录'
+                  modelChoices(key).find((model) => model.code === result.code)
+                    ?.name ?? result.code
                 }}
-              </ElButton>
+              </span>
+              <ElTag :type="tone(result.status)" size="small">
+                {{ label(result.status) }}
+              </ElTag>
+              <span class="channel-secondary">{{ result.message }}</span>
             </div>
-          </ElFormItem>
-          <ElAlert
-            v-if="getCatalog(key).error"
-            :title="getCatalog(key).error"
-            type="warning"
-            closable
-            show-icon
-            @close="getCatalog(key).error = ''"
-          />
-          <p v-if="getCatalog(key).refreshedAt" class="channel-secondary">
-            {{ catalogSource(getCatalog(key).source) }} ·
-            {{ metadataTime(getCatalog(key).refreshedAt) }} ·
-            目录不代表生成验证。
-          </p>
-          <p v-if="keyPending(key)" class="channel-secondary">
-            当前 Key 或模型关联待保存与验证。
-          </p>
-          <div
-            v-for="result in !keyPending(key)
-              ? ((test?.keys ?? current?.keys ?? []).find(
-                  (item) => item.keyId === key.keyId,
-                )?.models ?? [])
-              : []"
-            :key="result.code"
-            class="channel-proof"
-          >
-            <span>
-              {{
-                modelChoices(key).find((model) => model.code === result.code)
-                  ?.name ?? result.code
-              }}
-            </span>
-            <ElTag :type="tone(result.status)" size="small">
-              {{ label(result.status) }}
-            </ElTag>
-            <span class="channel-secondary">{{ result.message }}</span>
-          </div>
-        </section>
+          </section>
+        </div>
       </ElForm>
       <p v-if="current?.pendingChanges" class="channel-secondary">
         修改待测试，原连接继续运行。
@@ -1090,6 +1260,10 @@ onBeforeUnmount(() => {
   color: hsl(var(--foreground));
   background: hsl(var(--background));
   border-radius: 10px;
+}
+
+.channel-workspace.is-editor-only {
+  display: contents;
 }
 
 .channel-header,

@@ -12,6 +12,7 @@ export interface CatalogModel {
   supportedParameters: string[];
 }
 export interface ModelCatalogPage {
+  catalogScanId?: string;
   scannedCount?: number;
   filteredCount?: number;
   filterReasons?: Record<string, number>;
@@ -40,6 +41,26 @@ export interface SavedCatalogScan extends CatalogQuery {
 export interface DraftCatalogScan extends CatalogQuery {
   apiKey: string;
   provider: string;
+  endpointUrl?: string;
+}
+export interface CatalogSource {
+  catalogScanId: string;
+  keyId: string;
+  refreshedAt: string;
+  source: ModelCatalogPage['source'];
+  current: boolean;
+  scannedCount: number;
+  filteredCount: number;
+  filterReasons: Record<string, number>;
+}
+export interface StoredCatalog {
+  configId: string;
+  revision: number;
+  provider: string;
+  endpointUrl: string;
+  state: 'FETCHED' | 'NOT_FETCHED' | 'PARTIAL' | 'STALE';
+  catalog: ModelCatalogPage;
+  sources: CatalogSource[];
 }
 const base = '/system/ai/model-catalog';
 export const publicModelCatalog = (params: CatalogQuery) =>
@@ -53,6 +74,25 @@ export const scanDraftModels = (
   signal?: AbortSignal,
 ) =>
   requestClient.post<ModelCatalogPage>(`${base}/draft-scan`, input, { signal });
+export const getStoredCatalog = (
+  configId: string,
+  params: CatalogQuery & { keyId?: string },
+) =>
+  requestClient.get<StoredCatalog>(
+    `${base}/channels/${encodeURIComponent(configId)}`,
+    { params },
+  );
+export const getCatalogScan = (catalogScanId: string, params: CatalogQuery) =>
+  requestClient.get<ModelCatalogPage>(
+    `${base}/scans/${encodeURIComponent(catalogScanId)}`,
+    { params },
+  );
+export const attachModelCatalog = (input: {
+  catalogScanId: string;
+  configId: string;
+  expectedRevision: number;
+  keyId: string;
+}) => requestClient.post<unknown>(`${base}/attach`, input);
 
 const errors: Record<string, string> = {
   CONFIG_CHANGED: '渠道已更新，请刷新后重新获取目录。',

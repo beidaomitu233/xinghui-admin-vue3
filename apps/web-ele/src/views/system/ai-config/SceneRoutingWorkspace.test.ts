@@ -6,7 +6,7 @@ import { reactive } from 'vue';
 import ElementPlus, { ElMessageBox } from 'element-plus';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { click } from '#/test-utils/element-controls';
+import { click, selectValue } from '#/test-utils/element-controls';
 
 import SceneRouteEditor from './SceneRouteEditor.vue';
 import SceneRoutingWorkspace from './SceneRoutingWorkspace.vue';
@@ -23,9 +23,11 @@ const api = vi.hoisted(() => ({
   models: vi.fn(),
   keys: vi.fn(),
   bodySave: vi.fn(),
+  hubModels: vi.fn(),
 }));
 vi.mock('@vben/stores', () => ({ useAccessStore: () => store }));
 vi.mock('vue-router', () => ({ onBeforeRouteLeave: vi.fn() }));
+vi.mock('#/api/system/ai-model-hub', () => ({ listHubModels: api.hubModels }));
 vi.mock('#/api/system/ai-scene', () => ({
   getSceneWorkspace: api.scenes,
   sceneModels: api.models,
@@ -76,6 +78,7 @@ async function change(wrapper: ReturnType<typeof mount>) {
 }
 beforeEach(() => {
   vi.resetAllMocks();
+  api.hubModels.mockResolvedValue({ records: [], total: '0' });
   store.accessToken = 'actor-a';
   store.accessCodes = [
     'ai:config:query',
@@ -96,6 +99,7 @@ beforeEach(() => {
       revision: 5,
       currentVersionId: 'v5',
       modelPolicy: body.modelPolicy,
+      businessModel: body.businessModel ?? null,
     },
     clientMutationId: body.clientMutationId,
     effectiveFrom: '2026-10-18T06:00:00Z',
@@ -136,6 +140,25 @@ afterEach(async () => {
   vi.restoreAllMocks();
 });
 describe('independent scene routing with shared revision CAS', () => {
+  it('explicitly switches a scene to a business model without reconstructing its provider or key policy', async () => {
+    api.hubModels.mockResolvedValue({
+      records: [
+        { modelId: 'business-1', name: '客服模型', slug: 'customer-chat' },
+      ],
+      total: '1',
+    });
+    const wrapper = await render();
+    await selectValue(wrapper, '场景逻辑业务模型', 'customer-chat');
+    await click('保存调用顺序');
+    expect(api.save).toHaveBeenCalledWith('scene.a', {
+      expectedRevision: 4,
+      clientMutationId: expect.any(String),
+      modelPolicy: null,
+      businessModel: 'customer-chat',
+    });
+    expect(api.bodySave).not.toHaveBeenCalled();
+    expect(wrapper.findComponent(SceneRouteEditor).exists()).toBe(false);
+  });
   it('saves only routing through its narrow endpoint and retains fixed-key restrictions', async () => {
     const wrapper = await render();
     expect(api.get).toHaveBeenCalledTimes(1);

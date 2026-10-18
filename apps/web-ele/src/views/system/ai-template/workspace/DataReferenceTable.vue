@@ -40,6 +40,7 @@ const emit = defineEmits<{
 interface ReferenceRow extends PromptVariable {
   description: string;
   source: string;
+  sourceDetail?: string;
   editable: boolean;
   removable: boolean;
 }
@@ -51,9 +52,10 @@ const sourceMetadata = ref<
 >({});
 const sqlScopes = ref<Record<string, string>>({});
 const sqlColumns = ref<Record<string, string>>({});
+const sqlDetails = ref<Record<string, string>>({});
 const queryMetadataCache = new Map<
   string,
-  Promise<{ columns: string; text: string }>
+  Promise<{ columns: string; detail: string; text: string }>
 >();
 const metadataCache = new Map<
   string,
@@ -110,6 +112,7 @@ const rows = computed<ReferenceRow[]>(() => [
     source:
       sqlScopes.value[binding.variable] ||
       '已保存查询 · 来源范围将在使用时重新校验',
+    sourceDetail: sqlDetails.value[binding.variable],
     editable: true,
     removable: true,
   })),
@@ -229,6 +232,7 @@ watch(
     const run = ++metadataGeneration;
     sourceMetadata.value = {};
     sqlScopes.value = {};
+    sqlDetails.value = {};
     sqlColumns.value = {};
     const actor = JSON.stringify([access.accessToken, access.accessCodes]);
     if (actor !== metadataIdentity) {
@@ -256,6 +260,11 @@ watch(
         sourceMetadata.value[result.value.source] = result.value.metadata;
     for (const binding of props.sqlBindings ?? []) {
       if (!alive || run !== metadataGeneration) return;
+      if (binding.datasetKeys.length === 0) {
+        sqlScopes.value[binding.variable] =
+          '历史查询范围，编辑后可更新实际来源';
+        continue;
+      }
       const key = JSON.stringify([binding.datasetKeys, binding.query]);
       let task = queryMetadataCache.get(key);
       if (!task) {
@@ -273,6 +282,17 @@ watch(
           if (!validation.valid) throw new Error('Query summary unavailable');
           return {
             text:
+              schema.datasets
+                .slice(0, 2)
+                .map(
+                  (dataset) =>
+                    `${dataset.label} · ${{ PLATFORM: '平台授权', TENANT: '租户授权', PERSONAL: '个人授权' }[dataset.scope]}`,
+                )
+                .join('；') +
+              (schema.datasets.length > 2
+                ? ` 等 ${schema.datasets.length} 项来源`
+                : ''),
+            detail:
               schema.datasets
                 .map(
                   (dataset) => `${dataset.label} · ${dataset.scopeDescription}`,
@@ -293,6 +313,7 @@ watch(
         const summary = await task;
         if (!alive || run !== metadataGeneration) return;
         sqlScopes.value[binding.variable] = summary.text;
+        sqlDetails.value[binding.variable] = summary.detail;
         sqlColumns.value[binding.variable] = summary.columns;
       } catch {
         queryMetadataCache.delete(key);
@@ -343,7 +364,7 @@ onBeforeUnmount(() => {
       </ElTableColumn>
       <ElTableColumn label="查询来源与范围" min-width="190">
         <template #default="{ row }">
-          <span>{{ row.source }}</span>
+          <span :title="row.sourceDetail">{{ row.source }}</span>
         </template>
       </ElTableColumn>
       <ElTableColumn label="操作" width="140">
@@ -426,6 +447,10 @@ h2 {
   color: hsl(var(--primary));
   overflow-wrap: anywhere;
   white-space: pre-wrap;
+}
+
+:global(.dark) .reference-table code {
+  color: color-mix(in srgb, hsl(var(--primary)) 55%, white);
 }
 
 .reference-table :deep(.el-button + .el-button) {

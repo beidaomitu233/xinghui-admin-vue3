@@ -211,7 +211,9 @@ describe('real AI pages with read-only local transport', () => {
     });
     wrappers.push(viewer);
     await settle();
-    openButton('查看');
+    openButton('供应商');
+    await settle();
+    openButton('查看 Key');
     await settle();
     const key = document.querySelector<HTMLInputElement>(
       'input[aria-label="Key 1 密钥"]',
@@ -261,11 +263,28 @@ describe('real AI pages with read-only local transport', () => {
         wrappers.push(wrapper);
         await settle();
         expect(wrapper.text()).toContain('虚构');
-        if (_name === 'scene')
-          await wrapper.get('.scene-item').trigger('click');
-        else if (_name === 'conversation')
-          await wrapper.get('.conversation-item').trigger('click');
-        else if (button) openButton(button);
+        switch (_name) {
+          case 'configuration': {
+            const model = wrapper
+              .findAll('.hub-list-item')
+              .find((item) => item.text().includes('[虚构只读] 演示业务模型'));
+            if (!model) throw new Error('Missing fictional business model');
+            await model.trigger('click');
+
+            break;
+          }
+          case 'conversation': {
+            await wrapper.get('.conversation-item').trigger('click');
+            break;
+          }
+          case 'scene': {
+            await wrapper.get('.scene-item').trigger('click');
+            break;
+          }
+          default: {
+            if (button) openButton(button);
+          }
+        }
         await settle();
         expect(
           client.get.mock.calls.some(([url]) =>

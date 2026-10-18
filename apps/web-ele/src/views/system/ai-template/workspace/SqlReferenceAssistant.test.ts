@@ -132,6 +132,7 @@ beforeEach(() => {
     pageSize: 20,
   });
   api.validate.mockResolvedValue({
+    usedDatasetKeys: ['orders'],
     currentRecordDatasetKey: null,
     valid: true,
     normalizedSql: query.sql,
@@ -200,6 +201,7 @@ describe('bounded SQL reference assistant', () => {
   });
   it('statically saves a dynamic record query without pretending that database rows were read', async () => {
     api.validate.mockResolvedValue({
+      usedDatasetKeys: ['orders'],
       valid: true,
       normalizedSql: query.sql,
       columns: result.columns,
@@ -215,7 +217,11 @@ describe('bounded SQL reference assistant', () => {
     await fill('查询引用名称', '本次订单');
     await click('保存并插入提示词');
     expect(api.save).toHaveBeenCalledWith(
-      expect.objectContaining({ label: '本次订单', query }),
+      expect.objectContaining({
+        label: '本次订单',
+        query,
+        datasetKeys: ['orders'],
+      }),
     );
     expect(api.preview).not.toHaveBeenCalled();
     expect(api.start).not.toHaveBeenCalled();
@@ -276,7 +282,7 @@ describe('bounded SQL reference assistant', () => {
       variable: 'query_data',
       label: '订单金额',
       description: '',
-      datasetKeys: [],
+      datasetKeys: ['orders'],
       query,
     });
     expect(api.start).not.toHaveBeenCalled();

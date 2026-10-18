@@ -2,6 +2,7 @@
 import type { PromptVariable } from './prompt-tokens';
 
 import type { ModelBinding } from '#/api/system/ai-application';
+import type { HubModel } from '#/api/system/ai-model-hub';
 import type {
   SceneDefinition,
   SceneModelOption,
@@ -23,6 +24,8 @@ import { promptDocument, singlePromptDocument } from './prompt-document';
 import PromptTextEditor from './PromptTextEditor.vue';
 
 const props = defineProps<{
+  businessModelOverview?: null | string;
+  businessModels?: HubModel[];
   canConfigureRouting?: boolean;
   fields: Record<string, string>;
   initialModel?: boolean;
@@ -44,6 +47,8 @@ function modelId(model: ModelBinding['model']) {
   return `${model.modelRef}:${model.configVersion}`;
 }
 const selectedModel = computed(() => {
+  const business = props.businessModelOverview ?? props.value.businessModel;
+  if (business) return `business:${business}`;
   if (props.value.initialModel) return modelId(props.value.initialModel);
   const first = (props.routingOverview ?? props.value.modelPolicy).models[0];
   return first ? modelId(first.model) : '';
@@ -53,6 +58,12 @@ const choices = computed(() => {
     id: modelId(option.model),
     label: `${option.configName} · ${option.modelCode}`,
   }));
+  options.unshift(
+    ...(props.businessModels ?? []).map((model) => ({
+      id: `business:${model.slug}`,
+      label: model.name,
+    })),
+  );
   if (
     selectedModel.value &&
     !options.some((option) => option.id === selectedModel.value)
@@ -78,12 +89,31 @@ function updatePrompt(value: string) {
 function chooseModel(id: string) {
   if (props.readonly || !props.initialModel || id === selectedModel.value)
     return;
+  const business = props.businessModels?.find(
+    (model) => `business:${model.slug}` === id,
+  );
+  if (business) {
+    if (!props.saving)
+      emit(
+        'change',
+        singlePromptDocument({
+          ...props.value,
+          businessModel: business.slug,
+          initialModel: null,
+        }),
+      );
+    return;
+  }
   const option = props.models.find((model) => modelId(model.model) === id);
   if (!option) return;
   if (!props.saving)
     emit(
       'change',
-      singlePromptDocument({ ...props.value, initialModel: option.model }),
+      singlePromptDocument({
+        ...props.value,
+        businessModel: null,
+        initialModel: option.model,
+      }),
     );
 }
 async function insertVariable(name: string) {
@@ -112,14 +142,19 @@ defineExpose({ insertVariable });
           @update:model-value="update('purpose', $event)"
         />
       </ElFormItem>
-      <ElFormItem label="使用模型" :error="fields.modelPolicy">
+      <ElFormItem
+        label="使用模型"
+        :error="
+          fields.businessModel || fields.initialModel || fields.modelPolicy
+        "
+      >
         <ElSelect
           v-if="initialModel"
           :model-value="selectedModel"
           :disabled="readonly || saving"
           aria-label="使用模型"
           filterable
-          placeholder="选择已启用的渠道模型"
+          placeholder="选择业务模型或已有渠道模型"
           @update:model-value="chooseModel"
           @visible-change="
             (visible) => {
@@ -140,6 +175,8 @@ defineExpose({ insertVariable });
               choices.find((option) => option.id === selectedModel)?.label ||
               '尚未配置模型'
             }}{{
+              !value.businessModel &&
+              !businessModelOverview &&
               (routingOverview ?? value.modelPolicy).models.length > 1
                 ? ` · ${(routingOverview ?? value.modelPolicy).models.length} 个调用组合`
                 : ''

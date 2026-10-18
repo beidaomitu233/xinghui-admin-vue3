@@ -389,7 +389,7 @@ onBeforeUnmount(() => {
       :before-close="closeTrial"
     >
       <ElForm label-position="top" class="trial-form">
-        <ElFormItem label="试运行组合">
+        <ElFormItem v-if="!definition.businessModel" label="试运行组合">
           <ElSelect
             v-model="modelIndex"
             aria-label="试运行组合"
@@ -403,7 +403,13 @@ onBeforeUnmount(() => {
             />
           </ElSelect>
         </ElFormItem>
-        <p class="trial-hint">测试所选组合；正式对话按场景优先级自动切换。</p>
+        <p v-if="definition.businessModel" class="trial-hint">
+          按业务模型
+          {{ definition.businessModel }} 当前已保存的供应商与策略试运行。
+        </p>
+        <p v-else class="trial-hint">
+          测试所选组合；正式对话按场景优先级自动切换。
+        </p>
         <ElFormItem
           v-if="currentSource && !props.businessRef"
           label="业务记录"

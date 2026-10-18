@@ -53,6 +53,11 @@ const api = vi.hoisted(() => ({
     vi.fn<(id: string, value: AiSettingsChange) => Promise<AiSettingsView>>(),
   test: vi.fn<(id: string, value: unknown) => Promise<SettingsTestRun>>(),
   poll: vi.fn(),
+  stored: vi.fn(),
+  ticket: vi.fn(),
+  attach: vi.fn(),
+  hubModels: vi.fn(),
+  hubSummary: vi.fn(),
   legacy: vi.fn(),
   activate: vi.fn(),
   disable: vi.fn(),
@@ -100,6 +105,13 @@ vi.mock('#/api/system/ai-model-catalog', async (original) => ({
   ...(await original<object>()),
   scanDraftModels: api.draftScan,
   scanSavedModels: api.savedScan,
+  getStoredCatalog: api.stored,
+  getCatalogScan: api.ticket,
+  attachModelCatalog: api.attach,
+}));
+vi.mock('#/api/system/ai-model-hub', () => ({
+  listHubModels: api.hubModels,
+  getHubModelSummary: api.hubSummary,
 }));
 
 const modelA = { code: 'vendor/a', name: '模型甲' };
@@ -259,6 +271,28 @@ beforeEach(() => {
   api.disable.mockResolvedValue({});
   api.draftScan.mockResolvedValue(catalog());
   api.savedScan.mockResolvedValue(catalog());
+  api.stored.mockImplementation(async (configId) => ({
+    configId,
+    revision: 7,
+    provider: 'openrouter',
+    endpointUrl: first.endpointUrl,
+    state: 'NOT_FETCHED',
+    sources: [],
+    catalog: { ...catalog(), records: [], total: 0 },
+  }));
+  api.attach.mockResolvedValue({});
+  api.hubModels.mockResolvedValue({ records: [], total: '0' });
+  api.hubSummary.mockResolvedValue({
+    totalModels: 0,
+    enabledModels: 0,
+    readyModels: 0,
+    unconfiguredModels: 0,
+    disabledModels: 0,
+    multiProviderModels: 0,
+    assuranceNeededModels: 0,
+    modelLimit: 512,
+    observedAt: '2026-10-18T01:00:00Z',
+  });
   vi.spyOn(ElMessageBox, 'confirm').mockImplementation(
     vi.fn().mockResolvedValue('confirm'),
   );
@@ -269,6 +303,79 @@ afterEach(() => {
   document.body.innerHTML = '';
 });
 describe('independent multi-key channel management', () => {
+  it('uses the owner-scoped scan receipt for draft catalog search without retransmitting a key and invalidates it on material change', async () => {
+    api.draftScan.mockResolvedValue({
+      ...catalog('vendor/first', '首批目录', 'openrouter', 1, 60),
+      catalogScanId: 'scan-ticket-1',
+    });
+    api.ticket.mockResolvedValue(
+      catalog('vendor/next', '后续目录', 'openrouter', 1, 1),
+    );
+    const wrapper = render();
+    await flushPromises();
+    await click('新增渠道');
+    await fill('渠道名称', '新渠道');
+    await fill('Key 1 密钥', 'never-repeat-this-key');
+    await click('获取模型目录');
+    const remote = selectControl(wrapper, 'Key 1 模型').props('remoteMethod');
+    if (!remote) throw new Error('Missing catalog search');
+    remote('后续');
+    await settleDebounce();
+    expect(api.ticket).toHaveBeenCalledWith('scan-ticket-1', {
+      search: '后续',
+      pageNum: 1,
+      pageSize: 50,
+    });
+    expect(api.draftScan).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(api.ticket.mock.calls)).not.toContain(
+      'never-repeat-this-key',
+    );
+    await fill('Key 1 密钥', 'changed-key');
+    remote('重新搜索');
+    await settleDebounce();
+    expect(api.ticket).toHaveBeenCalledTimes(1);
+    expect(api.draftScan).toHaveBeenCalledTimes(1);
+  });
+  it('attaches a draft scan only after channel save returns an unambiguous actual key identity', async () => {
+    api.draftScan.mockResolvedValue({
+      ...catalog(),
+      catalogScanId: 'scan-attach-1',
+    });
+    api.create.mockImplementation(async (body) => ({
+      ...channel('new-channel', body.name),
+      revision: 1,
+      keys: (body.keys ?? []).map((key) => ({
+        keyId: 'actual-created-key',
+        name: key.name,
+        keyConfigured: true,
+        maskedKey: '••••new',
+        modelCodes: key.modelCodes ?? [],
+        status: 'NOT_TESTED',
+        message: '',
+        models: [],
+      })),
+    }));
+    const wrapper = render();
+    await flushPromises();
+    await click('新增渠道');
+    await fill('渠道名称', '新渠道');
+    await fill('Key 1 名称', '新账号');
+    await fill('Key 1 密钥', 'fictional-source-key');
+    await click('获取模型目录');
+    await selectValue(wrapper, 'Key 1 模型', ['vendor/catalog-model']);
+    expect(api.attach).not.toHaveBeenCalled();
+    await click('保存渠道');
+    expect(api.attach).toHaveBeenCalledWith({
+      configId: 'new-channel',
+      keyId: 'actual-created-key',
+      expectedRevision: 1,
+      catalogScanId: 'scan-attach-1',
+    });
+    expect(JSON.stringify(api.attach.mock.calls)).not.toContain(
+      'fictional-source-key',
+    );
+    expect(api.test).not.toHaveBeenCalled();
+  });
   it('requires cost consent and reports partial per-key results without activating when enable permission is absent', async () => {
     access.accessCodes = access.accessCodes.filter(
       (code) => code !== 'ai:config:enable',
@@ -371,16 +478,19 @@ describe('independent multi-key channel management', () => {
     expect(api.draftScan).toHaveBeenCalledTimes(1);
     expect(api.test).not.toHaveBeenCalled();
   });
-  it('renders the independent entry with two simultaneously enabled channels and no monitor or nested cards', async () => {
+  it('renders the model-centered entry and switches to two independently enabled supplier channels without nested cards', async () => {
     const wrapper = render(true);
+    await flushPromises();
+    expect(wrapper.text()).toContain('模型汇总');
+    await click('供应商');
     await flushPromises();
     expect(wrapper.findComponent(ChannelWorkspace).exists()).toBe(true);
     expect(wrapper.find('.conversation-board').exists()).toBe(false);
     expect(wrapper.findAll('.el-card')).toHaveLength(0);
     expect(wrapper.text()).toContain('主渠道');
     expect(wrapper.text()).toContain('备用渠道');
-    expect(wrapper.text().match(/已启用/g)).toHaveLength(2);
-    expect(wrapper.text()).toContain('可用 Key');
+    expect(wrapper.text()).toContain('2 个渠道 · 2 个已启用');
+    expect(wrapper.text()).toContain('API Key');
     expect(api.draftScan).not.toHaveBeenCalled();
     expect(api.test).not.toHaveBeenCalled();
   });
@@ -434,6 +544,7 @@ describe('independent multi-key channel management', () => {
     await click('获取模型目录');
     expect(api.draftScan.mock.calls[0]?.[0]).toEqual({
       provider: 'openrouter',
+      endpointUrl: 'https://openrouter.ai/api/v1/chat/completions',
       apiKey: 'fictional-new-key',
       search: undefined,
       pageNum: 1,
@@ -494,14 +605,18 @@ describe('independent multi-key channel management', () => {
       expectedRevision: 7,
     });
     expect(optionNames(wrapper, 'Key 1 模型')).not.toContain('备用账号目录');
-    api.savedScan.mockResolvedValueOnce(
-      catalog('vendor/page-two', '第二页目录', 'openrouter', 2, 60),
-    );
+    api.stored.mockResolvedValueOnce({
+      configId: '101',
+      revision: 7,
+      state: 'FETCHED',
+      sources: [{ keyId: '111', current: true }],
+      catalog: catalog('vendor/page-two', '第二页目录', 'openrouter', 2, 60),
+    });
     const control = selectControl(wrapper, 'Key 1 模型');
     await control.find('.el-select__wrapper').trigger('click');
     await flushPromises();
     await click('下一页');
-    expect(api.savedScan.mock.calls.at(-1)?.[0]).toMatchObject({
+    expect(api.stored.mock.calls.at(-1)?.[1]).toMatchObject({
       keyId: '111',
       pageNum: 2,
     });
@@ -510,8 +625,15 @@ describe('independent multi-key channel management', () => {
     const remote = control.props('remoteMethod');
     if (!remote) throw new Error('Missing server model search');
     remote('第二页');
+    api.stored.mockResolvedValueOnce({
+      configId: '101',
+      revision: 7,
+      state: 'FETCHED',
+      sources: [{ keyId: '111', current: true }],
+      catalog: catalog('vendor/page-two', '第二页目录'),
+    });
     await settleDebounce();
-    expect(api.savedScan.mock.calls.at(-1)?.[0]).toMatchObject({
+    expect(api.stored.mock.calls.at(-1)?.[1]).toMatchObject({
       keyId: '111',
       search: '第二页',
       pageNum: 1,

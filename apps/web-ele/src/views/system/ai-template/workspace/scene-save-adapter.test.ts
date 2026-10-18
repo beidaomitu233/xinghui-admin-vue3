@@ -119,6 +119,40 @@ describe('prompt-only persistence and immutable data definitions', () => {
     expect(wire.definition.dataObjects).toEqual(value.dataObjects);
     expect(value.modelPolicy.models[0]?.keyMode).toBe('FIXED');
   });
+  it('sends a business model independently from provider routing and initial model material', async () => {
+    const value = {
+      ...definition(),
+      businessModel: 'customer-chat',
+      initialModel: { modelRef: 'old-model', configVersion: '2' },
+    };
+    save.mockResolvedValueOnce({
+      clientMutationId: 'business-save',
+      effectiveFrom: null,
+      detail: {
+        scene: {
+          sceneKey: 'scene.business',
+          revision: 1,
+          currentVersionId: 'v1',
+        },
+        definition: { ...value, initialModel: null },
+        legacy: null,
+      },
+    });
+    await persistScene(
+      {
+        sceneKey: 'scene.business',
+        expectedRevision: 0,
+        clientMutationId: 'business-save',
+        value,
+      },
+      vi.fn(),
+    );
+    const wire = save.mock.calls.at(-1)?.[1]
+      .definition as SceneEditableDefinition;
+    expect(wire.businessModel).toBe('customer-chat');
+    expect(wire).not.toHaveProperty('modelPolicy');
+    expect(wire).not.toHaveProperty('initialModel');
+  });
   it('sends only the initial model intent for an unconfigured scene and accepts the server-owned policy', async () => {
     const value = {
       ...definition(),

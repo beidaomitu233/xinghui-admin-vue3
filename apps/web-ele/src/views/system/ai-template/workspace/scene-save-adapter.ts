@@ -109,7 +109,7 @@ export function sceneSaveProblem(error: unknown) {
           typeof path === 'string' ? path.replace(/^definition\./, '') : path;
         if (
           typeof name === 'string' &&
-          /^(?:name|purpose|promptText|outputRequirement|dataObjects|dataBindings|sqlBindings|initialModel|modelPolicy)(?:\.\w+|\[\d{1,3}\])*$/.test(
+          /^(?:name|purpose|promptText|outputRequirement|dataObjects|dataBindings|sqlBindings|initialModel|businessModel|modelPolicy)(?:\.\w+|\[\d{1,3}\])*$/.test(
             name,
           )
         ) {
@@ -121,6 +121,7 @@ export function sceneSaveProblem(error: unknown) {
             outputRequirement: '输出规则',
             sqlBindings: '查询引用',
             initialModel: '使用模型',
+            businessModel: '使用模型',
             dataObjects: '数据对象或允许字段',
             dataBindings: '数据库引用',
             modelPolicy: '模型及调用设置',
@@ -144,7 +145,8 @@ export async function persistScene(
   try {
     const definition: SceneEditableDefinition = { ...command.value };
     delete definition.modelPolicy;
-    if (!definition.initialModel) delete definition.initialModel;
+    if (definition.businessModel || !definition.initialModel)
+      delete definition.initialModel;
     const result = await saveScene(command.sceneKey, {
       clientMutationId: command.clientMutationId,
       confirmedLegacyConversion,
