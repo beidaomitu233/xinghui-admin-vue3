@@ -49,7 +49,7 @@ const minimumAssertions = new Map([
   ['/src/demo/ai-pages.test.ts', 7],
   ['/src/router/menu-cleanup.test.ts', 4],
   ['/src/styles/workspace-theme.test.ts', 5],
-  ['/src/views/system/ai-config/ModelHubWorkspace.test.ts', 15],
+  ['/src/views/system/ai-config/ModelHubWorkspace.test.ts', 16],
   ['/src/views/system/ai-config/SceneRoutingWorkspace.test.ts', 5],
   ['/src/views/system/ai-config/SimpleSettingsPanel.test.ts', 15],
   ['/src/views/system/ai-request/conversations/ConversationBoard.test.ts', 7],

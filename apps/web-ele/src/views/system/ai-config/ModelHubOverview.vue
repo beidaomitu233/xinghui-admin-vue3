@@ -304,7 +304,7 @@ function assurance(model: HubModel) {
           layout="prev, pager, next"
         />
         <ElEmpty
-          v-else
+          v-if="filtered.length === 0"
           :description="
             models.length > 0 ? '暂无符合条件的模型' : '还没有配置模型'
           "

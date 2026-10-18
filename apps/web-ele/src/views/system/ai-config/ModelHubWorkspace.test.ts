@@ -436,6 +436,10 @@ describe('model-centered AI configuration from the approved prototype', () => {
   it('defaults to the model overview and uses server health without calling providers or creating bindings', async () => {
     const wrapper = await render();
     expect(wrapper.text()).toContain('模型汇总');
+    expect(wrapper.find('.overview-models .overview-table').exists()).toBe(
+      true,
+    );
+    expect(wrapper.find('.overview-models .el-empty').exists()).toBe(false);
     expect(wrapper.get('.hub-summary-item').attributes('aria-pressed')).toBe(
       'true',
     );
@@ -444,6 +448,35 @@ describe('model-centered AI configuration from the approved prototype', () => {
     expect(api.scan).not.toHaveBeenCalled();
     expect(api.startTest).not.toHaveBeenCalled();
     expect(api.update).not.toHaveBeenCalled();
+  });
+  it('shows the actual overview empty state only when there are no models', async () => {
+    api.models.mockResolvedValue({
+      records: [],
+      total: '0',
+      pageNum: 1,
+      pageSize: 20,
+    });
+    api.summary.mockResolvedValue({
+      totalModels: 0,
+      enabledModels: 0,
+      readyModels: 0,
+      unconfiguredModels: 0,
+      disabledModels: 0,
+      multiProviderModels: 0,
+      assuranceNeededModels: 0,
+      modelLimit: 512,
+      observedAt: '2026-10-18T01:00:00Z',
+    });
+    const wrapper = await render();
+    expect(wrapper.find('.overview-models .overview-table').exists()).toBe(
+      false,
+    );
+    expect(wrapper.get('.overview-models .el-empty').text()).toContain(
+      '还没有配置模型',
+    );
+    expect(wrapper.find('.overview-models .el-pagination').exists()).toBe(
+      false,
+    );
   });
   it('keeps unverified keys and unavailable models outside the ready metrics', async () => {
     const unknown = channel();
