@@ -207,6 +207,12 @@ describe('public static demo contracts', () => {
     const network = vi.spyOn(globalThis, 'fetch');
     try {
       const rejectedActions: [string, string][] = [
+        ['/system/ai/scene-data/sql/schema', 'POST'],
+        ['/system/ai/scene-data/sql/validate', 'POST'],
+        ['/system/ai/scene-data/sql/preview', 'POST'],
+        ['/ai/scenes/sql-assistance', 'POST'],
+        ['/ai/scenes/sql-assistance/fictional/cancel', 'POST'],
+        ['/system/ai/settings/scene-routes/fictional', 'PUT'],
         ['/system/ai/model-catalog/draft-scan', 'POST'],
         ['/system/ai/model-catalog/scan', 'POST'],
         ['/system/ai/settings', 'POST'],

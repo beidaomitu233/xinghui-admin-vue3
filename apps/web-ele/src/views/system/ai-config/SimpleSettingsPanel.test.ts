@@ -75,7 +75,10 @@ vi.mock('@vben/stores', () => ({ useAccessStore: () => access }));
 vi.mock('@vben/common-ui', () => ({
   Page: { template: '<main><slot /></main>' },
 }));
-vi.mock('vue-router', () => ({ onBeforeRouteLeave: vi.fn() }));
+vi.mock('vue-router', () => ({
+  onBeforeRouteLeave: vi.fn(),
+  useRoute: () => ({ query: {} }),
+}));
 vi.mock('#/api/request', () => ({
   requestClient: { get: vi.fn(), post: vi.fn(), put: vi.fn() },
 }));

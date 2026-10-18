@@ -6,6 +6,7 @@ import type {
   RequestStatus,
 } from './ai-application';
 import type { BindingPreview, DatabaseValue, DataBinding } from './ai-database';
+import type { QueryBinding } from './ai-query';
 
 import { requestClient } from '#/api/request';
 
@@ -24,6 +25,8 @@ export interface SceneModelPolicy {
   timeoutSeconds: number;
 }
 export interface SceneDefinition {
+  sqlBindings?: QueryBinding[];
+  initialModel?: ModelReference | null;
   dataBindings?: DataBinding[];
   dataObjects: { fields: string[]; formId: null | string; objectKey: string }[];
   modelPolicy: SceneModelPolicy;
@@ -32,6 +35,9 @@ export interface SceneDefinition {
   promptText: string;
   purpose: string;
 }
+export type SceneEditableDefinition = Omit<SceneDefinition, 'modelPolicy'> & {
+  modelPolicy?: SceneModelPolicy;
+};
 export interface SceneEntry {
   canStartFromMonitor?: boolean;
   contextRequired?: boolean;
@@ -182,7 +188,7 @@ export const saveScene = (
   input: {
     clientMutationId: string;
     confirmedLegacyConversion?: boolean;
-    definition: SceneDefinition;
+    definition: SceneEditableDefinition;
     expectedRevision: number;
   },
 ) => requestClient.put<SceneSaveResult>(scenePath(sceneKey), input);
@@ -229,6 +235,7 @@ export const recordSummaryScene = (formId: string) =>
   requestClient.get<null | SceneEntry>('/ai/scenes/record-summary', {
     params: { formId },
   });
+export const sceneEntries = () => requestClient.get<SceneEntry[]>('/ai/scenes');
 export const submitScene = (sceneKey: string, input: SceneSubmission) =>
   requestClient.post<SceneRequest>(
     `/ai/scenes/${encodeURIComponent(sceneKey)}/requests`,

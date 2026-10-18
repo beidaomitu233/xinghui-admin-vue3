@@ -8,7 +8,7 @@ import type {
   SceneSubmission,
 } from '#/api/system/ai-scene';
 
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 
 import { useAccessStore } from '@vben/stores';
 
@@ -35,6 +35,7 @@ import {
   cancelSceneRequest,
   getSceneRequest,
   previewScene,
+  sceneEntries,
   testScene,
 } from '#/api/system/ai-scene';
 
@@ -67,14 +68,19 @@ const busy = ref(false);
 const modelIndex = ref(0);
 const activeTab = ref('answer');
 const record = ref<DatabaseRecord | null>(null);
-const currentSource = computed(
-  () =>
-    props.definition.dataBindings?.find((binding) => binding.row?.currentRecord)
-      ?.sourceKey ??
-    (props.definition.dataObjects[0]?.formId
-      ? `lowcode.${props.definition.dataObjects[0].formId}`
-      : ''),
-);
+const contextReady = ref(!props.definition.sqlBindings?.length);
+const contextRequired = ref(false);
+const queryContextSource = ref('');
+const prepared = ref(true);
+const currentSource = computed(() => {
+  if (queryContextSource.value) return queryContextSource.value;
+  const binding = props.definition.dataBindings?.find(
+    (binding) => binding.row?.currentRecord,
+  );
+  if (binding) return binding.sourceKey;
+  const formId = props.definition.dataObjects[0]?.formId;
+  return formId ? `lowcode.${formId}` : '';
+});
 const businessRef = computed(
   () => props.businessRef ?? record.value?.businessRef,
 );
@@ -87,7 +93,9 @@ const ready = computed(() =>
   Boolean(
     props.versionId &&
     canRun.value &&
-    (!currentSource.value || businessRef.value),
+    prepared.value &&
+    contextReady.value &&
+    ((!currentSource.value && !contextRequired.value) || businessRef.value),
   ),
 );
 const statusLabels: Record<string, string> = {
@@ -124,17 +132,42 @@ function modelLabel(index: number) {
 async function openTrial() {
   if (!canRun.value || opening.value) return;
   opening.value = true;
+  prepared.value = false;
   error.value = '';
+  const run = generation;
   try {
     if (props.prepare && !(await props.prepare())) {
       error.value = '请先处理未保存内容。';
       return;
     }
+    await nextTick();
+    if (disposed || run !== generation) return;
+    if (props.definition.sqlBindings?.length) {
+      contextReady.value = false;
+      const entries = await sceneEntries();
+      if (disposed || run !== generation) return;
+      const entry = entries.find((entry) => entry.sceneKey === props.sceneKey);
+      if (
+        !entry ||
+        entry.revision !== props.revision ||
+        typeof entry.contextRequired !== 'boolean'
+      ) {
+        error.value = '当前场景上下文未读到，请重新读取场景后试运行。';
+        return;
+      }
+      contextRequired.value = entry.contextRequired;
+      queryContextSource.value = entry.contextSourceKey ?? '';
+      contextReady.value = true;
+    } else contextReady.value = true;
+    prepared.value = true;
     if (!disposed) expanded.value = true;
   } catch {
     if (!disposed) error.value = '保存尚未确认，请检查后重试。';
   } finally {
-    if (!disposed) opening.value = false;
+    if (!disposed && run === generation) {
+      opening.value = false;
+      if (error.value) expanded.value = true;
+    }
   }
 }
 function input(): SceneSubmission {
@@ -309,7 +342,7 @@ async function runTest() {
   }
 }
 watch(
-  () => props.sceneKey,
+  () => [props.sceneKey, access.accessToken, canRun.value],
   () => {
     generation++;
     stream?.abort();
@@ -324,6 +357,10 @@ watch(
     confirmedCosts.value = false;
     modelIndex.value = 0;
     record.value = null;
+    contextReady.value = !props.definition.sqlBindings?.length;
+    contextRequired.value = false;
+    queryContextSource.value = '';
+    prepared.value = true;
     expanded.value = false;
   },
 );
@@ -380,6 +417,9 @@ onBeforeUnmount(() => {
           />
         </ElFormItem>
         <p v-else-if="businessRef" class="trial-hint">沿用已选择的业务记录。</p>
+        <p v-else-if="contextRequired && !currentSource" class="trial-hint">
+          此场景需要业务入口提供记录，请从对应业务记录调用。
+        </p>
         <ElFormItem label="用户要求">
           <ElInput
             v-model="requirement"

@@ -44,6 +44,55 @@ const settle = () => vi.advanceTimersByTimeAsync(0);
 afterEach(() => vi.useRealTimers());
 
 describe('ordered scene autosave', () => {
+  it('reconciles server-owned initial routing after acknowledgement while retaining newer local body edits', async () => {
+    vi.useFakeTimers();
+    type Draft = { initial: null | string; route: number; text: string };
+    const first = deferred<{ revision: number; value: Draft }>();
+    const persist = vi
+      .fn()
+      .mockReturnValueOnce(first.promise)
+      .mockImplementation(async (command) => ({
+        revision: command.expectedRevision + 1,
+        value: command.value,
+      }));
+    const store = new OrderedSceneAutosave<Draft>({
+      clone: (value) => ({ ...value }),
+      equal: (a, b) => JSON.stringify(a) === JSON.stringify(b),
+      mutationId: () => crypto.randomUUID(),
+      persist,
+      reconcile: (local, confirmed) => ({
+        ...local,
+        initial: confirmed.initial,
+        route: confirmed.route,
+      }),
+    });
+    store.register(
+      'new',
+      0,
+      { text: 'original', initial: 'model-a', route: 0 },
+      true,
+    );
+    store.edit('new', { text: 'first', initial: 'model-a', route: 0 });
+    await tick();
+    store.edit('new', { text: 'newer body', initial: 'model-a', route: 0 });
+    first.resolve({
+      revision: 1,
+      value: { text: 'first', initial: null, route: 1 },
+    });
+    await settle();
+    expect(store.view('new').value).toEqual({
+      text: 'newer body',
+      initial: null,
+      route: 1,
+    });
+    await tick();
+    expect(persist.mock.calls[1]?.[0].value).toEqual({
+      text: 'newer body',
+      initial: null,
+      route: 1,
+    });
+    store.dispose();
+  });
   it('debounces continuous input and marks saved only after the matching acknowledgement', async () => {
     const { store, writes } = setup();
     store.edit('a', 'first');

@@ -107,7 +107,20 @@ const scene: SceneDetail = {
     name: '[虚构只读] 记录摘要场景',
     purpose: '静态布局示例，不保存或执行',
     promptText:
-      '这是虚构提示词。静态演示不会自动保存、读取业务数据或调用模型。',
+      '这是虚构提示词。结合 {{demo_order_summary:订单汇总示例}} 回答 {{user_request:用户要求}}。静态演示不会保存、读取业务数据或调用模型。',
+    sqlBindings: [
+      {
+        variable: 'demo_order_summary',
+        label: '订单汇总示例',
+        description: '虚构只读示例：按地区汇总订单金额，不连接数据库。',
+        datasetKeys: [],
+        query: {
+          sql: 'SELECT region_name, SUM(order_amount) AS total_amount FROM demo_orders GROUP BY region_name',
+          parameters: {},
+          maxRows: 20,
+        },
+      },
+    ],
     outputRequirement: '',
     dataObjects: [],
     modelPolicy: {
@@ -403,6 +416,13 @@ export function readOnlyAiDemo(
         params,
       ),
     );
+  if (path === `/system/ai/settings/scene-routes/${scene.scene.sceneKey}`)
+    return send({
+      sceneKey: scene.scene.sceneKey,
+      revision: scene.scene.revision,
+      currentVersionId: null,
+      modelPolicy: null,
+    });
   if (path === `/system/ai/settings/${settings.configId}`)
     return send(settings);
   if (path === '/ai/scenes/record-summary') return send(null);

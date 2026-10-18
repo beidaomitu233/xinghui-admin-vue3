@@ -1,18 +1,18 @@
 import type {
   SceneDefinition,
   SceneDetail,
+  SceneEditableDefinition,
   SceneSaveResult,
 } from '#/api/system/ai-scene';
 
 import { flushPromises, mount } from '@vue/test-utils';
 import { h, KeepAlive, ref } from 'vue';
 
-import { ElPopconfirm } from 'element-plus';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { button } from '#/test-utils/element-controls';
 
-import DatabaseBindingEditor from './DatabaseBindingEditor.vue';
+import DataReferenceTable from './DataReferenceTable.vue';
 import SceneWorkspace from './SceneWorkspace.vue';
 
 const api = vi.hoisted(() => ({
@@ -29,11 +29,15 @@ const navigation = vi.hoisted(() => ({
   guard: undefined as (() => boolean | Promise<boolean>) | undefined,
 }));
 vi.mock('vue-router', () => ({
+  useRouter: () => ({ push: vi.fn() }),
   onBeforeRouteLeave: (guard: () => boolean | Promise<boolean>) => {
     navigation.guard = guard;
   },
 }));
 vi.mock('#/api/system/ai-scene', () => api);
+vi.mock('#/api/request', () => ({
+  requestClient: { get: vi.fn(), post: vi.fn(), put: vi.fn() },
+}));
 vi.mock('#/api/system/ai-application', () => ({ subscribeAiRequest: vi.fn() }));
 vi.mock('#/api/system/ai-scene-data', () => ({
   sceneDataCatalog: vi.fn(async () => ({
@@ -118,13 +122,18 @@ function response(
   key: string,
   input: {
     clientMutationId: string;
-    definition: SceneDefinition;
+    definition: SceneEditableDefinition;
     expectedRevision: number;
   },
 ): SceneSaveResult {
   return {
     clientMutationId: input.clientMutationId,
-    detail: detail(key, input.expectedRevision + 1, input.definition),
+    detail: detail(key, input.expectedRevision + 1, {
+      ...definition(key),
+      ...input.definition,
+      initialModel: null,
+      modelPolicy: definition(key).modelPolicy,
+    }),
     effectiveFrom: '2026-10-17T00:00:01Z',
   };
 }
@@ -162,11 +171,9 @@ afterEach(() => {
 });
 
 describe('scene workspace actual editing and autosave', () => {
-  it('previews confirmed bindings with a nonempty preview-only user request and reuses the compiled snapshot response', async () => {
-    access.accessCodes.push('ai:scene:test', 'ai:scene:invoke');
+  it('shows descriptive references and removes main-page preview, refresh and enable controls', async () => {
     const value = {
       ...definition('first'),
-      promptText: '{{user_request}} {{order}}',
       dataBindings: [
         {
           variable: 'order',
@@ -182,39 +189,16 @@ describe('scene workspace actual editing and autosave', () => {
       ],
     };
     api.getScene.mockResolvedValueOnce(detail('first', 4, value));
-    const values = { order: { id: '19' } };
-    const reads = [
-      {
-        variable: 'order',
-        sourceKey: 'db.orders',
-        rowCount: 1,
-        truncated: false,
-      },
-    ];
-    api.previewScene.mockImplementationOnce(async (_key, input) => {
-      if (!input.inputs.user_request) throw new Error('MISSING_VARIABLE');
-      return {
-        dataValues: values,
-        reads,
-        notices: [],
-        sceneVersionId: 'version-4',
-      };
-    });
     const wrapper = await open();
-    const editor = wrapper.getComponent(DatabaseBindingEditor);
-    await expect(editor.props('preparePreview')?.()).resolves.toEqual(
+    expect(wrapper.getComponent(DataReferenceTable).props('bindings')).toEqual(
       value.dataBindings,
     );
-    await expect(editor.props('readPreview')?.(null)).resolves.toEqual({
-      values,
-      reads,
-      notices: [],
-    });
-    expect(api.previewScene).toHaveBeenCalledWith('first', {
-      expectedRevision: 4,
-      businessRef: null,
-      inputs: { user_request: '仅预览引用数据，不调用模型。' },
-    });
+    expect(wrapper.text()).toContain('用户要求');
+    expect(wrapper.text()).toContain('订单');
+    for (const removed of ['预览实际数据', '刷新模型', '停用场景', '启用场景'])
+      expect(wrapper.text()).not.toContain(removed);
+    expect(wrapper.find('.scene-sidebar .el-tag').exists()).toBe(false);
+    expect(api.previewScene).not.toHaveBeenCalled();
     expect(api.saveScene).not.toHaveBeenCalled();
   });
   it('maps whitelisted definition and array field diagnostics into local editor errors', async () => {
@@ -612,25 +596,15 @@ describe('scene workspace actual editing and autosave', () => {
     await flushPromises();
     expect(api.saveScene.mock.calls[1]?.[1].expectedRevision).toBe(2);
   });
-  it('enforces readonly editing while preserving independent enable permission', async () => {
+  it('keeps readonly editing and removes lifecycle controls even for an enable-only actor', async () => {
     access.accessCodes = ['ai:scene:list', 'ai:scene:query', 'ai:scene:enable'];
-    api.setSceneEnabled.mockImplementation(async (key, input) => ({
-      ...response(key, { ...input, definition: definition(key) }),
-      detail: {
-        ...detail(key, 2),
-        scene: { ...detail(key, 2).scene, enabled: false },
-      },
-    }));
     const wrapper = await open();
     expect(
       wrapper.get('textarea[aria-label="提示词"]').attributes('readonly'),
     ).toBeDefined();
-    wrapper
-      .getComponent(ElPopconfirm)
-      .vm.$emit('confirm', new MouseEvent('click'));
-    await flushPromises();
-    expect(api.setSceneEnabled).toHaveBeenCalledOnce();
+    expect(wrapper.text()).not.toContain('停用场景');
+    expect(wrapper.text()).not.toContain('启用场景');
+    expect(api.setSceneEnabled).not.toHaveBeenCalled();
     expect(api.saveScene).not.toHaveBeenCalled();
-    expect(button('启用场景', wrapper.element).exists()).toBe(true);
   });
 });
