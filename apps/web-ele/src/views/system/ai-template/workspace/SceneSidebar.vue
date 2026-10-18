@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { SceneSummary } from '#/api/system/ai-scene';
 
-import { ElButton, ElEmpty, ElInput, ElSkeleton, ElTag } from 'element-plus';
+import { ElButton, ElEmpty, ElInput, ElSkeleton } from 'element-plus';
 
 defineProps<{
   activeKey: null | string;
@@ -62,19 +62,6 @@ defineEmits<{
             (scene.kind === 'RECORD_SUMMARY' ? '记录摘要' : '通用场景')
           }}
         </span>
-        <ElTag
-          size="small"
-          effect="plain"
-          :type="scene.enabled && scene.currentVersionId ? 'success' : 'info'"
-        >
-          {{
-            !scene.enabled
-              ? '已停用'
-              : scene.currentVersionId
-                ? '已配置'
-                : '待配置'
-          }}
-        </ElTag>
       </ElButton>
     </nav>
     <div class="scene-pages">
@@ -104,8 +91,10 @@ defineEmits<{
   flex-shrink: 0;
   flex-direction: column;
   gap: 18px;
-  width: 230px;
-  padding: 20px 14px;
+  width: 210px;
+  min-height: 0;
+  padding: 16px 12px;
+  overflow: hidden;
   background: hsl(var(--muted) / 30%);
   border-right: 1px solid hsl(var(--border));
 }
@@ -155,10 +144,6 @@ h2 {
   font-size: 12px;
   line-height: 1.6;
   color: hsl(var(--muted-foreground));
-}
-
-.scene-item :deep(.el-tag) {
-  justify-self: start;
 }
 
 .scene-item.is-selected {

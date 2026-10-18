@@ -1,0 +1,1 @@
+import{s as o}from"./bootstrap-BgkeWSAx.js";import{l as s,o as t,n,p as r}from"../jse/index-index-u9g3MsT4.js";import"./load-D9YNru0E.js";const a={role:"status",class:"p-6"},l=s({__name:"index",setup(c){const e=o();return t(()=>{e.replace({path:"/system/business-config",query:{section:"wechat"}})}),(p,i)=>(n(),r("div",a,"正在打开微信业务配置…"))}});export{l as default};

@@ -1,11 +1,11 @@
 {
+  "scope": "Model-centered AI configuration, durable model catalog, bilingual prompt workspace and scoped read-only SQL assistance",
+  "frontendSource": "972bd4d340542e3b68782a7bc9f0347a60da64d2",
   "schemaVersion": 1,
-  "date": "2026-10-18",
-  "scope": "Standalone AI channels, multi-key model associations and discovery, durable conversations, database prompt references",
-  "frontendSource": "e22022ad51f72777960244f085c7637be898ecdb",
-  "backendSource": "3f992848752ac167bdb014851af501e2c0471fcf",
-  "documentationSource": "e9e5d0d3b03e80ac69ad513ce122f4b791ce2b59",
-  "runtime": "browser-local-only",
   "realModelCalls": false,
-  "newReleaseTag": false
+  "date": "2026-10-18",
+  "runtime": "browser-local-only",
+  "newReleaseTag": false,
+  "backendSource": "577b3183b22b98e185adba75f4fb1a9c0497186b",
+  "documentationSource": "357d84ae92324a7bc4d2b5fb4dc72136cb3a2f3c"
 }

@@ -41,6 +41,8 @@ Windows默认启用`windows-test-agent`测试配置，预加载Spring Boot所管
 
 后端CI声明MySQL5.7/8.0、Redis、MinIO独立服务与中性fixture，执行 `ReleaseServicesIT`。用例必须空schema开始，核对账号/端口/版本/location，验证迁移、严格重启校验、真实认证/权限、加密配置、低代码CRUD/revision和对象往返，最后只清理自有夹具。
 
+服务门槛同时要求`AiConfigurationDruidMySqlIT`与`AiSceneSqlDruidMySqlIT`，后者通过真实Druid、Connector/J与MySQL核对查询、租户/个人政策、精确数值、保存重读、外层读写事务隔离和同一连接恢复。实际数据库拒绝写入须验证MySQL错误码，不能用AST拒绝或JDBC客户端只读错误冒充数据库证据。关闭只读传播必须失败；不得关闭Wall或跳过不通过的用例。
+
 本机服务测试有**精确分配的schema allowlist**，不能将任意已有库改名或绕过0表门槛运行。教程不公开本机测试库/端口；如需本地服务验证，先由负责人分配隔离实例与schema，再按现有用例的精确防护流程执行。CI绝不读取本机私有秘密文件。
 
 需要证明MySQL兼容时，候选提交的两个矩阵版本都必须实际成功，并记录对应Actions结果。本地单一MySQL版本的迁移或数据检查不能代替完整矩阵；已发布版本的旧结果也不能代替新候选验收。

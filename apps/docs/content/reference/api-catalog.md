@@ -898,9 +898,12 @@ Controller为`controller/AiModelCatalogController.java`，Java请求/响应为`a
 | --- | --- | --- |
 | GET `/system/ai/model-catalog` | search/pageNum/pageSize；config:query或model:query | OpenRouter公共Page，不发送Key |
 | POST `/system/ai/model-catalog/scan` | configId/keyId/expectedRevision/search/pageNum/pageSize；config:test或model:test | 已保存当前草稿中选定Key的Page |
-| POST `/system/ai/model-catalog/draft-scan` | provider/apiKey/search/pageNum/pageSize；config:add/edit/test或对应model动作任一 | 未保存Key的Page，可先扫描、选择模型再保存 |
+| POST `/system/ai/model-catalog/draft-scan` | provider/apiKey/可选endpointUrl/search/pageNum/pageSize；config:add/edit/test或对应model动作任一 | 未保存Key的Page，可先扫描、选择模型再保存 |
+| GET `/system/ai/model-catalog/scans/{scanId}` | search/pageNum/pageSize；config:add/edit/test或对应model动作任一 | 本人未过期扫描票据的Page，分页不再提交Key |
+| POST `/system/ai/model-catalog/attach` | configId/keyId/expectedRevision/catalogScanId；config:add/edit/test或对应model动作任一 | 票据绑定实际保存材料后的StoredCatalog |
+| GET `/system/ai/model-catalog/channels/{configId}` | 可选keyId/search/pageNum/pageSize；config:query或model:query | 持久StoredCatalog，不访问上游 |
 
-草稿扫描`provider`仅openrouter/deepseek，apiKey为WRITE_ONLY且toString脱敏；只在内存用于本次认证，不入库/操作日志或响应。仅接收application/json，正文最多16KiB，严格拒绝未知/重复字段、过深JSON及尾随内容。完整Key最多8192字符，不能包含控制字符；模型扫描不允许指定endpointUrl。保存Key扫描不接收Key材料或keyVersion，只在当前配置草稿内按keyId映射读取；请求前后核对revision，发生更改409，不能把旧Key结果标成新Key结果。
+草稿扫描`provider`为openrouter/deepseek/openai/siliconflow，apiKey为WRITE_ONLY且toString脱敏；只在内存用于本次认证，不入库/操作日志或响应。仅接收application/json，正文最多16KiB，严格拒绝未知/重复字段、过深JSON及尾随内容。完整Key最多8192字符，不能包含控制字符；可选endpointUrl必须等于对应官方规范地址，不能提交任意兼容URL。保存Key扫描不接收Key材料或keyVersion，只在当前配置草稿内按keyId映射读取；请求前后核对revision，发生更改409，不能把旧Key结果标成新Key结果。
 
 pageNum至少1，pageSize为1..100（GET默认1/20，POST显式提供），search可省略、最多128字符；在本次有界目录内按模型名称/代码搜索与分页。Page字段为records/total/pageNum/pageSize/refreshedAt/source/provider/configId/keyId/revision/generationVerified，其中total为整数；records每项为code/name/contextLength/maxCompletionTokens/inputModalities/outputModalities/supportedParameters。未提供的元数据为null或空数组，缺少名称回退code，不猜测工具或JSON能力。
 
@@ -908,9 +911,11 @@ Page另含scannedCount/filteredCount/filterReasons，统计整个上游有界目
 
 contextLength和maxCompletionTokens为可空Java Long，实际REST遵循全局Long序列化规则，以十进制字符串返回，例如`"262144"`；客户端类型需兼容null/字符串及数字形式，不应强制断言为number。scannedCount、filteredCount、total、pageNum和pageSize为int，仍是JSON数字。
 
-source为PUBLIC（无Key OpenRouter公共目录）、USER_FILTERED（OpenRouter带Key）或PROVIDER_KEY（DeepSeek带Key）。公共与草稿扫描的configId/keyId/revision均null，保存Key扫描返回这三项。refreshedAt为本次目录读取完成时间；不缓存跨Key结果，每次重新请求会刷新目录，不承诺分页间快照相同。generationVerified固定false。
+source为PUBLIC（无Key OpenRouter公共目录）、USER_FILTERED（OpenRouter带Key）或PROVIDER_KEY（其他官方带Key）。公共与草稿扫描的configId/keyId/revision均null，保存Key扫描返回这三项。Page另有可选catalogScanId；按票据分页读取相同有界结果，主动scan才刷新上游。generationVerified固定false。
 
-官方端点来自唯一`AiProviderPresets`：OpenRouter公共`GET /api/v1/models`，带Key`GET /api/v1/models/user`；DeepSeek带Key`GET /models`。OpenRouter带Key结果按用户供应商偏好、隐私和防护规则过滤；DeepSeek采用id/name/context_window/max_output_tokens及声明的输入输出模态。目录可选性不保证余额、额度、推理时服务可用或生成成功。依据：[OpenRouter目录](https://openrouter.ai/docs/api/api-reference/models/list-models-filtered-by-user-provider-preferences-privacy-settings-and-guardrails)、[DeepSeek模型列表](https://api-docs.deepseek.com/api/list-models/)。
+StoredCatalog包含configId/revision/provider/endpointUrl/state/catalog/sources。state为NOT_FETCHED/FETCHED/PARTIAL/STALE；每项sources为catalogScanId/keyId/refreshedAt/source/current/scannedCount/filteredCount/filterReasons/catalogEndpoint。current仅表示凭据与端点关联仍当前有效，不等于Key推理通过。已保存扫描自动附着，草稿附着必须匹配主体、规范端点、供应商与凭据指纹；未附着票据24小时有效，Key或端点改变后结果过期。目录持久化不保存Key明文，分页读取不重新提交Key。
+
+官方端点来自唯一`AiProviderPresets`：OpenRouter公共`GET /api/v1/models`，带Key`GET /api/v1/models/user`；DeepSeek带Key`GET /models`，OpenAI带Key`GET /v1/models`，SiliconFlow带Key`GET /v1/models?sub_type=chat`。OpenRouter带Key结果按用户供应商偏好、隐私和防护规则过滤；元数据仅采用服务端明确声明值。目录可选性不保证余额、额度、推理时服务可用或生成成功。
 
 单次出站最多15秒、响应最多4MiB/5000条模型、并发4；仅官方HTTPS固定地址，禁止重定向及调用者URL，沿用公网地址规则与运维代理配置。错误message为固定`AI_MODEL_CATALOG:`前缀，无供应商原始正文/Key/堆栈：400 INVALID_INPUT/KEY_REQUIRED；413 REQUEST_LIMIT；404 KEY_NOT_FOUND；409 CONFIG_CHANGED/CONFIG_UNAVAILABLE；422 PROVIDER_UNSUPPORTED；429 RATE_LIMITED；502 UPSTREAM_UNAUTHORIZED/UPSTREAM_FORBIDDEN/UPSTREAM_FAILED/UPSTREAM_REDIRECT/UPSTREAM_INVALID/RESPONSE_LIMIT；503 CREDENTIAL_UNAVAILABLE/NETWORK_UNAVAILABLE/BUSY；504 TIMEOUT。上游401/403映射502，不能据此清除本系统登录态；本地动作拒绝仍403。扫描Controller失败Result.code为202，权限处理为309，HTTP状态和安全message同时保留。
 
@@ -937,6 +942,55 @@ Definition新增同型dataBindings，并映射EditorInput.bindings；CompiledSce
 最多16绑定、64字段和每绑定200行；两POST仅application/json及identity编码，128KiB正文上限。读取最多10秒且受调用deadline，选择器独立数据预览值上限256KiB；已保存场景渲染与模型总消息（提示词、数据及历史）合计上限64KiB。长文本字段8192字符截断有提示，结构化JSON解析失败或超限明确拒绝。response为no-store/private，values保留数字/null/数组；reads含variable/sourceKey/rowCount/truncated。低代码旧记录缺少后来新增字段时返回null及FIELD_NOT_IN_RECORD_SCHEMA。
 
 通用目录排除认证/凭据/配置等基础设施和秘密字段；JSON/\_json列递归过滤秘密键。已知业务动作、实际tenant与软删条件继续执行。单列FK可直接发现，复合FK不按单列冒充；无可读主键的表仅支持有界TABLE。详细接缝见[数据绑定扩展](../development/ai-extension.md)。
+
+### 业务模型中心
+
+以下接口前缀为`/system/ai/settings/model-hub/models`，均要求平台身份，动作权限独立核对；不会开放给租户编辑。
+
+| 方法与相对路径 | 动作权限 | 请求与结果 |
+| --- | --- | --- |
+| GET `/` | ai:config:query | pageNum/pageSize/search；真实Page分页，total为字符串 |
+| GET `/summary` | ai:config:query | 全量有界配置汇总，含模型总数、启用/就绪/停用、多供应商保障及observedAt；非实时网络探测 |
+| GET `/{id}` | ai:config:query | Model及安全的routes/health |
+| POST `/` | ai:config:add | Change；创建，启用还需enable |
+| PUT `/{id}` | ai:config:edit | Change+expectedRevision；CAS及主体内mutation幂等 |
+| POST `/{id}/enabled` | ai:config:enable | expectedRevision/clientMutationId/enabled |
+| DELETE `/{id}` | ai:config:edit | expectedRevision；当前场景引用返回409 |
+| POST `/{id}/tests` | ai:config:test | expectedRevision/clientMutationId/confirmedCosts:true；202真实TestView |
+| GET `/{id}/tests/{requestId}` | ai:config:test | 本人/租户专属TestView与真实attempts，不授予普通对话读取权 |
+| POST `/{id}/tests/{requestId}/cancel` | ai:config:test | 空JSON；取消原请求，重复操作与已结束状态稳定，不产生新调用 |
+
+Change含name、slug、capabilities、contextWindow、enabled、strategy（PRIORITY/ROUND_ROBIN）、fallback、routes及clientMutationId；route含routeId、channelId、upstreamModel、enabled。能力与上下文说明可空，不猜供应商规格；slug创建后稳定，当前最多512个未删除业务模型，每模型最多16个绑定。上游必须是该渠道实际配置的关联；纯目录元数据不会自动获得执行资格。
+
+TestView含requestId/status/errorCode/attemptCount/deadline/attempts；每次尝试含number、providerCode、upstreamModel、status、errorCode、switchReason和elapsedMs。未知字段保持null，不含Key、隐藏提示词或供应商原始正文。生成请求费用需显式确认，受理不等于成功。
+
+Definition新增可空businessModel（稳定slug），新场景选择时与initialModel/modelPolicy互斥；已配置场景正文缺省保持原选择，更换仍走scene-routes。旧固定Key路线不自动迁移。SQL助手未配置场景可选businessModel替代initialModel，已有场景不接受临时改路由；业务模型在每个新请求准入时冻结，执行与历史不随编辑改变。
+
+### 提示词查询助手与独立路由
+
+以下路径分别来自后端`ai/query/SceneQueryController`、`ai/scene/SqlAssistanceController`和`ai/scene/SceneRoutingController`。SQL入口是受控业务数据集查询，不向用户开放数据库连接或权限登记。
+
+| 方法 | 后端路径 | 权限与边界 | 请求与返回 |
+| --- | --- | --- | --- |
+| GET | `/system/ai/scene-data/sql/catalog` | scene query/add/edit/test/invoke任一；目录再按实际业务政策过滤 | keyword/pageNum/pageSize；Page&lt;DatasetOption&gt; |
+| POST | `/system/ai/scene-data/sql/schema` | 同上，datasetKeys只缩小已有权限 | QueryContext；AuthorizedSchema |
+| POST | `/system/ai/scene-data/sql/validate` | 同上；仅语法、权限元数据检查，不读样本 | QueryRequest；SqlValidation |
+| POST | `/system/ai/scene-data/sql/preview` | 同上；每来源强制租户/个人政策与软删除，数据库强制只读 | QueryRequest；QueryResult |
+| POST | `/ai/scenes/sql-assistance` | 平台+scene:test及scene:add/edit任一 | Start；202 Accepted |
+| GET | `/ai/scenes/sql-assistance/{requestId}` | 同上+本人/租户及当前数据授权 | View；仅SUCCEEDED公开审核后的query |
+| POST | `/ai/scenes/sql-assistance/{requestId}/cancel` | 同上；不产生新模型调用 | 空JSON；View |
+| GET | `/system/ai/settings/scene-routes/{sceneKey}` | 平台+config:query+scene:query | View，含revision/currentVersionId/modelPolicy |
+| PUT | `/system/ai/settings/scene-routes/{sceneKey}` | 平台+config:edit+scene:edit，共用场景CAS | expectedRevision/clientMutationId/modelPolicy；Saved |
+
+本表省略的权限前缀均为`ai:`，例如scene:query即`ai:scene:query`。低代码数据仍要求`lowcode:record:list/query`；泛用数据库数据集还需要平台身份和`ai:data:database:read`，不能以scene权限替代。服务端登记的租户或个人业务政策只开放相应数据集。
+
+QueryContext为datasetKeys/businessRef，QueryRequest在此基础上增加query。SqlQuery包含sql（最多16000字符）、parameters（最多32个业务参数）和maxRows（1–200）。当前用户/租户/记录保留参数由服务端绑定，客户端同名值拒绝。SQL请求最多64KiB，返回值不缓存；只读试查最多256KiB和10秒。无效SQL不能直接进入JDBC，数据库强制只读失败会停止查询。
+
+AuthorizedSchema含datasets、supportedSyntax、trustedParameters、scopeDescription和fingerprint；DatasetOption给出可读名称及范围，具体schema增加columns及schemaFingerprint。SqlValidation返回valid/normalizedSql/columns/diagnostics/schemaFingerprint/currentRecordDatasetKey/usedDatasetKeys，最后一项来自实际AST依赖，供保存和说明缩小到真正使用的来源。动态当前记录查询可先静态校验，不以缺少样本记录假装取数成功；实际read才核对业务记录。QueryResult为columns/rows/rowCount/truncated/notices；rows中的数值以精确字符串返回，SQL类型由columns说明，null及布尔值保留。参数中的精确数值采用`{"$number":"9007199254740993123"}`，不能先转为JavaScript Number。
+
+SQL辅助Start为sceneKey/expectedSceneRevision/description/datasetKeys/businessRef/initialModel/expectedSchemaFingerprint/confirmedCosts/clientMutationId/maxRows。已有场景使用完整现有路由，initialModel仅用于未配置场景。Accepted为requestId/status/scopeDescription/schemaFingerprint，View另含query、diagnostics、errorCode和deadline。状态为QUEUED/RUNNING/VALIDATING/SUCCEEDED/FAILED/CANCELLED/TIMED_OUT/INCOMPLETE；生成不会执行SQL或保存引用，不通过普通SSE公开原始模型输出。
+
+语法诊断使用QueryIssue固定枚举；鉴权403、静态定义变化409、执行非法语法422、内容类型415、体积413、查询超时504、强制只读不可用503。不要将模型生成成功、HTTP202受理或静态valid当成业务数据查询成功。
 
 ## 场景工作区与直接保存接口
 

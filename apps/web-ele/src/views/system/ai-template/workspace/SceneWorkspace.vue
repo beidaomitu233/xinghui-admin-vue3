@@ -1,26 +1,28 @@
 <script setup lang="ts">
 import type { SaveView } from './ordered-autosave';
 
-import type { BindingPreview } from '#/api/system/ai-database';
+import type { HubModel } from '#/api/system/ai-model-hub';
+import type { QueryBinding } from '#/api/system/ai-query';
 import type {
   SceneCreate,
   SceneDefinition,
   SceneDetail,
   SceneLegacy,
   SceneModelOption,
-  SceneSubmission,
+  SceneModelPolicy,
   SceneSummary,
 } from '#/api/system/ai-scene';
 
 import {
   computed,
   nextTick,
+  onActivated,
   onBeforeUnmount,
   onMounted,
   ref,
   watch,
 } from 'vue';
-import { onBeforeRouteLeave } from 'vue-router';
+import { onBeforeRouteLeave, useRouter } from 'vue-router';
 
 import { useAccessStore } from '@vben/stores';
 
@@ -34,31 +36,30 @@ import {
   ElForm,
   ElFormItem,
   ElInput,
-  ElPopconfirm,
   ElRadioButton,
   ElRadioGroup,
 } from 'element-plus';
 
+import { listHubModels } from '#/api/system/ai-model-hub';
 import {
   createScene,
   getScene,
   getSceneWorkspace,
-  previewScene,
   sceneModels,
-  setSceneEnabled,
 } from '#/api/system/ai-scene';
 
-import DatabaseBindingEditor from './DatabaseBindingEditor.vue';
+import DataReferenceTable from './DataReferenceTable.vue';
 import { OrderedSceneAutosave } from './ordered-autosave';
 import PromptEditor from './PromptEditor.vue';
 import { cloneScene, persistScene } from './scene-save-adapter';
-import SceneDataSelector from './SceneDataSelector.vue';
 import SceneFormPicker from './SceneFormPicker.vue';
 import SceneSaveStatus from './SceneSaveStatus.vue';
 import SceneSidebar from './SceneSidebar.vue';
 import SceneTrialPanel from './SceneTrialPanel.vue';
+import SqlReferenceAssistant from './SqlReferenceAssistant.vue';
 
 const access = useAccessStore();
+const router = useRouter();
 const can = (action: string) =>
   access.accessCodes.includes(`ai:scene:${action}`);
 const search = ref('');
@@ -66,6 +67,9 @@ const scenes = ref<SceneSummary[]>([]);
 const listPage = ref(1);
 const listTotal = ref('0');
 const models = ref<SceneModelOption[]>([]);
+const routingOverview = ref<SceneModelPolicy>();
+const businessModelOverview = ref<null | string>(null);
+const businessModels = ref<HubModel[]>([]);
 const loading = ref(false);
 const switching = ref(false);
 const message = ref('');
@@ -78,7 +82,6 @@ const newKind = ref<'GENERAL' | 'RECORD_SUMMARY'>('GENERAL');
 const newFormId = ref('');
 const creating = ref(false);
 const pendingCreate = ref<SceneCreate>();
-const toggling = ref(false);
 const conflict = ref<SceneDetail>();
 const legacy = ref<null | SceneLegacy>(null);
 const legacyReasonLabels: Record<string, string> = {
@@ -119,44 +122,83 @@ const conversionConsent = new Set<string>();
 const mutationConsent = new Map<string, boolean>();
 const variables = ref<{ label: string; name: string }[]>([]);
 const promptEditor = ref<InstanceType<typeof PromptEditor>>();
-const trialBusinessRef = ref<null | { id: string; type: string }>(null);
+const queryAssistant = ref<InstanceType<typeof SqlReferenceAssistant>>();
+const assistantOpen = ref(false);
+const editingQuery = ref<QueryBinding>();
 const allVariables = computed(() => [
-  ...(variables.value.some((variable) => variable.name === 'user_request')
-    ? []
-    : [{ label: '用户要求', name: 'user_request' }]),
-  ...variables.value,
-  ...(view.value?.value.dataBindings ?? []).map((binding) => ({
-    label: binding.label,
-    name: binding.variable,
-  })),
+  ...new Map(
+    [
+      ...(variables.value.some((variable) => variable.name === 'user_request')
+        ? []
+        : [{ label: '用户要求', name: 'user_request' }]),
+      ...variables.value,
+      ...(view.value?.value.dataBindings ?? []).map((binding) => ({
+        label: binding.label,
+        name: binding.variable,
+      })),
+      ...(view.value?.value.sqlBindings ?? []).map((binding) => ({
+        label: binding.label,
+        name: binding.variable,
+      })),
+    ].map((variable) => [variable.name, variable]),
+  ).values(),
 ]);
 async function insertBinding(variable: string) {
   await nextTick();
   await promptEditor.value?.insertVariable(variable);
 }
-async function preparePreview() {
-  if (!view.value) throw new Error('SCENE_UNAVAILABLE');
-  const key = view.value.sceneKey;
-  if (!(await autosave.flush(key))) throw new Error('SAVE_UNCONFIRMED');
-  return autosave.view(key).confirmed.dataBindings ?? [];
-}
-async function readDataPreview(
-  businessRef: SceneSubmission['businessRef'],
-): Promise<BindingPreview> {
-  if (!view.value) throw new Error('SCENE_UNAVAILABLE');
-  const saved = autosave.view(view.value.sceneKey);
-  const result = await previewScene(saved.sceneKey, {
-    expectedRevision: saved.revision,
-    businessRef,
-    inputs: { user_request: '仅预览引用数据，不调用模型。' },
+function removeBinding(variable: string) {
+  if (!view.value?.editable) return;
+  autosave.edit(view.value.sceneKey, {
+    ...view.value.value,
+    dataBindings: (view.value.value.dataBindings ?? []).filter(
+      (binding) => binding.variable !== variable,
+    ),
+    sqlBindings: (view.value.value.sqlBindings ?? []).filter(
+      (binding) => binding.variable !== variable,
+    ),
   });
-  if (!result.dataValues || !result.reads)
-    throw new Error('PREVIEW_UNAVAILABLE');
-  return {
-    values: result.dataValues,
-    reads: result.reads,
-    notices: result.notices.map((code) => ({ code, reference: '' })),
-  };
+}
+function openAssistant(variable?: string) {
+  if (!view.value?.editable) return;
+  editingQuery.value = variable
+    ? view.value.value.sqlBindings?.find(
+        (binding) => binding.variable === variable,
+      )
+    : undefined;
+  if (variable && !editingQuery.value) return;
+  assistantOpen.value = true;
+}
+async function saveQueryBinding(binding: QueryBinding) {
+  if (!view.value?.editable) return false;
+  const key = view.value.sceneKey;
+  const sqlBindings = [...(view.value.value.sqlBindings ?? [])];
+  const index = sqlBindings.findIndex(
+    (item) => item.variable === binding.variable,
+  );
+  if (index === -1) sqlBindings.push(binding);
+  else sqlBindings[index] = binding;
+  if (sqlBindings.length + (view.value.value.dataBindings?.length ?? 0) > 16)
+    return false;
+  autosave.edit(key, { ...view.value.value, sqlBindings });
+  const state = autosave.view(key);
+  const saved =
+    state.phase === 'error'
+      ? await autosave.retry(key)
+      : await autosave.flush(key);
+  if (!saved || disposed || view.value?.sceneKey !== key) return false;
+  await insertBinding(binding.variable);
+  return true;
+}
+watch(assistantOpen, (open) => {
+  if (!open) editingQuery.value = undefined;
+});
+function configureRouting() {
+  if (view.value)
+    void router.push({
+      path: '/ai/configurations',
+      query: { sceneKey: view.value.sceneKey },
+    });
 }
 const leaveState = ref<'blocked' | 'saving' | null>(null);
 let finishLeave: ((allowed: boolean) => void) | undefined;
@@ -165,6 +207,8 @@ let loadGeneration = 0;
 let detailGeneration = 0;
 let searchTimer: ReturnType<typeof setTimeout> | undefined;
 let disposed = false;
+let metadataGeneration = 0;
+let activatedOnce = false;
 const latestSummaries = new Map<string, SceneSummary>();
 const dialogOpen = computed(() =>
   Boolean(leaveState.value || conflict.value || createOpen.value),
@@ -187,18 +231,15 @@ async function saveNow() {
 async function prepareTrial() {
   return view.value ? autosave.flush(view.value.sceneKey) : false;
 }
-async function refreshModels() {
-  if (!can('query')) return;
-  try {
-    const result = await sceneModels('TEXT');
-    if (!disposed) models.value = result;
-  } catch {
-    if (!disposed) message.value = '模型组合读取失败，请重试。';
-  }
-}
 const autosave = new OrderedSceneAutosave<SceneDefinition>({
   clone: cloneScene,
   equal: (a, b) => JSON.stringify(a) === JSON.stringify(b),
+  reconcile: (local, confirmed) => ({
+    ...local,
+    initialModel: confirmed.initialModel,
+    businessModel: confirmed.businessModel,
+    modelPolicy: confirmed.modelPolicy,
+  }),
   mutationId: () => crypto.randomUUID(),
   persist: (command) => {
     if (!mutationConsent.has(command.clientMutationId))
@@ -214,6 +255,11 @@ const autosave = new OrderedSceneAutosave<SceneDefinition>({
         if (!result.detail.legacy) conversionConsent.delete(command.sceneKey);
         if (selected.value?.sceneKey === command.sceneKey)
           legacy.value = result.detail.legacy ?? null;
+        if (selected.value?.sceneKey === command.sceneKey) {
+          routingOverview.value = result.detail.definition?.modelPolicy;
+          businessModelOverview.value =
+            result.detail.definition?.businessModel ?? null;
+        }
       },
       mutationConsent.get(command.clientMutationId),
     );
@@ -222,7 +268,11 @@ const autosave = new OrderedSceneAutosave<SceneDefinition>({
     const errors: Record<string, string> = {};
     if (!value.name.trim()) errors.name = '请输入场景名称';
     if (!value.promptText.trim()) errors.promptText = '请输入提示词';
-    if (value.modelPolicy.models.length === 0)
+    if (
+      !value.businessModel &&
+      !value.initialModel &&
+      value.modelPolicy.models.length === 0
+    )
       errors.modelPolicy = '请选择模型';
     return errors;
   },
@@ -256,6 +306,7 @@ function updateSummary(summary: SceneSummary) {
 }
 function leaveRisk() {
   return (
+    Boolean(queryAssistant.value?.hasUnsaved()) ||
     autosave.hasUnconfirmedChanges() ||
     Boolean(pendingCreate.value) ||
     creating.value ||
@@ -280,7 +331,7 @@ function chooseLeave(allowed: boolean) {
   finishLeave = undefined;
   finish?.(allowed);
 }
-onBeforeRouteLeave(() => {
+function leaveScene() {
   if (finishLeave) chooseLeave(false);
   if (!leaveRisk()) return true;
   const run = ++leaveGeneration;
@@ -299,6 +350,14 @@ onBeforeRouteLeave(() => {
     },
   );
   return decision;
+}
+onBeforeRouteLeave(() => {
+  if (!assistantOpen.value) return leaveScene();
+  return (async () => {
+    if (!(await queryAssistant.value?.canLeave())) return false;
+    queryAssistant.value?.discard();
+    return leaveScene();
+  })();
 });
 function emptyDefinition(scene: SceneSummary): SceneDefinition {
   return {
@@ -371,11 +430,12 @@ async function selectScene(key: string) {
     }
     if (disposed || run !== detailGeneration) return;
     selected.value = latestSummaries.get(key) ?? detail.scene;
-    trialBusinessRef.value = null;
     variables.value = [];
     legacy.value = legacyByScene.get(key) ?? null;
     converted.value = conversionConsent.has(key);
     view.value = autosave.view(key);
+    routingOverview.value = detail.definition?.modelPolicy;
+    businessModelOverview.value = detail.definition?.businessModel ?? null;
     conflict.value = undefined;
   } catch {
     if (!disposed && run === detailGeneration)
@@ -429,38 +489,6 @@ async function create() {
     creating.value = false;
   }
 }
-async function toggleEnabled() {
-  if (!view.value || !selected.value || !can('enable') || toggling.value)
-    return;
-  const key = view.value.sceneKey;
-  toggling.value = true;
-  try {
-    if (!(await autosave.flush(key))) {
-      message.value = '请先处理未保存内容。';
-      return;
-    }
-    const result = await setSceneEnabled(key, {
-      expectedRevision: autosave.view(key).revision,
-      clientMutationId: crypto.randomUUID(),
-      enabled: !selected.value.enabled,
-    });
-    if (disposed) return;
-    updateSummary(result.detail.scene);
-    legacyByScene.set(key, result.detail.legacy ?? null);
-    if (view.value?.sceneKey === key)
-      legacy.value = result.detail.legacy ?? null;
-    autosave.register(
-      key,
-      result.detail.scene.revision,
-      result.detail.definition ?? emptyDefinition(result.detail.scene),
-      editorAllowed(key),
-    );
-  } catch {
-    if (!disposed) message.value = '启停失败，请刷新场景后重试。';
-  } finally {
-    toggling.value = false;
-  }
-}
 async function inspectConflict() {
   if (!view.value) return;
   const key = view.value.sceneKey;
@@ -483,19 +511,72 @@ async function resolve(choice: 'keep-local' | 'use-server') {
     choice,
   );
   updateSummary(conflict.value.scene);
+  routingOverview.value = conflict.value.definition.modelPolicy;
+  businessModelOverview.value = conflict.value.definition.businessModel ?? null;
   conflict.value = undefined;
   if (choice === 'keep-local') await autosave.retry(key);
+}
+async function refreshMetadata() {
+  if (!can('query')) return;
+  const run = ++metadataGeneration;
+  const actor = access.accessToken;
+  const key = view.value?.sceneKey;
+  const [options, detail, business] = await Promise.allSettled([
+    sceneModels('TEXT'),
+    key ? getScene(key) : Promise.resolve(undefined),
+    access.accessCodes.includes('ai:config:query')
+      ? listHubModels({ pageNum: 1, pageSize: 100 })
+      : Promise.resolve(undefined),
+  ] as const);
+  if (
+    disposed ||
+    run !== metadataGeneration ||
+    actor !== access.accessToken ||
+    !can('query')
+  )
+    return;
+  if (options.status === 'fulfilled') models.value = options.value;
+  else message.value = '模型概况暂未读到，请稍后重新进入场景。';
+  if (business.status === 'fulfilled')
+    businessModels.value =
+      business.value?.records.filter((model) => model.enabled) ?? [];
+  if (
+    key &&
+    detail.status === 'fulfilled' &&
+    detail.value &&
+    view.value?.sceneKey === key
+  ) {
+    routingOverview.value = detail.value.definition?.modelPolicy;
+    businessModelOverview.value =
+      detail.value.definition?.businessModel ?? null;
+    const local = autosave.view(key);
+    if (
+      !local.dirty &&
+      !['conflict', 'error', 'saving'].includes(local.phase)
+    ) {
+      legacyByScene.set(key, detail.value.legacy ?? null);
+      legacy.value = detail.value.legacy ?? null;
+      updateSummary(detail.value.scene);
+      autosave.register(
+        key,
+        detail.value.scene.revision,
+        detail.value.definition ?? emptyDefinition(detail.value.scene),
+        editorAllowed(key),
+      );
+    }
+  }
 }
 onMounted(async () => {
   window.addEventListener('beforeunload', beforeUnload);
   if (can('list')) await loadList();
-  if (can('query'))
-    try {
-      const options = await sceneModels('TEXT');
-      if (!disposed) models.value = options;
-    } catch {
-      if (!disposed) message.value = '模型选项读取失败。';
-    }
+  await refreshMetadata();
+});
+onActivated(() => {
+  if (!activatedOnce) {
+    activatedOnce = true;
+    return;
+  }
+  void refreshMetadata();
 });
 onBeforeUnmount(() => {
   window.removeEventListener('beforeunload', beforeUnload);
@@ -503,6 +584,7 @@ onBeforeUnmount(() => {
   disposed = true;
   loadGeneration++;
   detailGeneration++;
+  metadataGeneration++;
   clearTimeout(searchTimer);
   unsubscribe();
   autosave.dispose();
@@ -548,39 +630,19 @@ onBeforeUnmount(() => {
             />
           </div>
           <div class="scene-actions">
-            <ElButton @click="refreshModels">刷新模型</ElButton>
             <SceneTrialPanel
               v-if="legacy?.compatibility !== 'READ_ONLY'"
               :scene-key="view.sceneKey"
               :definition="view.confirmed"
               :revision="view.revision"
               :version-id="selected.currentVersionId"
-              :business-ref="trialBusinessRef"
               :models="models"
               :prepare="prepareTrial"
             />
-            <ElPopconfirm
-              v-if="can('enable') && selected.enabled"
-              title="停用此场景？已有对话仍可查看。"
-              confirm-button-text="停用"
-              cancel-button-text="保留"
-              @confirm="toggleEnabled"
-            >
-              <template #reference>
-                <ElButton :disabled="toggling">停用场景</ElButton>
-              </template>
-            </ElPopconfirm>
-            <ElButton
-              v-else-if="can('enable')"
-              :disabled="toggling"
-              @click="toggleEnabled"
-            >
-              启用场景
-            </ElButton>
             <ElButton
               v-if="view.editable"
               type="primary"
-              :disabled="toggling || view.phase === 'saving'"
+              :disabled="view.phase === 'saving'"
               @click="saveNow"
             >
               保存
@@ -638,48 +700,58 @@ onBeforeUnmount(() => {
           v-if="legacy?.compatibility !== 'READ_ONLY'"
           ref="promptEditor"
           :value="view.value"
-          :readonly="!view.editable || toggling"
+          :readonly="!view.editable"
           :models="models"
+          :business-models="businessModels"
+          :business-model-overview="businessModelOverview"
+          :routing-overview="routingOverview"
+          :initial-model="!selected.currentVersionId"
+          :saving="view.phase === 'saving'"
+          :can-configure-routing="
+            access.accessCodes.includes('ai:config:list') &&
+            access.accessCodes.includes('ai:config:query')
+          "
           :fields="view.fields"
           :variables="allVariables"
           @change="autosave.edit(view.sceneKey, $event)"
+          @configure="configureRouting"
+          @refresh-models="refreshMetadata"
         >
           <template #data>
-            <SceneDataSelector
-              v-if="selected.source === 'LEGACY_V04'"
+            <DataReferenceTable
               :key="view.sceneKey"
-              :value="view.value.dataObjects"
-              :fixed-form-id="selected.formId"
-              :readonly="!view.editable || toggling"
+              :bindings="view.value.dataBindings ?? []"
+              :sql-bindings="view.value.sqlBindings ?? []"
+              :legacy-objects="view.value.dataObjects"
+              :readonly="!view.editable"
+              :can-add="
+                (view.value.dataBindings?.length ?? 0) +
+                  (view.value.sqlBindings?.length ?? 0) <
+                16
+              "
               @variables="variables = $event"
-              @change="
-                autosave.edit(view.sceneKey, {
-                  ...view.value,
-                  dataObjects: $event,
-                })
-              "
-            />
-            <DatabaseBindingEditor
-              v-else
-              :key="view.sceneKey"
-              :value="view.value.dataBindings ?? []"
-              :readonly="!view.editable || toggling"
-              :prepare-preview="preparePreview"
-              :read-preview="readDataPreview"
-              :preview-disabled="
-                !can('test') || !access.accessCodes.includes('ai:scene:invoke')
-              "
-              @change="
-                autosave.edit(view.sceneKey, {
-                  ...view.value,
-                  dataBindings: $event,
-                })
-              "
               @insert="insertBinding"
-              @context="trialBusinessRef = $event ?? null"
+              @remove="removeBinding"
+              @add="openAssistant()"
+              @edit="openAssistant"
             />
           </template>
         </PromptEditor>
+        <SqlReferenceAssistant
+          ref="queryAssistant"
+          v-if="view.editable"
+          v-model:open="assistantOpen"
+          :binding="editingQuery"
+          :readonly="!view.editable"
+          :scene-key="view.sceneKey"
+          :revision="view.revision"
+          :configured="Boolean(selected.currentVersionId)"
+          :initial-model="view.value.initialModel"
+          :business-model="view.value.businessModel"
+          :scene-saving="view.phase === 'saving'"
+          :used-variables="allVariables.map((variable) => variable.name)"
+          :save-binding="saveQueryBinding"
+        />
       </template>
       <ElEmpty
         v-else
@@ -793,7 +865,8 @@ onBeforeUnmount(() => {
 <style scoped>
 .scene-workspace {
   display: flex;
-  min-height: calc(100vh - 150px);
+  height: calc(var(--vben-content-height, calc(100dvh - 112px)) - 32px);
+  min-height: 0;
   margin: 16px;
   overflow: hidden;
   color: hsl(var(--foreground));
@@ -802,12 +875,14 @@ onBeforeUnmount(() => {
 }
 
 .scene-main {
-  display: grid;
+  display: flex;
   flex: 1;
-  gap: 20px;
-  align-content: start;
+  flex-direction: column;
+  gap: 12px;
   min-width: 0;
-  padding: 24px;
+  min-height: 0;
+  padding: 16px;
+  overflow: hidden;
 }
 
 .scene-heading {
@@ -819,8 +894,8 @@ onBeforeUnmount(() => {
 }
 
 h1 {
-  margin-bottom: 8px;
-  font-size: 21px;
+  margin-bottom: 2px;
+  font-size: 18px;
   font-weight: 600;
   overflow-wrap: anywhere;
 }
@@ -844,6 +919,9 @@ h1 {
 }
 
 .legacy-notice {
+  flex-shrink: 0;
+  max-height: 120px;
+  overflow: auto;
   font-size: 13px;
 }
 
@@ -871,6 +949,8 @@ h1 {
 @media (max-width: 900px) {
   .scene-workspace {
     flex-direction: column;
+    height: auto;
+    min-height: calc(100dvh - 130px);
     margin: 8px;
   }
 

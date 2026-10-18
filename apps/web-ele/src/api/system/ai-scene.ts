@@ -6,6 +6,7 @@ import type {
   RequestStatus,
 } from './ai-application';
 import type { BindingPreview, DatabaseValue, DataBinding } from './ai-database';
+import type { QueryBinding } from './ai-query';
 
 import { requestClient } from '#/api/request';
 
@@ -24,6 +25,9 @@ export interface SceneModelPolicy {
   timeoutSeconds: number;
 }
 export interface SceneDefinition {
+  businessModel?: null | string;
+  sqlBindings?: QueryBinding[];
+  initialModel?: ModelReference | null;
   dataBindings?: DataBinding[];
   dataObjects: { fields: string[]; formId: null | string; objectKey: string }[];
   modelPolicy: SceneModelPolicy;
@@ -32,6 +36,9 @@ export interface SceneDefinition {
   promptText: string;
   purpose: string;
 }
+export type SceneEditableDefinition = Omit<SceneDefinition, 'modelPolicy'> & {
+  modelPolicy?: SceneModelPolicy;
+};
 export interface SceneEntry {
   canStartFromMonitor?: boolean;
   contextRequired?: boolean;
@@ -55,6 +62,32 @@ export interface SceneDetail {
   definition: null | SceneDefinition;
   legacy: null | SceneLegacy;
   scene: SceneSummary;
+}
+interface WireSceneDetail extends Omit<SceneDetail, 'definition'> {
+  definition:
+    | null
+    | (Omit<SceneDefinition, 'modelPolicy'> & {
+        modelPolicy: null | SceneModelPolicy;
+      });
+}
+function normalizeSceneDetail(detail: WireSceneDetail): SceneDetail {
+  if (!detail.definition) return { ...detail, definition: null };
+  return {
+    ...detail,
+    definition: {
+      ...detail.definition,
+      modelPolicy: detail.definition.modelPolicy ?? {
+        mode: 'FIXED',
+        models: [],
+        fallback: false,
+        outputFormat: 'TEXT',
+        timeoutSeconds: 30,
+        maxAttempts: 2,
+        maxConcurrent: 2,
+        maxTokens: 1024,
+      },
+    },
+  };
 }
 export interface SceneLegacy {
   compatibility: 'CONVERTIBLE' | 'READ_ONLY';
@@ -163,29 +196,43 @@ export interface SceneMonitor {
 const scenes = '/system/ai/scenes';
 const scenePath = (sceneKey: string) =>
   `${scenes}/${encodeURIComponent(sceneKey)}`;
-export const getSceneWorkspace = (params: {
+export const getSceneWorkspace = async (params: {
   pageNum: number;
   pageSize: number;
   search?: string;
   selectedSceneKey?: string;
-}) =>
-  requestClient.get<{ scenes: ScenePage; selected: null | SceneDetail }>(
-    `${scenes}/workspace`,
-    { params },
+}) => {
+  const value = await requestClient.get<{
+    scenes: ScenePage;
+    selected: null | WireSceneDetail;
+  }>(`${scenes}/workspace`, { params });
+  return {
+    ...value,
+    selected: value.selected ? normalizeSceneDetail(value.selected) : null,
+  };
+};
+export const getScene = async (sceneKey: string) =>
+  normalizeSceneDetail(
+    await requestClient.get<WireSceneDetail>(scenePath(sceneKey)),
   );
-export const getScene = (sceneKey: string) =>
-  requestClient.get<SceneDetail>(scenePath(sceneKey));
-export const createScene = (input: SceneCreate) =>
-  requestClient.post<SceneDetail>(scenes, input);
-export const saveScene = (
+export const createScene = async (input: SceneCreate) =>
+  normalizeSceneDetail(
+    await requestClient.post<WireSceneDetail>(scenes, input),
+  );
+export const saveScene = async (
   sceneKey: string,
   input: {
     clientMutationId: string;
     confirmedLegacyConversion?: boolean;
-    definition: SceneDefinition;
+    definition: SceneEditableDefinition;
     expectedRevision: number;
   },
-) => requestClient.put<SceneSaveResult>(scenePath(sceneKey), input);
+) => {
+  const value = await requestClient.put<
+    Omit<SceneSaveResult, 'detail'> & { detail: WireSceneDetail }
+  >(scenePath(sceneKey), input);
+  return { ...value, detail: normalizeSceneDetail(value.detail) };
+};
 export const setSceneEnabled = (
   sceneKey: string,
   input: {
@@ -229,6 +276,7 @@ export const recordSummaryScene = (formId: string) =>
   requestClient.get<null | SceneEntry>('/ai/scenes/record-summary', {
     params: { formId },
   });
+export const sceneEntries = () => requestClient.get<SceneEntry[]>('/ai/scenes');
 export const submitScene = (sceneKey: string, input: SceneSubmission) =>
   requestClient.post<SceneRequest>(
     `/ai/scenes/${encodeURIComponent(sceneKey)}/requests`,
