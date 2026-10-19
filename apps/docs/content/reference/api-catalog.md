@@ -6,6 +6,25 @@
 
 旧目录的签名与行号仍属于旧基线；旧版一期兼容节的行号属于后端 `79b4655b56621fbcdafe48eb858d312bd76eb465`。v1.2.0静态站不运行后端，当前源码AI一期未打独立发行Tag；本页不是运行时Swagger，也不承诺未配置服务的接口可直接成功。Agent/插件草案接口未收录为实现。
 
+## AI请求详细日志
+
+当前实现位于`AiCallLogController`及`AiCallLogService`，与对话消息接口并存。每行是一条真实上游交互，重试分别记行；刷新和查询不会调用模型。
+
+| 方法 | 路径 | 操作权限 | 返回data |
+| --- | --- | --- | --- |
+| GET | `/system/ai/call-logs` | `ai:request:list` | `{records,total,pageNum,pageSize}` |
+| GET | `/system/ai/call-logs/statistics` | `ai:request:list` | 交互数、成功/失败数、已知Token及未知次数 |
+| GET | `/system/ai/call-logs/{callId}` | `ai:request:query` | `{call,response}` |
+| GET | `/system/ai/call-logs/export` | `ai:request:export` | 最多5000条结构化记录，不含响应正文 |
+
+共同筛选为`scope`、`from`、`to`、`requestId`、`modelRef`、`providerCode`、`status`、`entryType`、`tenantRef`、`subjectRef`、`appId`、`sceneKey`。时间使用ISO Instant，范围`[from,to)`，默认最近7天、最大31天；列表默认第1页、每页20条，最大100条。`entryType`为`REQUEST_ATTEMPT`、`CONFIGURATION_TEST`或`MODEL_DISCOVERY`；不要把目录扫描算成模型生成。
+
+`scope`默认OWN，不能通过tenantRef/subjectRef冒充他人；AUDIT须真实平台身份及`ai:request:audit`。目录/连接测试还受平台配置查看范围限制。详情重新核查当前资源权限，SQL助手和模型测试等私有正文不因审计权限开放；无正文权限时`response=null`、`responseAvailable=false`。接口返回`Cache-Control: no-store`，客户端不得持久缓存这些内容。
+
+记录包含关联请求/尝试或测试/搭配、渠道与上游模型、状态/错误、各阶段时间、input/output/total/cache/reasoning Token、reportedCost及currency、finishReason和安全归档标记。Long及费用按精确字符串读取；未提供、未知和不可测保持null，不能填0。首输出为首个非空模型内容，首字节与首文本分别计时，非流式首输出不可测。
+
+`response`非空时包含`format`、`body`、`headers`、`usage`、`receivedBytes`、`archivedBytes`，body也可为null。JSON/SSE按接收顺序有界脱敏归档，保留供应商未知扩展；归档上限256KiB，截断、部分和采集失败显式标记，密钥与敏感头不返回。客户端仅以文本展示，不执行响应HTML或脚本。统计的knownInputTokens/knownOutputTokens与unknownInputCalls/unknownOutputCalls分开；相同筛选在列表、统计及导出中保持一致。
+
 ## 调用前提
 
 表中路径为后端路径，同源部署访问时加 `/api`。先用 `/user/login` 登录，再发送原始 JWT `Authorization`；默认不支持 Bearer 或刷新 token。除登录/验证码和微信公开边界外，Security要求已认证。标注平台身份的接口还需要实际操作码；没有方法注解的接口仍可能在类/服务中验权。权限表达式保留源码，不把目录可见当成接口许可。
