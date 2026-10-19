@@ -23,6 +23,8 @@ import type {
   View,
 } from '../api/system/ai-template';
 
+import { fictionalCall } from './ai-call-logs';
+
 // Entirely fictional local data. No key material, provider attempts, test success or executable publication.
 export const AI_DEMO_IDS = {
   config: '9100000000000000101',
@@ -378,6 +380,34 @@ export function readOnlyAiDemo(
   if (method !== 'GET')
     throw new AiDemoFailure(501, '静态演示仅支持查看，未发送请求');
   const send = (data: unknown): Reply => ({ handled: true, data });
+  if (path.startsWith('/system/ai/call-logs')) {
+    if (params.scope && params.scope !== 'OWN')
+      throw new AiDemoFailure(403, '静态演示仅支持本人虚构数据');
+    const records = [fictionalCall].filter((row) =>
+      Object.entries(params).every(([key, value]) => {
+        if (!value || ['pageNum', 'pageSize', 'scope'].includes(key))
+          return true;
+        if (key === 'from') return row.startedAt >= String(value);
+        if (key === 'to') return row.startedAt <= String(value);
+        return String(row[key as keyof typeof row] ?? '') === String(value);
+      }),
+    );
+    if (path === '/system/ai/call-logs') return send(paged(records, params));
+    if (path === '/system/ai/call-logs/statistics')
+      return send({
+        calls: String(records.length),
+        succeeded: '0',
+        failed: String(records.length),
+        knownInputTokens: null,
+        knownOutputTokens: null,
+        unknownInputCalls: String(records.length),
+        unknownOutputCalls: String(records.length),
+      });
+    if (path === '/system/ai/call-logs/export') return send(records);
+    if (path === '/system/ai/call-logs/fictional-call' && records.length > 0)
+      return send({ call: fictionalCall, response: null });
+    throw new AiDemoFailure(404, '筛选范围内没有该虚构记录');
+  }
   if (path === '/ai/scenes') return send([]);
   if (path === '/ai/conversations') {
     if (params.scope && params.scope !== 'OWN')

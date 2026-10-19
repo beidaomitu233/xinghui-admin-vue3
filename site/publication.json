@@ -1,11 +1,11 @@
 {
-  "scope": "Model-centered AI configuration, durable model catalog, bilingual prompt workspace and scoped read-only SQL assistance",
-  "frontendSource": "972bd4d340542e3b68782a7bc9f0347a60da64d2",
-  "schemaVersion": 1,
+  "scope": "Detailed per-request AI logs, exact usage and timing, safe JSON/SSE response inspection",
   "realModelCalls": false,
-  "date": "2026-10-18",
-  "runtime": "browser-local-only",
+  "backendSource": "8557b593db64c6a69f51862ed6afd7b949507f15",
+  "documentationSource": "4887287e4ac878f0cb16f42baaa42416e05d4171",
   "newReleaseTag": false,
-  "backendSource": "577b3183b22b98e185adba75f4fb1a9c0497186b",
-  "documentationSource": "357d84ae92324a7bc4d2b5fb4dc72136cb3a2f3c"
+  "date": "2026-10-19",
+  "frontendSource": "85ff168c9f0fcf12145f5c1ba1859f1fd9e4678c",
+  "runtime": "browser-local-only",
+  "schemaVersion": 1
 }

@@ -93,6 +93,27 @@ function openButton(text: string) {
   button.click();
 }
 describe('real AI pages with read-only local transport', () => {
+  it('opens fictional call logs and a metadata-only detail without invoking a provider', async () => {
+    const wrapper = mount(RequestPage, {
+      attachTo: document.body,
+      global: { plugins: [ElementPlus] },
+    });
+    wrappers.push(wrapper);
+    await settle();
+    openButton('请求日志');
+    await settle();
+    expect(wrapper.text()).toContain('[虚构] 未连接模型');
+    expect(wrapper.text()).toContain('未提供');
+    openButton('详情');
+    await settle();
+    expect(wrapper.text()).toContain('虚构布局示例，未发送上游请求');
+    expect(wrapper.text()).toContain('响应正文不可用或无权查看');
+    expect(client.post).not.toHaveBeenCalled();
+    expect(client.put).not.toHaveBeenCalled();
+    expect(
+      client.get.mock.calls.some(([url]) => url === '/system/ai/call-logs'),
+    ).toBe(true);
+  });
   it('keeps template and resource fields and collection actions read-only without hiding details', async () => {
     const read = client.get.getMockImplementation();
     if (!read) throw new Error('Missing local transport');

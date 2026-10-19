@@ -1,0 +1,1 @@
+import{r as o}from"./bootstrap-D1y_d_0z.js";const t="/ai/conversations",a=s=>o.get(t,{params:s}),r=(s,n="OWN")=>o.get(`${t}/${encodeURIComponent(s)}`,{params:{scope:n}}),c=s=>o.post(t,s),i=(s,n)=>o.post(`${t}/${encodeURIComponent(s)}/messages`,n);export{i as c,r as g,a as l,c as s};
