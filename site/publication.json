@@ -1,8 +1,8 @@
 {
   "scope": "Detailed per-request AI logs, exact usage and timing, safe JSON/SSE response inspection",
   "realModelCalls": false,
-  "backendSource": "5df25a34d9b354e33aa3e56d242fc720c4f78273",
-  "documentationSource": "fbd84aed23a2dd48ff8969c32581e92d9c5356b0",
+  "backendSource": "8557b593db64c6a69f51862ed6afd7b949507f15",
+  "documentationSource": "4887287e4ac878f0cb16f42baaa42416e05d4171",
   "newReleaseTag": false,
   "date": "2026-10-19",
   "frontendSource": "85ff168c9f0fcf12145f5c1ba1859f1fd9e4678c",
