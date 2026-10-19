@@ -4,6 +4,26 @@ export const exact = (
   value: null | number | string | undefined,
   missing = '未采集',
 ) => (value === null || value === undefined ? missing : String(value));
+export function localDateTime(value: null | string, timeZone?: string) {
+  if (value === null) return '未提供';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  const parts = new Intl.DateTimeFormat('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    fractionalSecondDigits: 3,
+    hourCycle: 'h23',
+    timeZone,
+  }).formatToParts(date);
+  const fields = Object.fromEntries(
+    parts.map(({ type, value }) => [type, value]),
+  );
+  return `${fields.year}-${fields.month}-${fields.day} ${fields.hour}:${fields.minute}:${fields.second}.${fields.fractionalSecond}`;
+}
 export const entryLabels = {
   CONFIGURATION_TEST: '连接测试',
   MODEL_DISCOVERY: '模型目录扫描',
@@ -91,9 +111,9 @@ export function structuredRows(rows: CallLogRow[]) {
 }
 
 // Format token boundaries only: never parse number lexemes through JavaScript Number.
-// Invalid/truncated JSON and SSE remain the exact archived text.
+// Invalid/truncated JSON and raw SSE remain the exact archived text.
 export function responseText(body: string, format: string) {
-  if (format !== 'JSON') return body;
+  if (format !== 'JSON' && format !== 'SSE') return body;
   try {
     JSON.parse(body);
   } catch {

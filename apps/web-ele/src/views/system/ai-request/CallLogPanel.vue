@@ -29,6 +29,7 @@ import {
   costValue,
   entryLabels,
   exact,
+  localDateTime,
   outputTime,
   statusLabels,
   structuredRows,
@@ -402,7 +403,7 @@ onBeforeUnmount(clear);
         <table>
           <thead>
             <tr>
-              <th>时间 / 类型</th>
+              <th>时间（本地） / 类型</th>
               <th>模型 / 渠道</th>
               <th>状态</th>
               <th>Token 输入 / 输出</th>
@@ -414,7 +415,7 @@ onBeforeUnmount(clear);
           <tbody>
             <tr v-for="row in rows" :key="row.callId">
               <td>
-                {{ row.startedAt }}
+                {{ localDateTime(row.startedAt) }}
                 <small>{{ entryLabels[row.entryType] }}</small>
               </td>
               <td>

@@ -7,6 +7,7 @@ import {
   costValue,
   entryLabels,
   exact,
+  localDateTime,
   outputTime,
   responseText,
   statusLabels,
@@ -45,11 +46,13 @@ const overview = computed(() => [
   ['渠道', call.value.configName ?? call.value.providerCode],
   ['上游返回模型', call.value.returnedModel],
   ['传输', transmission.value],
-  ['开始', call.value.startedAt],
-  ['结束', call.value.finishedAt],
+  ['开始（本地）', localDateTime(call.value.startedAt)],
+  ['结束（本地）', localDateTime(call.value.finishedAt)],
   ['实报费用', costValue(call.value)],
 ]);
 const diagnostics = computed(() => [
+  ['开始 ISO', call.value.startedAt],
+  ['结束 ISO', call.value.finishedAt],
   ['供应商', call.value.providerCode],
   ['请求类别', call.value.requestKind],
   ['原始状态', call.value.status],
