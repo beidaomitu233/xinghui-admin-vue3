@@ -43,6 +43,12 @@ vi.mock('#/api/system/ai-database', () => ({
   databaseFields: api.fields,
   databaseRecords: api.records,
 }));
+vi.mock('#/api/system/ai-call-log', () => ({
+  listCallLogs: vi.fn().mockResolvedValue({ records: [], total: '0' }),
+  callLogStatistics: vi.fn().mockResolvedValue({ calls: '0' }),
+  getCallLog: vi.fn(),
+  exportCallLogs: vi.fn(),
+}));
 vi.mock('../ai-config/SimpleSettingsPanel.vue', () => ({
   default: { template: '<div data-keys>Key 与模型</div>' },
 }));
@@ -128,6 +134,39 @@ beforeEach(() => {
   ]);
 });
 describe('persisted conversation workspace', () => {
+  it('retains the conversation instance and unsent draft across log tabs', async () => {
+    const wrapper = render();
+    await flushPromises();
+    await click(wrapper, '订单讨论');
+    expect(wrapper.find('.monitor-workspace > .monitor-pane').exists()).toBe(
+      true,
+    );
+    const draft = wrapper.get('textarea[aria-label="消息内容"]');
+    await draft.setValue('尚未发送的追问');
+    const original = draft.element;
+    await click(wrapper, '请求日志');
+    expect(
+      (wrapper.get('.monitor-conversations').element as HTMLElement).style
+        .display,
+    ).toBe('none');
+    expect(wrapper.get('textarea[aria-label="消息内容"]').element).toBe(
+      original,
+    );
+    await click(wrapper, '我的对话');
+    expect(
+      (wrapper.get('.monitor-conversations').element as HTMLElement).style
+        .display,
+    ).not.toBe('none');
+    expect(
+      (
+        wrapper.get('textarea[aria-label="消息内容"]')
+          .element as HTMLTextAreaElement
+      ).value,
+    ).toBe('尚未发送的追问');
+    expect(api.followup).not.toHaveBeenCalled();
+    expect(api.stream).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
   it.each([
     { codes: ['ai:scene:invoke'], label: 'invoke only' },
     {

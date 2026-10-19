@@ -1,0 +1,1 @@
+import{_ as e}from"./fallback.vue_vue_type_script_setup_true_lang-CEFkN-jb.js";import{l as o,n as a,E as n,u as t}from"../jse/index-index-DeOh07zE.js";import"./bootstrap-D1y_d_0z.js";import"./load-CMlyDdDr.js";import"./rotate-cw-B71PCIbW.js";const l=o({name:"FallbackOfflineDemo",__name:"offline",setup(r){return(f,m)=>(a(),n(t(e),{status:"offline"}))}});export{l as default};

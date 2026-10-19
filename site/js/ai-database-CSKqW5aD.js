@@ -1,0 +1,1 @@
+import{r as s}from"./bootstrap-D1y_d_0z.js";const e="/system/ai/scene-data",d=a=>s.get(`${e}/database/tables`,{params:a}),o=a=>s.get(`${e}/database/fields`,{params:{sourceKey:a}}),n=a=>s.get(`${e}/database/relations`,{params:{sourceKey:a}}),b=a=>s.post(`${e}/database/records`,a),i=a=>s.post(`${e}/bindings/preview`,a);export{d as a,b,n as c,o as d,i as p};
