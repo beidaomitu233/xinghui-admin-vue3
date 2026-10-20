@@ -6,7 +6,7 @@
 
 ## 只想体验和阅读
 
-可从[Pages 后台演示目标](https://beidaomitu233.github.io/xinghui-admin-vue3/)和[Pages 文档目标](https://beidaomitu233.github.io/xinghui-admin-vue3/docs/)开始，实际发布状态看[公开仓库 Actions](https://github.com/beidaomitu233/xinghui-admin-vue3/actions)。静态演示的本地数据与模拟结果不验证真实接口、数据库或供应商；需要接入真实应用时再走下面的安装、权限和部署路径。
+可从[星辉后台](https://admin.hui7.fun/)和[文档中心](https://admin.hui7.fun/docs/)开始；服务器发布与运行状态按 Actions、HTTP 和业务验收记录确认。GitHub Pages 已停止后续演示发布，旧站点仅保留历史快照。发布记录见[公开仓库 Actions](https://github.com/beidaomitu233/xinghui-admin-vue3/actions)；自行部署仍按下面的安装、权限和部署路径执行。
 
 ## 管理人员：先完成一条操作链
 
