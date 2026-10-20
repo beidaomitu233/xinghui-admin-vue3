@@ -2,7 +2,7 @@
 
 > **[打开后台](https://admin.hui7.fun/)** · **[打开完整文档](https://admin.hui7.fun/docs/)**
 
-服务器入口已确定，首次部署验收进行中；可用性与实际接入功能以验收记录为准。GitHub Pages 已停止后续演示发布，旧站点保留为历史快照。
+服务器入口已确定；发布与运行状态按 Actions、HTTP 和业务验收记录确认。GitHub Pages 已停止后续演示发布，旧站点保留为历史快照。
 
 本仓库承载星辉后台的前端源码与同源文档。`site/` 保留历史审核静态产物，后续真实应用与文档改由服务器流水线发布。
 
@@ -86,7 +86,7 @@ node scripts/check-site.mjs site
 
 Pages 工作流对其触发分支和 PR 仅进行静态产物校验，已移除 Pages 上传、部署及对应写权限，不再更新旧站点。
 
-真实应用与文档由 `server-deploy.yml` 在精确 `main` 提交的 CI 通过后发布不可变镜像；服务器部署另受显式开关与私有部署配置控制。源码 CI、镜像入库和服务器可用分别验收，首次服务器验收尚未完成。部署方式见[部署教程](apps/docs/content/operations/deployment.md)。
+真实应用与文档由 `server-deploy.yml` 在精确 `main` 提交的 CI 通过后发布不可变镜像；服务器部署另受显式开关与私有部署配置控制。源码 CI、镜像入库和服务器可用分别验收，以对应发布记录为准。部署方式见[部署教程](apps/docs/content/operations/deployment.md)。
 
 ## 上游归属
 

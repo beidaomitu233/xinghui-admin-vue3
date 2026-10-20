@@ -6,7 +6,7 @@
 
 ## 只想体验和阅读
 
-可从[星辉后台](https://admin.hui7.fun/)和[文档中心](https://admin.hui7.fun/docs/)开始；服务器首次部署验收进行中，实际可用性以验收记录为准。GitHub Pages 已停止后续演示发布，旧站点仅保留历史快照。发布记录见[公开仓库 Actions](https://github.com/beidaomitu233/xinghui-admin-vue3/actions)；自行部署仍按下面的安装、权限和部署路径执行。
+可从[星辉后台](https://admin.hui7.fun/)和[文档中心](https://admin.hui7.fun/docs/)开始；服务器发布与运行状态按 Actions、HTTP 和业务验收记录确认。GitHub Pages 已停止后续演示发布，旧站点仅保留历史快照。发布记录见[公开仓库 Actions](https://github.com/beidaomitu233/xinghui-admin-vue3/actions)；自行部署仍按下面的安装、权限和部署路径执行。
 
 ## 管理人员：先完成一条操作链
 
