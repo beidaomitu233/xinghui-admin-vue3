@@ -1,4 +1,4 @@
-name: Validate and deploy static Pages
+name: Validate static site
 
 on:
   pull_request:
@@ -28,32 +28,3 @@ jobs:
           test -d site
           touch site/.nojekyll
           node scripts/check-site.mjs site
-      - name: Upload reviewed site for main only
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'beidaomitu233/xinghui-admin-vue3'
-        uses: actions/upload-pages-artifact@v4
-        with:
-          path: site
-          retention-days: 1
-
-  deploy:
-    name: Deploy GitHub Pages
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'beidaomitu233/xinghui-admin-vue3'
-    needs: validate
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
-      pages: write
-      id-token: write
-    concurrency:
-      group: github-pages
-      cancel-in-progress: false
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - name: Configure existing Pages site
-        uses: actions/configure-pages@v5
-      - name: Deploy validated artifact
-        id: deployment
-        uses: actions/deploy-pages@v4
