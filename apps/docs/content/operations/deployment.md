@@ -1,12 +1,12 @@
 # 部署应用与文档中心
 
-> 迁移状态（2026-10-20）：本次变更停止 GitHub Pages 自动发布，仅保留静态站点验证；合并生效后，现有站点保留可读但不再自动更新。真实后台与文档改由服务器流水线发布，首次服务器部署尚未验收，当前没有新的公网地址。下方 Pages 内容作为历史部署参考，旧入口与 README 链接待真实地址确认后再替换。
+> 迁移状态（2026-10-20）：服务器入口已确定为[星辉后台](https://admin.hui7.fun/)与[文档中心](https://admin.hui7.fun/docs/)，首次服务器部署验收尚未完成。GitHub Pages 已停止后续演示发布，仅保留静态站点验证，旧站点保留为历史快照。Pi Agent 服务与 AI 工作台仍为方案及独立原型，尚未实际接入。
 
-本页向部署者提供 JAR、静态应用、同源文档和 GitHub Pages 手册部署方式。运行真实后端前完成自有环境的密码处理、备份、版本配对和[质量门槛](./quality-gates.md)。Pages 发布状态按公开仓库实际 Actions 与 HTTP 检查确认；静态站点发布不等同于后端正式发行。
+本页向部署者提供自托管 JAR、应用与同源文档的部署方式，并保留历史 Pages 布局参考。运行真实后端前完成自有环境的密码处理、备份、版本配对和[质量门槛](./quality-gates.md)。当前应用根路径为 `/`，文档为 `/docs/`，API 使用同源 `/api`；各入口与后端功能按实际 HTTP 和业务验收记录确认。
 
-## GitHub Pages：静态演示与文档 {#github-pages}
+## GitHub Pages：历史静态演示与文档 {#github-pages}
 
-发布目标为[后台演示](https://beidaomitu233.github.io/xinghui-admin-vue3/)与[文档中心](https://beidaomitu233.github.io/xinghui-admin-vue3/docs/)。首次发布是否完成，以[公开仓库 Actions](https://github.com/beidaomitu233/xinghui-admin-vue3/actions)和实际访问结果为准，本教程不预先宣称链接已通过 HTTP 验收。
+历史 Pages 入口为[后台静态快照](https://beidaomitu233.github.io/xinghui-admin-vue3/)与[历史文档](https://beidaomitu233.github.io/xinghui-admin-vue3/docs/)，不再自动更新。以下路径和命令仅说明历史静态部署布局；当前入口使用本页顶部的服务器地址，发布记录见[公开仓库 Actions](https://github.com/beidaomitu233/xinghui-admin-vue3/actions)。
 
 Pages 只托管浏览器本地示例界面及静态手册，不运行 JAR、数据库、Redis，也不提供真实 AI、OSS、微信或短信操作。演示数据及模拟结果不能作为后端权限、持久化或供应商成功证据；真实部署继续按本页后续章节执行。
 
@@ -60,7 +60,7 @@ try {
 
 仓库名是 Pages URL 前缀，不再在发布根里套一层 `xinghui-admin-vue3/`。后台演示必须由其显式演示模式构建，不能把普通生产前端接入 `/api` 的产物当作浏览器本地演示。公开目录只放审核过的静态文件、必要归属与部署配置，不复制源码历史、私有配置、源码映射、运行日志或内部交付资料。
 
-公开 Pages 的 PR 只做产物校验，部署由审查后的 main 变更触发；具体工作流和最小权限以公开仓库实际配置为准。应用质量 CI、数据库容器矩阵与独立机器验证按对应应用版本单独记录，Pages 的 Actions 成功不能替代这些验证。
+当前 Pages workflow 只保留产物校验，main 也不再上传或部署 Pages。真实应用的源码 CI、服务器镜像发布与服务器运行验收分别记录；历史静态产物校验继续保留。
 
 ### 发布验收与404
 

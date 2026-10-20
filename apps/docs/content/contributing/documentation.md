@@ -32,7 +32,7 @@ pnpm --filter @xinghui/docs preview
 
 ### 项目 Pages 路径检查
 
-GitHub Pages 文档目标为[项目文档中心](https://beidaomitu233.github.io/xinghui-admin-vue3/docs/)，后台目标为[静态演示](https://beidaomitu233.github.io/xinghui-admin-vue3/)；发布是否完成按公开仓库实际 Actions 和 HTTP 验收确认，不在文案中预写成功。
+当前入口为[文档中心](https://admin.hui7.fun/docs/)与[星辉后台](https://admin.hui7.fun/)，服务器首次验收进行中。GitHub Pages 已停止后续演示发布，旧站保留为历史快照；下述项目子路径检查作为历史布局与路径兼容性参考，当前服务器文档使用 `/docs/`。实际发布结果按 Actions、HTTP 和业务验收记录确认。
 
 项目子路径构建使用 `DOCS_BASE=/xinghui-admin-vue3/docs/`。同一个值贯穿内容检查、test、build、preview；PowerShell/Bash完整步骤见[Pages部署](../operations/deployment.md#github-pages)。不要修改默认 `/docs/` 来服务单次发布，也不要把base设置成域名或缺少docs段的仓库根。
 
