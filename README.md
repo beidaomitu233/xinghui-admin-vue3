@@ -1,12 +1,16 @@
-# 星辉后台 · 前端源码、静态演示与文档
+# 星辉后台 · 前端源码与文档
 
-> **[打开后台演示](https://beidaomitu233.github.io/xinghui-admin-vue3/)** · **[打开完整文档](https://beidaomitu233.github.io/xinghui-admin-vue3/docs/)**
+> **[打开后台](https://admin.hui7.fun/)** · **[打开完整文档](https://admin.hui7.fun/docs/)**
 
-本仓库承载星辉后台的前端源码工作区，以及 GitHub Pages 使用的审核静态产物 `site/`。源码变更不会自动更新公开演示；公开内容以实际部署的静态产物为准。
+服务器入口已确定；发布与运行状态按 Actions、HTTP 和业务验收记录确认。GitHub Pages 已停止后续演示发布，旧站点保留为历史快照。
+
+本仓库承载星辉后台的前端源码与同源文档。`site/` 保留历史审核静态产物，后续真实应用与文档改由服务器流水线发布。
 
 `v1.2.0` 是保留的历史静态快照，当前源码更新未新增版本标签。AI 管理包含完整对话、独立模型中心及提示词工作区：业务模型映射多个供应商渠道，支持多 Key、多模型、目录扫描与持久化、优先级/轮询及预算内故障切换；提示词可通过受限 SQL 助手引用授权数据，使用彩色双语变量。支持 OpenRouter、DeepSeek、OpenAI、SiliconFlow 四家官方地址，任意自定义兼容地址暂不开放。
 
-公开演示使用虚构数据，不运行真实模型。目录扫描与真实生成分别验证；实际测试、外部服务限制及源码配对见[版本组合](apps/docs/content/releases/versions.md)。站点产物来源记录在 `publication.json`，CI 与 Pages 部署状态分别核对。
+历史 Pages 演示使用虚构数据，不运行真实模型。目录扫描与真实生成分别验证；实际测试、外部服务限制及源码配对见[版本组合](apps/docs/content/releases/versions.md)。历史站点产物来源记录在 `publication.json`，源码 CI、镜像发布与服务器验收分别核对。
+
+Pi Agent 服务与 AI 工作台仍为方案及独立交互原型，尚未作为实际接入功能发布。
 
 ## 源码开发
 
@@ -40,6 +44,8 @@ pnpm build:docs
 
 ## 演示范围
 
+以下仅适用于保留的历史 Pages 静态快照。
+
 - 示例数据只在当前浏览器保存，与任何真实用户、业务数据库和生产账号无关。
 - 按页面提供的演示入口浏览系统管理、通用能力、运行维护和 AI 管理四个一级菜单及支持的本地操作；不支持的操作会明确提示，不伪装成真实成功。
 - 不托管后端，不连接真实 API、模型供应商、对象存储、微信或短信；演示登录不是生产认证。
@@ -58,7 +64,8 @@ internal/                   # 构建、类型与规范配置
 site/                       # 审核后的完整静态应用及 docs/，由维护者更新
 scripts/check-site.mjs       # Node.js 原生静态产物门槛，无应用工作区依赖
 scripts/check-site.test.mjs  # 坏产物/不安全引用的受控拒绝测试
-.github/workflows/pages.yml # 校验与 GitHub Pages 部署
+.github/workflows/pages.yml # 仅校验历史静态产物，不再发布 Pages
+.github/workflows/server-deploy.yml # 服务器镜像发布与受控部署
 LICENSE                     # 保留的 Vben MIT 许可
 ATTRIBUTION.md               # 上游与派生归属
 THIRD_PARTY_NOTICES.md        # 静态构建依赖声明及源码许可核查范围
@@ -73,13 +80,13 @@ node scripts/check-site.mjs site
 
 `site/` 必须包含真实应用首页、完整54篇文档、正确项目基路径、静态演示 manifest/适配标记及所引用资源。缺少产物会失败，不生成占位首页或跳过文档检查。源码、历史、服务端配置、日志与内部协作材料不放入此目录。
 
-部署基路径固定为 `/xinghui-admin-vue3/`，文档为 `/xinghui-admin-vue3/docs/`。更新应用和文档后重新运行门槛，记录审核的来源版本与产物摘要；静态扫描不替代浏览器交互和网络验收。
+历史 `site/` 基路径为 `/xinghui-admin-vue3/`，文档为 `/xinghui-admin-vue3/docs/`；当前服务器应用位于 `/`，文档位于 `/docs/`。构建与部署时记录来源版本和产物摘要；静态扫描不替代浏览器交互和网络验收。
 
 ## 发布流程
 
-Pages 工作流对 PR、`develop`、`feature/**`、`release/**` 只进行静态产物校验。只有本仓库 `main` 的 push 且门槛通过，才上传 `site/` 并部署至 `github-pages` 环境；其他分支和 PR 不拥有 Pages/OIDC 写权限。源码 CI 的校验独立执行，通过源码 CI 不代表已部署。
+Pages 工作流对其触发分支和 PR 仅进行静态产物校验，已移除 Pages 上传、部署及对应写权限，不再更新旧站点。
 
-维护者在仓库 Settings → Pages 选择 GitHub Actions，并为 `github-pages` 环境限制部署分支。工作流生成 `.nojekyll`，使用官方 configure/upload/deploy-pages actions，不需要个人访问令牌或后端密钥。必须核对实际 Actions 结果和两处入口的 HTTP/浏览器表现后，才记录一次成功部署。
+真实应用与文档由 `server-deploy.yml` 在精确 `main` 提交的 CI 通过后发布不可变镜像；服务器部署另受显式开关与私有部署配置控制。源码 CI、镜像入库和服务器可用分别验收，以对应发布记录为准。部署方式见[部署教程](apps/docs/content/operations/deployment.md)。
 
 ## 上游归属
 

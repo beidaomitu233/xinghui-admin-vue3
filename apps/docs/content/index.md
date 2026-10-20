@@ -45,7 +45,7 @@ features:
 
 ## 文档与运行状态
 
-本次 Pages 发布目标为[后台静态演示](https://beidaomitu233.github.io/xinghui-admin-vue3/)和[文档中心](https://beidaomitu233.github.io/xinghui-admin-vue3/docs/)，实际部署状态以[公开仓库 Actions](https://github.com/beidaomitu233/xinghui-admin-vue3/actions)及 HTTP 验收为准。静态演示使用浏览器本地示例数据，不连接真实后端或供应商；这次发布不等同后端正式发行或完整应用质量 CI。
+当前服务器入口为[星辉后台](https://admin.hui7.fun/)和[文档中心](https://admin.hui7.fun/docs/)，发布与运行状态按 Actions、HTTP 和业务验收记录确认。GitHub Pages 已停止后续演示发布，旧站点保留为历史快照；发布记录见[公开仓库 Actions](https://github.com/beidaomitu233/xinghui-admin-vue3/actions)。Pi Agent 服务与 AI 工作台仍为方案及独立原型，尚未实际接入。
 
 v1.2.0是已发布静态旧快照；[当前源码组合](releases/versions.md)的一期AI已通过正式CI、MySQL5.7/8.0服务矩阵与真实记录摘要闭环，尚未为该AI源码建立独立发行Tag。源码默认四个一级组为系统管理、通用能力、运行维护、AI管理；实际显示仍按身份授权过滤。页面存在不代表所有供应商已接通，真实微信扫码、短信发送与独立机器验证仍有边界，见[能力清单](overview/capabilities.md)。Agent与插件执行尚未交付。
 
