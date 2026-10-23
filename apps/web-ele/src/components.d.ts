@@ -12,7 +12,6 @@ export {};
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
-    AdminPageHeader: typeof import('./components/admin-page-header.vue')['default']
     ElAlert: typeof import('element-plus/es')['ElAlert']
     ElBadge: typeof import('element-plus/es')['ElBadge']
     ElButton: typeof import('element-plus/es')['ElButton']
@@ -61,7 +60,6 @@ declare module 'vue' {
 
 // For TSX support
 declare global {
-  const AdminPageHeader: (typeof import('./components/admin-page-header.vue'))['default'];
   const ElAlert: (typeof import('element-plus/es'))['ElAlert'];
   const ElBadge: (typeof import('element-plus/es'))['ElBadge'];
   const ElButton: (typeof import('element-plus/es'))['ElButton'];

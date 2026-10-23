@@ -1451,9 +1451,6 @@ h2 {
   max-width: 340px;
 }
 
-.channel-pagination {
-  justify-content: flex-end;
-}
 
 .channel-form {
   display: grid;
