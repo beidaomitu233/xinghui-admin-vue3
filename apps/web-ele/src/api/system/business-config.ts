@@ -1,6 +1,6 @@
 import { requestClient } from '#/api/request';
 
-export type BusinessSection = 'oss' | 'sms' | 'wechat';
+export type BusinessSection = 'mail' | 'oss' | 'sms' | 'wechat' | 'wechatMp';
 export interface BusinessConfig {
   section: BusinessSection;
   enabled: boolean;

@@ -10,14 +10,17 @@ import { useRoute } from 'vue-router';
 import { Page } from '@vben/common-ui';
 import { useAccessStore } from '@vben/stores';
 
+import { useMediaQuery } from '@vueuse/core';
 import { ElMessage } from 'element-plus';
 
 import {
   getBusinessConfig,
   saveBusinessConfig,
 } from '#/api/system/business-config';
+import AdminPageHeader from '#/components/admin-page-header.vue';
 
 const access = useAccessStore();
+const narrow = useMediaQuery('(max-width: 767px)');
 const route = useRoute();
 const canRead = computed(() =>
   access.accessCodes.includes('system:businessConfig:query'),
@@ -48,13 +51,13 @@ type SectionForm = {
 const sections = reactive<SectionForm[]>([
   {
     key: 'wechat',
-    title: '微信网站授权',
+    title: '微信 · 电脑网站登录',
     fields: [
       { key: 'clientId', label: '网站应用 AppID' },
       {
         key: 'callbackUri',
         label: '授权回调',
-        help: '固定网站 HTTPS 地址，以 /auth/wechat/callback 结尾。',
+        help: '填写本站 HTTPS 地址，以 /api/auth/wechat/callback 结尾。旧回调将在读取时规范为此 API 路径。',
       },
       {
         key: 'credentialMode',
@@ -71,6 +74,39 @@ const sections = reactive<SectionForm[]>([
       },
     ],
     secretFields: [{ key: 'appSecret', label: 'AppSecret' }],
+    loading: false,
+    saving: false,
+    failed: false,
+    enabled: false,
+    parameters: {},
+    secrets: {},
+    clear: {},
+  },
+  {
+    key: 'wechatMp',
+    title: '微信 · 微信内 H5 登录',
+    fields: [
+      {
+        key: 'clientId',
+        label: '已认证服务号 AppID',
+        help: '使用具有网页授权权限的服务号，与开放平台网站应用分别配置。',
+      },
+      {
+        key: 'callbackUri',
+        label: 'H5 授权回调',
+        help: '填写本站 HTTPS 地址，以 /api/auth/wechat/mp-callback 结尾；在公众平台配置对应网页授权域名。',
+      },
+      {
+        key: 'scope',
+        label: '授权范围',
+        options: [
+          { label: '基础身份（snsapi_base）', value: 'snsapi_base' },
+          { label: '用户授权（snsapi_userinfo）', value: 'snsapi_userinfo' },
+        ],
+        help: '只用于确认微信身份；不会自动创建产品账号。',
+      },
+    ],
+    secretFields: [{ key: 'appSecret', label: '服务号 AppSecret' }],
     loading: false,
     saving: false,
     failed: false,
@@ -99,6 +135,52 @@ const sections = reactive<SectionForm[]>([
     secretFields: [
       { key: 'accessKeyId', label: 'AccessKey ID' },
       { key: 'accessKeySecret', label: 'AccessKey Secret' },
+    ],
+    loading: false,
+    saving: false,
+    failed: false,
+    enabled: false,
+    parameters: {},
+    secrets: {},
+    clear: {},
+  },
+  {
+    key: 'mail',
+    title: '邮件服务',
+    fields: [
+      {
+        key: 'provider',
+        label: '邮件服务商',
+        options: [
+          { label: 'QQ 邮箱', value: 'qq' },
+          { label: '163 邮箱', value: '163' },
+          { label: '企业邮箱', value: 'enterprise' },
+          { label: '通用 SMTP', value: 'smtp' },
+        ],
+      },
+      {
+        key: 'host',
+        label: 'SMTP 主机',
+        help: 'QQ / 163 使用固定预设；企业邮箱请核对服务商提供的 SMTP 地址。',
+      },
+      { key: 'port', label: 'SMTP 端口' },
+      {
+        key: 'security',
+        label: '连接安全',
+        options: [
+          { label: 'SSL', value: 'SSL' },
+          { label: 'STARTTLS', value: 'STARTTLS' },
+        ],
+      },
+      { key: 'user', label: '完整邮箱账号' },
+      { key: 'from', label: '发件邮箱' },
+    ],
+    secretFields: [
+      {
+        key: 'password',
+        label: '授权码 / SMTP 密码',
+        help: 'QQ、163 通常需要专用授权码，不是网页登录密码。',
+      },
     ],
     loading: false,
     saving: false,
@@ -142,6 +224,74 @@ const sections = reactive<SectionForm[]>([
     clear: {},
   },
 ]);
+function providerChanged(section: SectionForm) {
+  const original = section.value?.parameters;
+  return (
+    original?.provider !== section.parameters.provider ||
+    (section.key === 'mail' &&
+      ['host', 'user'].some(
+        (key) => original?.[key] !== section.parameters[key],
+      )) ||
+    (['wechat', 'wechatMp'].includes(section.key) &&
+      original?.clientId !== section.parameters.clientId) ||
+    (section.key === 'wechat' &&
+      original?.credentialMode !== section.parameters.credentialMode)
+  );
+}
+function fieldVisible(section: SectionForm, field: Field) {
+  if (field.key === 'secretEnvName')
+    return section.parameters.credentialMode === 'ENV';
+  if (section.key !== 'sms') return true;
+  return field.key === 'region'
+    ? section.parameters.provider === 'alibaba'
+    : field.key !== 'sdkAppId' || section.parameters.provider === 'tencent';
+}
+function label(section: SectionForm, field: Field) {
+  if (section.key === 'sms' && section.parameters.provider === 'tencent') {
+    if (field.key === 'accessKeyId') return '腾讯云 SecretId';
+    if (field.key === 'accessKeySecret') return '腾讯云 SecretKey';
+  }
+  return field.label;
+}
+function selectChanged(section: SectionForm, key: string) {
+  if (key === 'credentialMode') {
+    section.secrets = {};
+    section.clear = {};
+    return;
+  }
+  if (key !== 'provider') return;
+  section.secrets = {};
+  section.clear = {};
+  if (section.key === 'mail') {
+    const provider = section.parameters.provider;
+    const hosts: Record<string, string> = {
+      qq: 'smtp.qq.com',
+      '163': 'smtp.163.com',
+      enterprise: 'smtp.exmail.qq.com',
+    };
+    section.parameters.host = hosts[provider ?? ''] ?? '';
+    section.parameters.port = '465';
+    section.parameters.security = 'SSL';
+    section.parameters.user = '';
+    section.parameters.from = '';
+  }
+}
+function presetLocked(section: SectionForm, field: Field) {
+  return (
+    section.key === 'mail' &&
+    ['163', 'qq'].includes(section.parameters.provider ?? '') &&
+    ['host', 'port', 'security'].includes(field.key)
+  );
+}
+function credentialIdentityChanged(section: SectionForm, key: string) {
+  if (
+    (section.key === 'mail' && ['host', 'user'].includes(key)) ||
+    (['wechat', 'wechatMp'].includes(section.key) && key === 'clientId')
+  ) {
+    section.secrets = {};
+    section.clear = {};
+  }
+}
 function apply(section: SectionForm, value: BusinessConfig) {
   section.value = value;
   section.enabled = value.enabled;
@@ -206,10 +356,14 @@ onMounted(async () => {
 });
 </script>
 <template>
-  <Page title="系统业务配置" description="分别保存微信、短信和对象存储设置。">
+  <Page content-class="admin-page">
+    <AdminPageHeader
+      title="系统业务配置"
+      description="分别保存微信、短信、邮件和对象存储设置。"
+    />
     <el-alert
       class="mb-4"
-      title="密钥留空表示保持原值，清除需单独勾选。"
+      title="同一服务商密钥留空保持原值；切换服务商、邮件主机/账号或微信 AppID 需重新填写密钥。清除需单独勾选。"
       type="info"
       show-icon
       closable
@@ -220,7 +374,7 @@ onMounted(async () => {
         v-for="section in sections"
         :id="`business-${section.key}`"
         :key="section.key"
-        class="rounded-lg border p-6"
+        class="scroll-mt-28 rounded-lg border p-6"
       >
         <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
           <h2 class="text-lg font-semibold">{{ section.title }}</h2>
@@ -238,14 +392,26 @@ onMounted(async () => {
         <el-form
           v-loading="section.loading"
           label-width="150px"
+          :label-position="narrow ? 'top' : 'right'"
           :disabled="!canEdit || section.saving || !section.value"
           @submit.prevent="save(section)"
         >
           <el-form-item label="启用">
             <el-switch v-model="section.enabled" />
           </el-form-item>
+          <el-alert
+            v-if="
+              ['sms', 'mail'].includes(section.key) && providerChanged(section)
+            "
+            class="mb-4"
+            title="服务商、邮件主机或账号已变更，不会沿用旧密钥，请填写新凭据后再启用。"
+            type="info"
+            :closable="false"
+          />
           <el-form-item
-            v-for="field in section.fields"
+            v-for="field in section.fields.filter((item) =>
+              fieldVisible(section, item),
+            )"
             :key="field.key"
             :label="field.label"
           >
@@ -254,6 +420,8 @@ onMounted(async () => {
                 v-if="field.options"
                 v-model="section.parameters[field.key]"
                 class="w-full"
+                :disabled="presetLocked(section, field)"
+                @change="selectChanged(section, field.key)"
               >
                 <el-option
                   v-for="option in field.options"
@@ -266,6 +434,8 @@ onMounted(async () => {
                 v-else
                 v-model="section.parameters[field.key]"
                 :maxlength="2048"
+                :disabled="presetLocked(section, field)"
+                @input="credentialIdentityChanged(section, field.key)"
               />
               <p v-if="field.help" class="mt-1 text-xs text-muted-foreground">
                 {{ field.help }}
@@ -281,7 +451,7 @@ onMounted(async () => {
             <el-form-item
               v-for="field in section.secretFields"
               :key="field.key"
-              :label="field.label"
+              :label="label(section, field)"
             >
               <div class="w-full max-w-2xl">
                 <el-input
@@ -289,12 +459,17 @@ onMounted(async () => {
                   type="password"
                   show-password
                   autocomplete="new-password"
-                  placeholder="留空保持原密钥"
+                  :placeholder="
+                    providerChanged(section)
+                      ? '请填写新服务商密钥'
+                      : '留空保持原密钥'
+                  "
                   :maxlength="8192"
                 />
                 <div class="mt-1 flex items-center gap-4">
                   <span class="text-xs text-muted-foreground">
                     {{
+                      !providerChanged(section) &&
                       section.value?.secretsConfigured[field.key]
                         ? '已配置'
                         : '未配置'
@@ -304,6 +479,9 @@ onMounted(async () => {
                     清除此密钥
                   </el-checkbox>
                 </div>
+                <p v-if="field.help" class="mt-1 text-xs text-muted-foreground">
+                  {{ field.help }}
+                </p>
               </div>
             </el-form-item>
           </template>

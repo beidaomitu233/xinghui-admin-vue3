@@ -74,6 +74,15 @@ function config(section: BusinessSection): BusinessConfig {
       callbackUri: '',
       secretEnvName: '',
     },
+    wechatMp: { clientId: '', callbackUri: '', scope: 'snsapi_base' },
+    mail: {
+      provider: 'qq',
+      host: 'smtp.qq.com',
+      port: '465',
+      security: 'SSL',
+      user: '',
+      from: '',
+    },
     oss: {
       provider: 'minio',
       endpoint: 'http://localhost:19000',
@@ -138,7 +147,7 @@ describe('business configuration sections', () => {
     access.codes = ['system:businessConfig:query'];
     const wrapper = page();
     await flushPromises();
-    expect(wrapper.findAll('section')).toHaveLength(3);
+    expect(wrapper.findAll('section')).toHaveLength(5);
     expect(
       wrapper
         .findAll('fieldset')
@@ -151,7 +160,7 @@ describe('business configuration sections', () => {
     expect(reload.element.closest('fieldset')).toBeNull();
     await reload.trigger('click');
     await flushPromises();
-    expect(getBusinessConfig).toHaveBeenCalledTimes(4);
+    expect(getBusinessConfig).toHaveBeenCalledTimes(6);
   });
   it('saves only OSS and preserves secret input when its save fails', async () => {
     vi.mocked(saveBusinessConfig).mockRejectedValueOnce(
@@ -175,6 +184,6 @@ describe('business configuration sections', () => {
       }),
     );
     expect((secret.element as HTMLInputElement).value).toBe('unit-edit-only');
-    expect(getBusinessConfig).toHaveBeenCalledTimes(3);
+    expect(getBusinessConfig).toHaveBeenCalledTimes(5);
   });
 });
