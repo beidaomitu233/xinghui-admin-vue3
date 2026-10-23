@@ -1,8 +1,11 @@
 <script lang="ts" setup>
-import type { PersonalNotification } from '#/api/system/personal-notification';
+import type {
+  NotificationId,
+  PersonalNotification,
+} from '#/api/system/personal-notification';
 
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
+import { useRoute } from 'vue-router';
 
 import { Bell } from '@vben/icons';
 import { useAccessStore } from '@vben/stores';
@@ -13,6 +16,7 @@ import {
   listMyNotifications,
   markMyNotificationsRead,
 } from '#/api/system/personal-notification';
+import NotificationCenter from '#/layouts/notification-center.vue';
 import { usePersonalNotificationStore } from '#/store/personal-notification';
 
 const previewSize = 5;
@@ -21,7 +25,8 @@ const refreshIntervalMs = 60_000;
 const accessStore = useAccessStore();
 const notificationStore = usePersonalNotificationStore();
 const route = useRoute();
-const router = useRouter();
+const centerVisible = ref(false);
+const centerNotificationId = ref<number | string>();
 
 const open = ref(false);
 const previewItems = ref<PersonalNotification[]>([]);
@@ -70,6 +75,7 @@ async function loadPreview() {
     return;
   }
 
+  const token = accessStore.accessToken;
   previewLoading.value = true;
   previewFailed.value = false;
   try {
@@ -77,21 +83,21 @@ async function loadPreview() {
       pageNum: 1,
       pageSize: previewSize,
     });
+    if (token !== accessStore.accessToken) return;
     previewItems.value = result.items;
   } catch {
+    if (token !== accessStore.accessToken) return;
     previewItems.value = [];
     previewFailed.value = true;
   } finally {
-    previewLoading.value = false;
+    if (token === accessStore.accessToken) previewLoading.value = false;
   }
 }
 
-async function openInbox(notificationId?: number) {
+async function openInbox(notificationId?: NotificationId) {
   open.value = false;
-  await router.push({
-    name: 'PersonalNotificationInbox',
-    query: notificationId ? { notificationId: String(notificationId) } : {},
-  });
+  centerNotificationId.value = notificationId;
+  centerVisible.value = true;
 }
 
 async function markPreviewRead() {
@@ -116,6 +122,7 @@ watch(
   (token) => {
     stopPolling();
     open.value = false;
+    centerVisible.value = false;
     previewItems.value = [];
     previewFailed.value = false;
     notificationStore.clearUnreadCount();
@@ -128,9 +135,16 @@ watch(
 );
 
 watch(
-  () => route.name,
-  (name) => {
-    if (name === 'PersonalNotificationInbox') void refreshCount();
+  () => [route.name, route.query.notificationId, route.query.open],
+  () => {
+    if (route.name === 'PersonalNotificationInbox') {
+      centerNotificationId.value =
+        typeof route.query.notificationId === 'string'
+          ? route.query.notificationId
+          : undefined;
+      centerVisible.value = true;
+      void refreshCount();
+    }
   },
   { immediate: true },
 );
@@ -172,14 +186,14 @@ onBeforeUnmount(() => {
     <div class="space-y-3">
       <div class="flex items-center justify-between">
         <strong>个人通知</strong>
-        <span class="text-xs text-gray-500">
+        <span class="text-xs text-muted-foreground">
           {{
             unreadCount === null ? '未读数暂不可用' : `未读 ${unreadCount} 条`
           }}
         </span>
       </div>
 
-      <div v-if="previewLoading" class="py-8 text-center text-gray-500">
+      <div v-if="previewLoading" class="py-8 text-center text-muted-foreground">
         正在加载通知…
       </div>
       <el-alert
@@ -194,7 +208,7 @@ onBeforeUnmount(() => {
       </el-alert>
       <div
         v-else-if="previewItems.length === 0"
-        class="py-8 text-center text-gray-500"
+        class="py-8 text-center text-muted-foreground"
       >
         暂无通知
       </div>
@@ -202,7 +216,7 @@ onBeforeUnmount(() => {
         <button
           v-for="item in previewItems"
           :key="item.id"
-          class="w-full rounded px-3 py-2 text-left hover:bg-gray-100"
+          class="w-full rounded px-3 py-2 text-left hover:bg-muted"
           type="button"
           @click="openInbox(item.id)"
         >
@@ -212,10 +226,10 @@ onBeforeUnmount(() => {
               未读
             </el-tag>
           </span>
-          <span class="mt-1 block truncate text-xs text-gray-500">
+          <span class="mt-1 block truncate text-xs text-muted-foreground">
             {{ item.body }}
           </span>
-          <span class="mt-1 block text-xs text-gray-400">{{
+          <span class="mt-1 block text-xs text-muted-foreground">{{
             item.createTime
           }}</span>
         </button>
@@ -239,6 +253,19 @@ onBeforeUnmount(() => {
       </div>
     </div>
   </el-popover>
+  <el-drawer
+    v-model="centerVisible"
+    title="通知中心"
+    size="min(960px, 100vw)"
+    destroy-on-close
+    @closed="refreshCount"
+  >
+    <NotificationCenter
+      v-if="centerVisible"
+      :notification-id="centerNotificationId"
+      @navigate="centerVisible = false"
+    />
+  </el-drawer>
 </template>
 
 <style scoped>

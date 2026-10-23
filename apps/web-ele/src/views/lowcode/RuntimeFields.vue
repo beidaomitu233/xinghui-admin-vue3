@@ -7,6 +7,7 @@ const props = defineProps<{
   schema: FormSchema;
 }>();
 const emit = defineEmits<{
+  submit: [];
   'update:modelValue': [value: Record<string, FieldValue>];
 }>();
 function setValue(field: FormField, value: FieldValue | undefined) {
@@ -35,7 +36,11 @@ function choiceValue(field: FormField): string | string[] {
 <template>
   <!-- Prettier formats adjacent inline controls; avoid conflicting whitespace rules. -->
   <!-- eslint-disable vue/multiline-html-element-content-newline, vue/html-closing-bracket-newline -->
-  <el-form label-position="top" :disabled="disabled">
+  <el-form
+    label-position="top"
+    :disabled="disabled"
+    @submit.prevent="emit('submit')"
+  >
     <el-form-item
       v-for="field in schema.fields"
       :key="field.fieldKey"
@@ -90,5 +95,6 @@ function choiceValue(field: FormField): string | string[] {
         {{ field.help }}
       </p>
     </el-form-item>
+    <slot name="actions"></slot>
   </el-form>
 </template>

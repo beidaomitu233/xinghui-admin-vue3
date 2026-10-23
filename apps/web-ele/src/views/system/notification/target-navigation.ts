@@ -41,7 +41,6 @@ const LIST_TARGET_PATHS = new Set([
   '/monitor/jobLog',
   '/notifications',
   '/system/dict',
-  '/system/notification-template',
   '/system/user',
 ]);
 

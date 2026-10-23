@@ -8,9 +8,9 @@ import { createMemoryHistory, createRouter as makeRouter } from 'vue-router';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import NotificationInboxPage from '#/layouts/notification-center.vue';
 import { requireTestFixture } from '#/test-utils/required-fixture';
 
-import NotificationInboxPage from './index.vue';
 import { registerNotificationRecordTargetValidator } from './target-navigation';
 
 const mocks = vi.hoisted(() => ({
@@ -216,9 +216,9 @@ function createTestRouter() {
   });
 }
 
-async function createWrapper(query = '') {
+async function createWrapper(query = '', path = '/notifications') {
   const router = createTestRouter();
-  await router.push(`/notifications${query}`);
+  await router.push(`${path}${query}`);
   await router.isReady();
   const wrapper = mount(NotificationInboxPage, {
     global: {
@@ -244,7 +244,21 @@ async function createWrapper(query = '') {
   return { router, wrapper };
 }
 
-describe('personal notification inbox page', () => {
+function deferred<T>() {
+  let resolve: (value: T) => void = () => {
+    throw new Error('not initialized');
+  };
+  let reject: (reason: Error) => void = () => {
+    throw new Error('not initialized');
+  };
+  const promise = new Promise<T>((done, fail) => {
+    resolve = done;
+    reject = fail;
+  });
+  return { promise, resolve, reject };
+}
+
+describe('header notification center', () => {
   let unregisterTargetCheckers: Array<() => void> = [];
 
   beforeEach(() => {
@@ -264,6 +278,106 @@ describe('personal notification inbox page', () => {
   afterEach(() => {
     unregisterTargetCheckers.forEach((unregister) => unregister());
     unregisterTargetCheckers = [];
+  });
+
+  it('keeps the last page when an older page response arrives later', async () => {
+    mocks.listMyNotifications.mockResolvedValue({
+      items: [unread],
+      total: 31,
+      pageNum: 1,
+      pageSize: 10,
+    });
+    const { wrapper } = await createWrapper();
+    await flushPromises();
+    const old = deferred<{
+      items: PersonalNotification[];
+      pageNum: number;
+      pageSize: number;
+      total: number;
+    }>();
+    mocks.listMyNotifications
+      .mockReturnValueOnce(old.promise)
+      .mockResolvedValueOnce({
+        items: [{ ...unread, title: 'Latest page' }],
+        total: 31,
+        pageNum: 3,
+        pageSize: 10,
+      });
+    const pagination = wrapper.findComponent({ name: 'el-pagination' });
+    pagination.vm.$emit('current-change', 2);
+    await flushPromises();
+    pagination.vm.$emit('current-change', 3);
+    await flushPromises();
+    old.resolve({
+      items: [{ ...unread, title: 'Stale page' }],
+      total: 31,
+      pageNum: 2,
+      pageSize: 10,
+    });
+    await flushPromises();
+    expect(wrapper.text()).toContain('Latest page');
+    expect(wrapper.text()).not.toContain('Stale page');
+    expect(wrapper.text()).not.toContain('通知加载失败');
+    wrapper.unmount();
+  });
+
+  it('keeps the last detail and ignores a late previous error', async () => {
+    const { wrapper } = await createWrapper();
+    await flushPromises();
+    const old = deferred<PersonalNotification>();
+    mocks.getMyNotification
+      .mockReturnValueOnce(old.promise)
+      .mockResolvedValueOnce({ ...unread, id: 42, body: 'Latest detail' });
+    await wrapper.setProps({ notificationId: 41 });
+    await flushPromises();
+    await wrapper.setProps({ notificationId: 42 });
+    await flushPromises();
+    old.reject(new Error('slow failure'));
+    await flushPromises();
+    expect(wrapper.text()).toContain('Latest detail');
+    expect(wrapper.text()).not.toContain('通知已失效或无访问权限');
+    wrapper.unmount();
+  });
+
+  it('closes a header detail on a business page without changing its query', async () => {
+    const { wrapper, router } = await createWrapper(
+      '?notificationId=777&filter=open',
+      '/infra/notice',
+    );
+    await flushPromises();
+    expect(mocks.getMyNotification).not.toHaveBeenCalled();
+    await wrapper.setProps({ notificationId: 41 });
+    await flushPromises();
+    const button = wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'close-dialog');
+    await requireTestFixture(button).trigger('click');
+    await flushPromises();
+    expect(router.currentRoute.value.fullPath).toBe(
+      '/infra/notice?notificationId=777&filter=open',
+    );
+    wrapper.unmount();
+  });
+
+  it('paginates the full center and filters unread messages without changing owners', async () => {
+    mocks.listMyNotifications.mockResolvedValue({
+      items: [unread],
+      total: 21,
+      pageNum: 1,
+      pageSize: 10,
+    });
+    const { wrapper } = await createWrapper();
+    await flushPromises();
+    wrapper
+      .findComponent({ name: 'el-pagination' })
+      .vm.$emit('current-change', 2);
+    await flushPromises();
+    expect(mocks.listMyNotifications).toHaveBeenLastCalledWith({
+      pageNum: 2,
+      pageSize: 10,
+      unreadOnly: undefined,
+    });
+    wrapper.unmount();
   });
 
   it('loads a page, opens the owner detail, marks it read, and refreshes count/list', async () => {

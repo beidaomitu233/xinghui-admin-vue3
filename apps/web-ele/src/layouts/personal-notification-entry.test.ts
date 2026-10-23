@@ -50,6 +50,11 @@ function createTestRouter() {
     history: createMemoryHistory(),
     routes: [
       {
+        path: '/workspace',
+        name: 'Workspace',
+        component: { render: () => h('div') },
+      },
+      {
         path: '/notifications',
         name: 'PersonalNotificationInbox',
         component: { render: () => h('div') },
@@ -75,11 +80,20 @@ describe('personal notification header entry', () => {
 
   it('shows the live unread count, loads a personal preview, and opens the inbox', async () => {
     const router = createTestRouter();
-    await router.push('/notifications');
+    await router.push('/workspace');
     const wrapper = mount(PersonalNotificationEntry, {
       global: {
         plugins: [router],
         stubs: {
+          NotificationCenter: {
+            template:
+              '<div class="notification-center-content">完整通知中心</div>',
+          },
+          'el-drawer': {
+            props: ['modelValue'],
+            template:
+              '<div v-if="modelValue" class="center-drawer"><slot /></div>',
+          },
           'el-badge': {
             props: ['value'],
             template: '<span class="badge-value">{{ value }}<slot /></span>',
@@ -109,11 +123,17 @@ describe('personal notification header entry', () => {
         .find((button) => button.text().includes('查看全部')),
     ).trigger('click');
     await flushPromises();
-    expect(router.currentRoute.value.name).toBe('PersonalNotificationInbox');
+    expect(router.currentRoute.value.name).toBe('Workspace');
+    expect(wrapper.find('.center-drawer').exists()).toBe(true);
+    expect(wrapper.find('.notification-center-content').exists()).toBe(true);
+    await router.push('/notifications?notificationId=41');
+    await flushPromises();
+    expect(wrapper.find('.center-drawer').exists()).toBe(true);
 
     useAccessStore().setAccessToken(null);
     await flushPromises();
     expect(wrapper.find('.badge-value').text()).not.toContain('7');
+    expect(wrapper.find('.center-drawer').exists()).toBe(false);
     wrapper.unmount();
   });
 });
