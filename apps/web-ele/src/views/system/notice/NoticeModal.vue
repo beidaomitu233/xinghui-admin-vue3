@@ -136,6 +136,11 @@ const [Modal, modalApi] = useVbenModal({
       const value =
         data.id === undefined ? undefined : await getNotice(data.id);
       if (run !== generation) return;
+      if (
+        data.id !== undefined &&
+        (!value || String(value.noticeId) !== String(data.id))
+      )
+        throw new Error('公告不存在或响应不匹配');
       record.value = value;
       const currentType = String(
         value?.noticeType ?? dictionary.options.value[0]?.value ?? '',
@@ -239,7 +244,11 @@ function decodeContent(value: unknown): string {
   <Modal>
     <el-alert
       v-if="failed"
-      title="操作未完成，已保留当前输入，请重试"
+      :title="
+        loaded
+          ? '保存未完成，已保留当前输入，请重试'
+          : '公告读取失败，请关闭后重新打开'
+      "
       type="error"
       closable
       class="mb-3"
