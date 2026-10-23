@@ -360,6 +360,7 @@ async function reload() {
     v-model="opened"
     :title="readOnly ? '表单详情' : '表单设计'"
     width="min(1480px,96vw)"
+    top="2vh"
     :close-on-click-modal="false"
     :show-close="!busy"
     :close-on-press-escape="!busy"

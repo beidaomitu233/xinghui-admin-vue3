@@ -66,7 +66,7 @@ const minimumAssertions = new Map([
   ['/src/router/menu-cleanup.test.ts', 4],
   ['/src/router/routes/lowcode-fill.test.ts', 2],
   ['/src/styles/workspace-theme.test.ts', 5],
-  ['/src/views/lowcode/fill/index.test.ts', 4],
+  ['/src/views/lowcode/fill/index.test.ts', 5],
   ['/src/views/lowcode/forms/FormDesigner.test.ts', 3],
   ['/src/views/lowcode/forms/FormSharing.test.ts', 2],
   ['/src/views/system/ai-config/ModelHubWorkspace.test.ts', 16],

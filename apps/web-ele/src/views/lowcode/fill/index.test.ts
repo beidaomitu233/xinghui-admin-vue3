@@ -1,7 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { reactive } from 'vue';
 
-import ElementPlus from 'element-plus';
+import ElementPlus, { ElMessageBox } from 'element-plus';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import FillPage from './index.vue';
@@ -74,6 +74,7 @@ beforeEach(() => {
 afterEach(() => {
   wrappers.splice(0).forEach((wrapper) => wrapper.unmount());
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 describe('standalone shared filling', () => {
   it('validates, sends only filling fields, saves once and shows no management/answer links', async () => {
@@ -164,6 +165,42 @@ describe('standalone shared filling', () => {
     await flushPromises();
     expect(JSON.parse(fetcher.mock.calls[1]?.[1].body)).toEqual(
       JSON.parse(fetcher.mock.calls[2]?.[1].body),
+    );
+    expect(wrapper.text()).toContain('提交成功');
+  });
+  it('starts a fresh request only after explicitly confirming replacement of a conflicting submission', async () => {
+    vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue(
+      Object.assign('confirm' as const, {
+        action: 'confirm' as const,
+        value: '',
+      }),
+    );
+    fetcher
+      .mockResolvedValueOnce(response(definition))
+      .mockResolvedValueOnce(
+        response(null, 409, '此提交已完成，请勿重复更改提交内容'),
+      )
+      .mockResolvedValueOnce(response(definition))
+      .mockResolvedValueOnce(
+        response({ submitted: true, receipt: 'fresh-receipt' }),
+      );
+    const wrapper = await render();
+    await wrapper.get('input').setValue('修改后的填写');
+    await wrapper.get('form').trigger('submit');
+    await flushPromises();
+    const originalKey = JSON.parse(fetcher.mock.calls[1]?.[1].body).requestKey;
+    const reloadButton = wrapper
+      .findAll('button')
+      .find((entry) => entry.text() === '重新读取表单');
+    if (!reloadButton) throw new Error('Missing reload action');
+    await reloadButton.trigger('click');
+    await flushPromises();
+    expect(ElMessageBox.confirm).toHaveBeenCalledTimes(1);
+    await wrapper.get('input').setValue('新的填写');
+    await wrapper.get('form').trigger('submit');
+    await flushPromises();
+    expect(JSON.parse(fetcher.mock.calls[3]?.[1].body).requestKey).not.toBe(
+      originalKey,
     );
     expect(wrapper.text()).toContain('提交成功');
   });

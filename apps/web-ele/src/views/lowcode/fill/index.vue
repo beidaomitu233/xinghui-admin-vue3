@@ -48,7 +48,7 @@ function submissionKey(reset = false) {
     return crypto.randomUUID();
   }
 }
-async function load() {
+async function load(newSubmission = false) {
   const run = ++serial;
   saving.value = false;
   data.value = {};
@@ -62,7 +62,7 @@ async function load() {
     if (run !== serial) return;
     definition.value = result;
     data.value = initialData(schema.value);
-    requestKey.value = submissionKey();
+    requestKey.value = submissionKey(newSubmission);
   } catch (error_) {
     if (run === serial) showError(error_);
   } finally {
@@ -83,7 +83,7 @@ async function reload() {
   } catch {
     return;
   }
-  await load();
+  await load(true);
 }
 async function submit() {
   if (
@@ -183,7 +183,7 @@ watch(token, () => void load(), { immediate: true });
         >
           {{ errorStatus === 403 ? '切换账号' : '登录后填写' }}
         </el-button>
-        <el-button @click="load">重新读取</el-button>
+        <el-button @click="load()">重新读取</el-button>
       </div>
     </section>
   </main>
