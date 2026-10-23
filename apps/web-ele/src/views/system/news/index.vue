@@ -15,6 +15,7 @@ import {
   removeNews,
   updateNews,
 } from '#/api/system/news';
+import AdminPageHeader from '#/components/admin-page-header.vue';
 
 import { safeContentUrl } from '../content-validation';
 
@@ -185,17 +186,19 @@ onMounted(load);
 </script>
 
 <template>
-  <Page title="资讯管理" description="维护资讯正文、分类和发布状态">
+  <Page content-class="admin-page">
+    <AdminPageHeader
+      title="资讯管理"
+      description="维护资讯正文、分类和发布状态"
+    >
+      <template #actions>
+        <el-button v-if="can('add')" type="primary" @click="openCreate">
+          新增
+        </el-button>
+      </template>
+    </AdminPageHeader>
     <div class="space-y-4 p-4">
       <el-card>
-        <template #header>
-          <div class="flex items-center justify-between">
-            <span>资讯管理列表</span>
-            <el-button v-if="can('add')" type="primary" @click="openCreate">
-              新增
-            </el-button>
-          </div>
-        </template>
         <el-form inline @submit.prevent="search">
           <el-form-item label="标题">
             <el-input

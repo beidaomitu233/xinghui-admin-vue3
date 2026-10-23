@@ -15,7 +15,6 @@ import type {
 
 import { computed, onMounted, ref, shallowReactive, shallowRef } from 'vue';
 
-import { Page } from '@vben/common-ui';
 import { useAccessStore } from '@vben/stores';
 
 import { ElMessage, ElMessageBox } from 'element-plus';
@@ -475,7 +474,7 @@ onMounted(load);
 </script>
 
 <template>
-  <Page title="提示词模板" description="管理独立模板版本与受控业务数据引用">
+  <section class="min-w-0">
     <el-tabs v-model="kind" @tab-change="switchTab">
       <el-tab-pane
         v-if="access.accessCodes.includes('ai:template:list')"
@@ -1000,5 +999,5 @@ onMounted(load);
         </el-collapse-item>
       </el-collapse>
     </el-dialog>
-  </Page>
+  </section>
 </template>

@@ -6,6 +6,8 @@ import { Page } from '@vben/common-ui';
 
 import { ElButton } from 'element-plus';
 
+import AdminPageHeader from '#/components/admin-page-header.vue';
+
 import ModelHubWorkspace from './ModelHubWorkspace.vue';
 import SceneRoutingWorkspace from './SceneRoutingWorkspace.vue';
 
@@ -23,9 +25,13 @@ watch(sceneKey, (value) => {
 });
 </script>
 <template>
-  <Page auto-content-height>
+  <Page content-class="admin-page">
     <div v-if="routing" class="hub-routing-workspace">
-      <ElButton @click="returnToModels">← 返回模型设置</ElButton>
+      <AdminPageHeader title="AI 配置" description="维护业务模型与场景调用顺序">
+        <template #actions>
+          <ElButton @click="returnToModels">返回模型设置</ElButton>
+        </template>
+      </AdminPageHeader>
       <SceneRoutingWorkspace
         ref="routingWorkspace"
         :initial-scene-key="sceneKey"
@@ -39,7 +45,6 @@ watch(sceneKey, (value) => {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  padding: 16px;
 }
 
 .hub-routing-workspace > :deep(.el-button) {

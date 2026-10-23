@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ElButton, ElInput } from 'element-plus';
 
+import AdminPageHeader from '#/components/admin-page-header.vue';
+
 defineProps<{
   busy?: boolean;
   canAddChannel: boolean;
@@ -23,16 +25,11 @@ const panes = [
 
 <template>
   <section class="model-hub" aria-label="AI 配置工作区">
-    <header class="hub-header">
-      <div class="hub-title">
-        <span class="hub-symbol" aria-hidden="true">◇</span>
-        <h1>AI 配置</h1>
-        <span class="hub-title-divider" aria-hidden="true"></span>
-        <span class="hub-view-title">
-          {{ view === 'models' ? '模型设置' : '供应商管理' }}
-        </span>
-      </div>
-      <div class="hub-header-actions">
+    <AdminPageHeader
+      title="AI 配置"
+      description="管理业务模型、供应商与接入渠道"
+    >
+      <template #actions>
         <slot name="header-actions"></slot>
         <ElButton
           v-if="canAddChannel"
@@ -49,8 +46,8 @@ const panes = [
         >
           添加模型
         </ElButton>
-      </div>
-    </header>
+      </template>
+    </AdminPageHeader>
     <div class="hub-workspace">
       <aside class="hub-sidebar">
         <div class="hub-sidebar-heading">
@@ -105,11 +102,10 @@ const panes = [
 
   display: flex;
   flex-direction: column;
-  gap: 22px;
+  gap: 16px;
   min-width: 0;
-  height: calc(var(--vben-content-height, calc(100dvh - 112px)) - 32px);
-  min-height: 0;
-  margin: 16px;
+  height: calc(var(--vben-content-height, calc(100dvh - 112px)) - 48px);
+  min-height: 560px;
   color: hsl(var(--foreground));
 }
 
@@ -121,64 +117,17 @@ const panes = [
   color: var(--hub-accent);
 }
 
-.hub-header,
-.hub-title,
-.hub-header-actions,
 .hub-sidebar-heading {
   display: flex;
   gap: 12px;
   align-items: center;
-}
-
-.hub-header,
-.hub-sidebar-heading {
   justify-content: space-between;
 }
 
-.hub-header {
-  flex-shrink: 0;
-  flex-wrap: wrap;
-}
-
-.hub-title {
-  min-width: 0;
-}
-
-.hub-title h1 {
-  font-size: 23px;
-  font-weight: 600;
-}
-
-.hub-symbol {
-  display: grid;
-  place-items: center;
-  width: 34px;
-  height: 34px;
-  font-size: 23px;
-  color: var(--hub-accent);
-  background: hsl(var(--primary) / 8%);
-  border: 1px solid hsl(var(--primary) / 20%);
-  border-radius: 9px;
-}
-
-.hub-title-divider {
-  width: 1px;
-  height: 18px;
-  background: hsl(var(--border));
-}
-
-.hub-view-title,
 .hub-count,
 .hub-sidebar-footer {
+  font-size: 11px;
   color: hsl(var(--muted-foreground));
-}
-
-.hub-header-actions {
-  flex-wrap: wrap;
-}
-
-.hub-header-actions :deep(.el-button + .el-button) {
-  margin-left: 0;
 }
 
 .hub-workspace {
@@ -186,7 +135,7 @@ const panes = [
   flex: 1;
   min-width: 0;
   min-height: 0;
-  overflow: hidden;
+  overflow: auto;
   background: hsl(var(--background));
   border: 1px solid hsl(var(--border));
   border-radius: 10px;
@@ -230,11 +179,6 @@ const panes = [
   cursor: wait;
 }
 
-.hub-count,
-.hub-sidebar-footer {
-  font-size: 11px;
-}
-
 .hub-list {
   flex: 1;
   min-height: 0;
@@ -267,7 +211,7 @@ const panes = [
 @media (max-width: 700px) {
   .model-hub {
     height: auto;
-    margin: 8px;
+    min-height: 0;
   }
 
   .hub-workspace {
@@ -282,7 +226,7 @@ const panes = [
   }
 
   .hub-sidebar-footer {
-    display: none;
+    padding: 12px 0;
   }
 }
 </style>

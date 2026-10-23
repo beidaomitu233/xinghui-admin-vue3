@@ -14,6 +14,7 @@ import {
   getJobLogList,
   removeJobLog,
 } from '#/api/monitor/jobLog';
+import AdminPageHeader from '#/components/admin-page-header.vue';
 
 const accessStore = useAccessStore();
 const can = (code: string) => accessStore.accessCodes.includes(code);
@@ -135,10 +136,29 @@ onMounted(() => {
 </script>
 
 <template>
-  <Page
-    title="调度执行记录"
-    description="仅展示新调度的执行记录；历史记录请单独核查"
-  >
+  <Page content-class="admin-page">
+    <AdminPageHeader
+      title="调度执行记录"
+      description="仅展示新调度的执行记录；历史记录请单独核查"
+    >
+      <template #actions>
+        <el-button
+          v-if="can('monitor:jobLog:remove')"
+          type="danger"
+          :disabled="selectedIds.length === 0"
+          @click="removeSelected"
+        >
+          删除选中
+        </el-button>
+        <el-button
+          v-if="can('monitor:jobLog:clean')"
+          type="warning"
+          @click="cleanExpired"
+        >
+          清理到期记录
+        </el-button>
+      </template>
+    </AdminPageHeader>
     <el-alert
       v-if="loadError"
       class="mb-4"
@@ -151,7 +171,7 @@ onMounted(() => {
         <el-button link type="primary" @click="load">重试</el-button>
       </template>
     </el-alert>
-    <el-card class="mb-4" shadow="never">
+    <el-card shadow="never">
       <el-form :inline="true" :model="filters">
         <el-form-item label="任务 ID">
           <el-input
@@ -197,28 +217,6 @@ onMounted(() => {
     </el-card>
 
     <el-card shadow="never">
-      <template #header>
-        <div class="flex items-center justify-between">
-          <span>执行记录</span>
-          <div>
-            <el-button
-              v-if="can('monitor:jobLog:remove')"
-              type="danger"
-              :disabled="selectedIds.length === 0"
-              @click="removeSelected"
-            >
-              删除选中
-            </el-button>
-            <el-button
-              v-if="can('monitor:jobLog:clean')"
-              type="warning"
-              @click="cleanExpired"
-            >
-              清理到期记录
-            </el-button>
-          </div>
-        </div>
-      </template>
       <el-table
         v-loading="loading"
         :data="rows"

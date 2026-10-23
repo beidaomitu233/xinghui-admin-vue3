@@ -5,7 +5,6 @@ import { ElButton, ElEmpty, ElInput, ElSkeleton } from 'element-plus';
 
 defineProps<{
   activeKey: null | string;
-  canCreate: boolean;
   loading: boolean;
   page: number;
   scenes: SceneSummary[];
@@ -13,7 +12,6 @@ defineProps<{
   total: string;
 }>();
 defineEmits<{
-  create: [];
   page: [value: number];
   select: [key: string];
   'update:search': [value: string];
@@ -23,14 +21,6 @@ defineEmits<{
   <aside class="scene-sidebar">
     <div class="sidebar-heading">
       <h2>提示词场景</h2>
-      <ElButton
-        v-if="canCreate"
-        type="primary"
-        size="small"
-        @click="$emit('create')"
-      >
-        新建场景
-      </ElButton>
     </div>
     <ElInput
       aria-label="搜索场景"
