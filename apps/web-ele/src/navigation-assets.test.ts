@@ -9,6 +9,11 @@ import { navigationIcon, navigationIcons } from './navigation-icons';
 collections.forEach((collection) => addCollection(collection));
 describe('local navigation assets', () => {
   it('bundles every server menu icon and supplies local unknown/image fallbacks', () => {
+    expect(collections.length).toBeGreaterThan(0);
+    expect(
+      collections.find((collection) => collection.prefix === 'carbon')?.icons
+        .home?.body,
+    ).toMatch(/<path\b/);
     expect(navigationIcons.filter((icon) => !iconLoaded(icon))).toEqual([]);
     expect(navigationIcon('carbon:home')).toBe('carbon:home');
     for (const icon of [
