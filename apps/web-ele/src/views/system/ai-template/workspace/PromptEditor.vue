@@ -9,16 +9,11 @@ import type {
   SceneModelPolicy,
 } from '#/api/system/ai-scene';
 
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 
-import {
-  ElButton,
-  ElForm,
-  ElFormItem,
-  ElInput,
-  ElOption,
-  ElSelect,
-} from 'element-plus';
+import { ElAlert, ElButton, ElOption, ElSelect } from 'element-plus';
+
+import { useVbenForm, z } from '#/adapter/form';
 
 import { promptDocument, singlePromptDocument } from './prompt-document';
 import PromptTextEditor from './PromptTextEditor.vue';
@@ -74,10 +69,6 @@ const choices = computed(() => {
     });
   return options;
 });
-function update(field: 'name' | 'purpose', value: string) {
-  if (!props.readonly)
-    emit('change', singlePromptDocument({ ...props.value, [field]: value }));
-}
 function updatePrompt(value: string) {
   if (!props.readonly)
     emit('change', {
@@ -120,34 +111,61 @@ async function insertVariable(name: string) {
   await editor.value?.insertVariable(name);
 }
 defineExpose({ insertVariable });
+const metadata = () => ({
+  name: props.value.name,
+  purpose: props.value.purpose,
+});
+const [Form, formApi] = useVbenForm({
+  showDefaultActions: false,
+  layout: 'vertical',
+  wrapperClass: 'grid-cols-1 md:grid-cols-2',
+  commonConfig: {
+    componentProps: () => ({ class: 'w-full', readonly: props.readonly }),
+  },
+  handleValuesChange: (values) => {
+    if (props.readonly) return;
+    const name = values.name ?? props.value.name;
+    const purpose = values.purpose ?? props.value.purpose;
+    if (name !== props.value.name || purpose !== props.value.purpose)
+      emit('change', singlePromptDocument({ ...props.value, name, purpose }));
+  },
+  schema: [
+    {
+      component: 'Input',
+      fieldName: 'name',
+      label: '场景名称',
+      rules: z.string().trim().min(1).max(120),
+      componentProps: { maxlength: 120, 'aria-label': '场景名称' },
+    },
+    {
+      component: 'Input',
+      fieldName: 'purpose',
+      label: '用途',
+      componentProps: {
+        placeholder: '可选，简述使用场景',
+        'aria-label': '场景用途',
+      },
+    },
+    {
+      component: 'Input',
+      fieldName: 'model',
+      label: '使用模型',
+      formItemClass: 'col-span-full',
+    },
+  ],
+});
+watch(
+  () => JSON.stringify(metadata()),
+  () => {
+    void formApi.setValues(metadata());
+  },
+  { immediate: true },
+);
 </script>
 <template>
   <div class="prompt-editor">
-    <ElForm label-position="top" class="prompt-metadata">
-      <ElFormItem label="场景名称" :error="fields.name" required>
-        <ElInput
-          :model-value="value.name"
-          :readonly="readonly"
-          aria-label="场景名称"
-          maxlength="120"
-          @update:model-value="update('name', $event)"
-        />
-      </ElFormItem>
-      <ElFormItem label="用途" :error="fields.purpose">
-        <ElInput
-          :model-value="value.purpose"
-          :readonly="readonly"
-          aria-label="场景用途"
-          placeholder="可选，简述使用场景"
-          @update:model-value="update('purpose', $event)"
-        />
-      </ElFormItem>
-      <ElFormItem
-        label="使用模型"
-        :error="
-          fields.businessModel || fields.initialModel || fields.modelPolicy
-        "
-      >
+    <Form class="prompt-metadata">
+      <template #model>
         <ElSelect
           v-if="initialModel"
           :model-value="selectedModel"
@@ -191,8 +209,22 @@ defineExpose({ insertVariable });
             到 AI 配置调整
           </ElButton>
         </div>
-      </ElFormItem>
-    </ElForm>
+      </template>
+    </Form>
+    <ElAlert
+      v-for="field in [
+        'name',
+        'purpose',
+        'businessModel',
+        'initialModel',
+        'modelPolicy',
+      ].filter((field) => fields[field])"
+      :key="field"
+      :data-field-error="field"
+      :title="fields[field]"
+      type="error"
+      :closable="false"
+    />
     <section class="prompt-data" aria-label="数据引用说明">
       <slot name="data"></slot>
       <p

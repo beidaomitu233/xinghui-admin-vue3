@@ -10,13 +10,13 @@ import type {
 
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 
+import { useVbenDrawer } from '@vben/common-ui';
 import { useAccessStore } from '@vben/stores';
 
 import {
   ElAlert,
   ElButton,
   ElCheckbox,
-  ElDrawer,
   ElEmpty,
   ElForm,
   ElFormItem,
@@ -371,6 +371,15 @@ onBeforeUnmount(() => {
   if (active.value && request.value)
     void cancelSceneRequest(request.value.requestId).catch(() => {});
 });
+const [TrialDrawer, trialDrawerApi] = useVbenDrawer({
+  onBeforeClose: async () => {
+    await closeTrial();
+    return !expanded.value;
+  },
+});
+watch(expanded, (open) => trialDrawerApi.setState({ isOpen: open }), {
+  immediate: true,
+});
 </script>
 <template>
   <span class="scene-trial-entry">
@@ -381,12 +390,10 @@ onBeforeUnmount(() => {
     >
       试运行
     </ElButton>
-    <ElDrawer
-      :model-value="expanded"
+    <TrialDrawer
       title="场景试运行"
-      size="min(800px, 100vw)"
+      class="w-full max-w-[800px]"
       :close-on-click-modal="false"
-      :before-close="closeTrial"
     >
       <ElForm label-position="top" class="trial-form">
         <ElFormItem v-if="!definition.businessModel" label="试运行组合">
@@ -566,7 +573,7 @@ onBeforeUnmount(() => {
           </div>
         </div>
       </template>
-    </ElDrawer>
+    </TrialDrawer>
   </span>
 </template>
 <style scoped>

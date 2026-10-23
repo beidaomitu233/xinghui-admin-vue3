@@ -37,10 +37,17 @@ export interface UserImportSummary {
   rows: UserImportRowResult[];
 }
 
-export function getUserList(params: Record<string, number | string>) {
-  return requestClient.get<PageResult<UserInfo>>('/system/user/list', {
+export async function getUserList(params: Record<string, number | string>) {
+  const data = await requestClient.get<
+    Omit<PageResult<UserInfo>, 'total'> & { total: number | string }
+  >('/system/user/list', {
     params,
   });
+  const total = Number(data.total);
+  if (!Number.isSafeInteger(total) || total < 0 || data.total === '') {
+    throw new Error('用户总数超出可显示范围');
+  }
+  return { ...data, total };
 }
 
 export function getUser(userId: string) {

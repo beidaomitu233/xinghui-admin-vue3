@@ -16,6 +16,7 @@ import type {
 
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 
+import { useVbenDrawer } from '@vben/common-ui';
 import { useAccessStore } from '@vben/stores';
 
 import {
@@ -23,7 +24,6 @@ import {
   ElButton,
   ElCollapse,
   ElCollapseItem,
-  ElDrawer,
   ElForm,
   ElFormItem,
   ElInput,
@@ -31,10 +31,9 @@ import {
   ElMessageBox,
   ElOption,
   ElSelect,
-  ElTable,
-  ElTableColumn,
 } from 'element-plus';
 
+import { useVbenVxeGrid } from '#/adapter/vxe-table';
 import {
   getQueryCatalog,
   getQuerySchema,
@@ -673,14 +672,55 @@ onBeforeUnmount(() => {
   result.value = undefined;
   schema.value = undefined;
 });
+const [QueryDrawer, queryDrawerApi] = useVbenDrawer({
+  onBeforeClose: async () => {
+    await close();
+    return false;
+  },
+});
+watch(
+  () => props.open,
+  (open) => queryDrawerApi.setState({ isOpen: open }),
+  { immediate: true },
+);
+const [ResultGrid, resultGridApi] = useVbenVxeGrid<Record<string, unknown>>({
+  gridOptions: {
+    maxHeight: 240,
+    pagerConfig: { enabled: false },
+    proxyConfig: { enabled: false },
+    toolbarConfig: { custom: true },
+    emptyText: '本次查询没有匹配记录',
+  },
+});
+watch(
+  result,
+  (value) =>
+    resultGridApi.setGridOptions({
+      columns:
+        value?.columns.map((column, index) => ({
+          field: `value${index}`,
+          title: column.label || column.name,
+          minWidth: 120,
+          slots: { default: 'cell' },
+        })) ?? [],
+      data:
+        value?.rows.map((row) =>
+          Object.fromEntries(
+            value.columns.map((column, index) => [
+              `value${index}`,
+              Object.hasOwn(row, column.name) ? row[column.name] : undefined,
+            ]),
+          ),
+        ) ?? [],
+    }),
+  { immediate: true },
+);
 </script>
 <template>
-  <ElDrawer
-    :model-value="open"
+  <QueryDrawer
     :title="binding ? '编辑查询引用' : '添加数据引用'"
-    size="min(800px, 100vw)"
+    class="w-full max-w-[800px]"
     :close-on-click-modal="false"
-    :before-close="close"
   >
     <ElForm label-position="top" class="sql-assistant-form">
       <p class="query-scope" aria-label="当前可查询范围">
@@ -858,28 +898,11 @@ onBeforeUnmount(() => {
           notice = '';
         "
       />
-      <ElTable
-        v-if="result && receipt === fingerprint"
-        :data="result.rows"
-        max-height="240"
-        size="small"
-        empty-text="本次查询没有匹配记录"
-      >
-        <ElTableColumn
-          v-for="column in result.columns"
-          :key="column.name"
-          :label="column.label || column.name"
-          min-width="120"
-        >
-          <template #default="{ row }">
-            {{
-              cell(
-                Object.hasOwn(row, column.name) ? row[column.name] : undefined,
-              )
-            }}
-          </template>
-        </ElTableColumn>
-      </ElTable>
+      <ResultGrid v-if="result && receipt === fingerprint">
+        <template #cell="{ row, column }">
+          {{ cell(row[column.field]) }}
+        </template>
+      </ResultGrid>
       <ElFormItem label="引用名称">
         <ElInput
           v-model="label"
@@ -908,7 +931,7 @@ onBeforeUnmount(() => {
         保存并插入提示词
       </ElButton>
     </template>
-  </ElDrawer>
+  </QueryDrawer>
 </template>
 <style scoped>
 .sql-assistant-form {

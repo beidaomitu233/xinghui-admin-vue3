@@ -4,11 +4,22 @@ import type {
   CallLogDetail as Detail,
 } from '#/api/system/ai-call-log';
 
-import { flushPromises, mount } from '@vue/test-utils';
+import { DOMWrapper, flushPromises, mount } from '@vue/test-utils';
 import { reactive } from 'vue';
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import ElementPlus, { ElSelectV2 } from 'element-plus';
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 
+import { initComponentAdapter } from '#/adapter/component';
+import { initSetupVbenForm } from '#/adapter/form';
 import { fictionalCall } from '#/demo/ai-call-logs';
 
 import {
@@ -84,6 +95,41 @@ async function click(wrapper: ReturnType<typeof mount>, text: string) {
     : target.trigger('click'));
   await flushPromises();
 }
+beforeAll(async () => {
+  await initComponentAdapter();
+  await initSetupVbenForm();
+});
+const panels: ReturnType<typeof mount>[] = [];
+function panel() {
+  const wrapper = mount(CallLogPanel, {
+    attachTo: document.body,
+    global: { plugins: [ElementPlus] },
+  });
+  panels.push(wrapper);
+  return wrapper;
+}
+afterEach(() => {
+  for (const wrapper of panels) if (wrapper.exists()) wrapper.unmount();
+  panels.length = 0;
+  document.body.innerHTML = '';
+  vi.unstubAllGlobals();
+});
+async function setScope(
+  wrapper: ReturnType<typeof mount>,
+  scope: 'AUDIT' | 'OWN',
+) {
+  const select = wrapper
+    .findAllComponents(ElSelectV2)
+    .find((control) =>
+      (control.props().options as { value?: unknown }[]).some(
+        (option) => option.value === 'AUDIT',
+      ),
+    );
+  if (!select) throw new Error('Missing native scope select');
+  select.vm.$emit('update:modelValue', scope);
+  select.vm.$emit('change', scope);
+  await flushPromises();
+}
 beforeEach(() => {
   vi.clearAllMocks();
   state.access = reactive({
@@ -97,7 +143,7 @@ beforeEach(() => {
   });
   api.list.mockResolvedValue({
     records: [row],
-    total: '9007199254740993123',
+    total: '1',
     pageNum: 1,
     pageSize: 20,
   });
@@ -136,23 +182,41 @@ describe('call log isolation and exact rendering', () => {
     wrapper.unmount();
   });
   it('keeps technical filters and diagnostics collapsed, opens a side dialog and closes with Escape', async () => {
-    const wrapper = mount(CallLogPanel, { attachTo: document.body });
+    const wrapper = panel();
     await flushPromises();
-    expect(wrapper.get('.call-advanced').attributes('open')).toBeUndefined();
-    expect(wrapper.get('.call-table').attributes('aria-label')).toBe(
-      '上游交互列表',
-    );
+    expect(wrapper.find('form').exists()).toBe(true);
+    expect(wrapper.find('.vxe-grid').exists()).toBe(true);
     await click(wrapper, '详情');
-    const dialog = wrapper.get('[role="dialog"]');
-    expect(dialog.classes()).toContain('call-drawer');
-    expect(dialog.attributes('aria-modal')).toBe('true');
-    expect(dialog.get('.call-diagnostics').attributes('open')).toBeUndefined();
-    expect(dialog.findAll('dl.call-facts')[0]?.findAll('div')).toHaveLength(9);
-    expect(document.activeElement?.textContent).toBe('关闭详情');
+    const target = document.querySelector('[role="dialog"]');
+    if (!target) throw new Error('Missing native drawer');
+    const dialog = new DOMWrapper(target);
+    expect(dialog.attributes('data-state')).toBe('open');
+    expect(dialog.find('.el-collapse-item__content').isVisible()).toBe(false);
+    expect(dialog.findAll('.el-descriptions')).toHaveLength(3);
+    await vi.waitFor(() =>
+      expect(document.activeElement?.closest('[role="dialog"]')).toBe(target),
+    );
     await dialog.trigger('keydown', { key: 'Escape' });
     await flushPromises();
-    expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
-    expect(wrapper.text()).not.toContain('private response');
+    await vi.waitFor(() =>
+      expect(
+        document.querySelector('[role="dialog"][data-state="open"]'),
+      ).toBeNull(),
+    );
+    expect(document.body.textContent).not.toContain('private response');
+    wrapper.unmount();
+  });
+  it('rejects totals that cannot be represented safely by the native pager', async () => {
+    api.list.mockResolvedValueOnce({
+      records: [row],
+      total: '9007199254740993123',
+      pageNum: 1,
+      pageSize: 20,
+    });
+    const wrapper = panel();
+    await flushPromises();
+    expect(wrapper.text()).toContain('超出可安全分页范围');
+    expect(wrapper.find('.vxe-body--row').exists()).toBe(false);
     wrapper.unmount();
   });
   it('exports only structured row fields without an attached body or precision loss', () => {
@@ -165,12 +229,15 @@ describe('call log isolation and exact rendering', () => {
     expect(records[0]?.reportedCost).toBe('0.0000000000000000123');
   });
   it('shows upstream counts, exact longs/cost and real zero without claiming known totals', async () => {
-    const wrapper = mount(CallLogPanel);
+    const wrapper = panel();
     await flushPromises();
     expect(wrapper.text()).toContain('9007199254740993123');
     expect(wrapper.text()).toContain('0.0000000000000000123 USD');
     expect(wrapper.text()).toContain('已知输入 Token未知');
-    expect(wrapper.text()).toContain('9007199254740993123 / 0');
+    expect(wrapper.find('.vxe-body--row').text()).toContain(
+      '9007199254740993123',
+    );
+    expect(wrapper.find('.vxe-body--row').text()).toContain('0');
     expect(api.list).toHaveBeenCalledWith({
       scope: 'OWN',
       from: undefined,
@@ -187,7 +254,7 @@ describe('call log isolation and exact rendering', () => {
   it('discards late list/statistics after logout and makes no read without permission', async () => {
     const pending = deferred<AiPage<CallLogRow>>();
     api.list.mockReturnValueOnce(pending.promise);
-    const wrapper = mount(CallLogPanel);
+    const wrapper = panel();
     state.access.accessToken = '';
     await flushPromises();
     pending.resolve({ records: [row], total: '1', pageNum: 1, pageSize: 20 });
@@ -197,7 +264,7 @@ describe('call log isolation and exact rendering', () => {
     wrapper.unmount();
     vi.clearAllMocks();
     state.access.accessCodes = [];
-    const denied = mount(CallLogPanel);
+    const denied = panel();
     await flushPromises();
     expect(denied.text()).toContain('没有请求日志查看权限');
     expect(api.list).not.toHaveBeenCalled();
@@ -206,14 +273,14 @@ describe('call log isolation and exact rendering', () => {
   it('clears private detail on query permission revocation and ignores late body', async () => {
     const pending = deferred<Detail>();
     api.detail.mockReturnValueOnce(pending.promise);
-    const wrapper = mount(CallLogPanel);
+    const wrapper = panel();
     await flushPromises();
     await click(wrapper, '详情');
     state.access.accessCodes = ['ai:request:list'];
     await flushPromises();
     pending.resolve({ call: row, response });
     await flushPromises();
-    expect(wrapper.text()).not.toContain('private response');
+    expect(document.body.textContent).not.toContain('private response');
     expect(wrapper.find('[aria-label="交互详情"]').exists()).toBe(false);
     wrapper.unmount();
   });
@@ -221,17 +288,24 @@ describe('call log isolation and exact rendering', () => {
     const pending = deferred<CallLogRow[]>();
     api.export.mockReturnValueOnce(pending.promise);
     const create = vi.fn();
-    vi.stubGlobal('URL', { createObjectURL: create, revokeObjectURL: vi.fn() });
-    const wrapper = mount(CallLogPanel);
+    const NativeURL = globalThis.URL;
+    vi.stubGlobal(
+      'URL',
+      class extends NativeURL {
+        static override createObjectURL = create;
+        static override revokeObjectURL = vi.fn();
+      },
+    );
+    const wrapper = panel();
     await flushPromises();
-    await wrapper.get('[aria-label="日志范围"]').setValue('AUDIT');
+    await setScope(wrapper, 'AUDIT');
     await wrapper.get('[aria-label="租户"]').setValue('other');
     await click(wrapper, '查询');
     await click(wrapper, '详情');
-    expect(wrapper.text()).toContain('private response');
+    expect(document.body.textContent).toContain('private response');
     await click(wrapper, '导出结构化日志');
-    await wrapper.get('[aria-label="日志范围"]').setValue('OWN');
-    expect(wrapper.text()).not.toContain('private response');
+    await setScope(wrapper, 'OWN');
+    expect(document.body.textContent).not.toContain('private response');
     pending.resolve([row]);
     await flushPromises();
     expect(create).not.toHaveBeenCalled();
@@ -249,13 +323,13 @@ describe('call log isolation and exact rendering', () => {
   it('clears on pane hiding and discards late detail, and does not fetch URLs or render response HTML', async () => {
     const pending = deferred<Detail>();
     api.detail.mockReturnValueOnce(pending.promise);
-    const wrapper = mount(CallLogPanel);
+    const wrapper = panel();
     await flushPromises();
     await click(wrapper, '详情');
     await wrapper.setProps({ active: false });
     pending.resolve({ call: row, response });
     await flushPromises();
-    expect(wrapper.text()).not.toContain('private response');
+    expect(document.body.textContent).not.toContain('private response');
     wrapper.unmount();
     const fetcher = vi.fn();
     vi.stubGlobal('fetch', fetcher);

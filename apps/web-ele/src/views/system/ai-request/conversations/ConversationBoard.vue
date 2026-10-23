@@ -9,17 +9,23 @@ import type {
 
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
 
+import { Loading } from '@vben/common-ui';
+
 import {
   ElAlert,
   ElButton,
   ElCheckbox,
+  ElCollapse,
+  ElCollapseItem,
   ElEmpty,
+  ElForm,
   ElInput,
   ElOption,
   ElSelect,
-  ElSkeleton,
   ElTag,
 } from 'element-plus';
+
+import { useVbenForm } from '#/adapter/form';
 
 import ConversationTimeline from './ConversationTimeline.vue';
 import { ConversationSendFailure, conversationTime } from './view-model';
@@ -52,10 +58,9 @@ const emit = defineEmits<{
   select: [key: string];
   settings: [];
 }>();
-const search = ref('');
 const newSceneKey = ref('');
 const confirmedCosts = ref(false);
-const detailsOpen = ref(false);
+const detailsOpen = ref<string[]>([]);
 const drafts = reactive(new Map<string, string>());
 const errors = reactive(new Map<string, string>());
 const sending = reactive(new Set<string>());
@@ -144,6 +149,26 @@ const labels: Record<ConversationItem['state'], string> = {
   idle: '',
   replying: '正在回答',
 };
+const [SearchForm] = useVbenForm({
+  submitButtonOptions: { content: '搜索' },
+  showCollapseButton: false,
+  layout: 'vertical',
+  wrapperClass: 'grid-cols-1',
+  resetButtonOptions: { show: false },
+  handleSubmit: (values) => emit('search', values.search ?? ''),
+  schema: [
+    {
+      component: 'Input',
+      fieldName: 'search',
+      label: '搜索对话',
+      componentProps: {
+        clearable: true,
+        placeholder: '搜索对话标题',
+        onClear: () => emit('search', ''),
+      },
+    },
+  ],
+});
 </script>
 <template>
   <div class="conversation-board">
@@ -154,25 +179,8 @@ const labels: Record<ConversationItem['state'], string> = {
           新对话
         </ElButton>
       </header>
-      <form
-        class="conversation-search"
-        @submit.prevent="emit('search', search)"
-      >
-        <ElInput
-          v-model="search"
-          aria-label="搜索对话"
-          placeholder="搜索对话标题"
-          clearable
-          @clear="emit('search', '')"
-        />
-        <ElButton native-type="submit">搜索</ElButton>
-      </form>
-      <ElSkeleton
-        v-if="listLoading"
-        :rows="4"
-        animated
-        aria-label="正在读取会话"
-      />
+      <SearchForm />
+      <Loading v-if="listLoading" :spinning="true" text="正在读取会话…" />
       <ElEmpty
         v-else-if="conversations.length === 0"
         description="暂无对话记录"
@@ -238,7 +246,7 @@ const labels: Record<ConversationItem['state'], string> = {
         :history-unavailable="historyUnavailable"
         :loading="messageLoading"
       />
-      <form
+      <ElForm
         v-if="writable"
         class="conversation-composer"
         @submit.prevent="send"
@@ -315,18 +323,19 @@ const labels: Record<ConversationItem['state'], string> = {
             </ElButton>
           </div>
         </div>
-      </form>
+      </ElForm>
       <p v-else class="readonly-message">
         {{ readonlyReason || '当前会话仅供查看，不能代替会话主人继续提问。' }}
       </p>
-      <details
+      <ElCollapse
         v-if="$slots.details"
+        v-model="detailsOpen"
         class="conversation-details"
-        @toggle.self="detailsOpen = ($event.target as HTMLDetailsElement).open"
       >
-        <summary>对话信息</summary>
-        <slot v-if="detailsOpen" name="details"></slot>
-      </details>
+        <ElCollapseItem title="对话信息" name="details">
+          <slot v-if="detailsOpen.includes('details')" name="details"></slot>
+        </ElCollapseItem>
+      </ElCollapse>
     </main>
   </div>
 </template>

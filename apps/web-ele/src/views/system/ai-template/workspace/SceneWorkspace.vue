@@ -24,6 +24,7 @@ import {
 } from 'vue';
 import { onBeforeRouteLeave, useRouter } from 'vue-router';
 
+import { useVbenModal } from '@vben/common-ui';
 import { useAccessStore } from '@vben/stores';
 
 import {
@@ -31,15 +32,10 @@ import {
   ElButton,
   ElCollapse,
   ElCollapseItem,
-  ElDialog,
   ElEmpty,
-  ElForm,
-  ElFormItem,
-  ElInput,
-  ElRadioButton,
-  ElRadioGroup,
 } from 'element-plus';
 
+import { useVbenForm, z } from '#/adapter/form';
 import { listHubModels } from '#/api/system/ai-model-hub';
 import {
   createScene,
@@ -218,11 +214,11 @@ const dialogTitle = computed(() => {
   if (conflict.value) return '处理版本冲突';
   return '新建场景';
 });
-function closeWorkspaceDialog(done: () => void) {
-  if (creating.value || leaveState.value) return;
+function closeWorkspaceDialog() {
+  if (creating.value || leaveState.value) return false;
   createOpen.value = false;
   conflict.value = undefined;
-  done();
+  return true;
 }
 async function saveNow() {
   if (view.value && !(await autosave.flush(view.value.sceneKey)))
@@ -457,6 +453,11 @@ function confirmConversion() {
 }
 async function create() {
   if (!can('add') || creating.value || !newName.value.trim()) return;
+  if (!pendingCreate.value) {
+    const validation = await createFormApi.validate();
+    if (!validation.valid) return;
+  }
+  if (creating.value) return;
   if (
     newKind.value === 'RECORD_SUMMARY' &&
     (!newFormId.value || !access.accessCodes.includes('lowcode:record:query'))
@@ -594,6 +595,77 @@ defineExpose({
   openCreate() {
     if (can('add')) createOpen.value = true;
   },
+});
+const [CreateForm, createFormApi] = useVbenForm({
+  showDefaultActions: false,
+  layout: 'vertical',
+  wrapperClass: 'grid-cols-1',
+  commonConfig: {
+    componentProps: () => ({
+      class: 'w-full',
+      disabled: creating.value || !!pendingCreate.value,
+    }),
+  },
+  handleValuesChange: (values) => {
+    newName.value = values.name ?? '';
+    newPurpose.value = values.purpose ?? '';
+    if (values.kind === 'GENERAL' || values.kind === 'RECORD_SUMMARY')
+      newKind.value = values.kind;
+  },
+  schema: [
+    {
+      component: 'Select',
+      fieldName: 'kind',
+      label: '场景类型',
+      defaultValue: 'GENERAL',
+      componentProps: () => ({
+        'aria-label': '新建场景类型',
+        options: [
+          { label: '通用场景', value: 'GENERAL' },
+          ...(access.accessCodes.includes('lowcode:record:query')
+            ? [{ label: '记录摘要', value: 'RECORD_SUMMARY' }]
+            : []),
+        ],
+      }),
+    },
+    {
+      component: 'Input',
+      fieldName: 'formId',
+      label: '绑定表单',
+      dependencies: {
+        triggerFields: ['kind'],
+        if: (values) => values.kind === 'RECORD_SUMMARY',
+      },
+    },
+    {
+      component: 'Input',
+      fieldName: 'name',
+      label: '场景名称',
+      rules: z.string().trim().min(1).max(120),
+      componentProps: { maxlength: 120, 'aria-label': '新建场景名称' },
+    },
+    {
+      component: 'Input',
+      fieldName: 'purpose',
+      label: '用途',
+      componentProps: { 'aria-label': '新建场景用途' },
+    },
+  ],
+});
+watch(createOpen, (open) => {
+  if (open)
+    void createFormApi.setValues({
+      kind: newKind.value,
+      formId: newFormId.value,
+      name: newName.value,
+      purpose: newPurpose.value,
+    });
+});
+const [WorkspaceModal, workspaceModalApi] = useVbenModal({
+  onBeforeClose: closeWorkspaceDialog,
+});
+watch(dialogOpen, (open) => workspaceModalApi.setState({ isOpen: open }), {
+  immediate: true,
 });
 </script>
 
@@ -765,15 +837,12 @@ defineExpose({
         <ElButton @click="loadList">重新读取</ElButton>
       </ElEmpty>
     </main>
-    <ElDialog
-      :model-value="dialogOpen"
+    <WorkspaceModal
       :title="dialogTitle"
       :aria-label="dialogTitle"
-      width="min(620px, 94vw)"
+      class="w-full max-w-[620px]"
       :close-on-click-modal="false"
       :close-on-press-escape="!leaveState"
-      :show-close="!leaveState"
-      :before-close="closeWorkspaceDialog"
     >
       <template v-if="leaveState">
         <p class="dialog-copy">
@@ -791,49 +860,23 @@ defineExpose({
           conflict.definition?.promptText
         }}</pre>
       </template>
-      <ElForm
-        v-else
-        label-position="top"
-        aria-label="新建场景"
-        :disabled="creating || Boolean(pendingCreate)"
-        @submit.prevent="create"
-      >
+      <template v-else>
         <p v-if="pendingCreate" class="dialog-copy">
           上次创建受理尚未确认，重试仍使用原请求。
         </p>
-        <ElFormItem label="场景类型">
-          <ElRadioGroup v-model="newKind" aria-label="新建场景类型">
-            <ElRadioButton value="GENERAL">通用场景</ElRadioButton>
-            <ElRadioButton
-              v-if="access.accessCodes.includes('lowcode:record:query')"
-              value="RECORD_SUMMARY"
-            >
-              记录摘要
-            </ElRadioButton>
-          </ElRadioGroup>
-        </ElFormItem>
-        <ElFormItem
-          v-if="newKind === 'RECORD_SUMMARY'"
-          label="绑定表单"
-          required
-        >
-          <SceneFormPicker
-            :value="newFormId"
-            :disabled="creating || Boolean(pendingCreate)"
-            @change="newFormId = $event"
-          />
-        </ElFormItem>
-        <ElFormItem label="场景名称" required>
-          <ElInput
-            v-model="newName"
-            aria-label="新建场景名称"
-            maxlength="120"
-          />
-        </ElFormItem>
-        <ElFormItem label="用途">
-          <ElInput v-model="newPurpose" aria-label="新建场景用途" />
-        </ElFormItem>
-      </ElForm>
+        <CreateForm aria-label="新建场景">
+          <template #formId>
+            <SceneFormPicker
+              :value="newFormId"
+              :disabled="creating || Boolean(pendingCreate)"
+              @change="
+                newFormId = $event;
+                createFormApi.setFieldValue('formId', $event);
+              "
+            />
+          </template>
+        </CreateForm>
+      </template>
       <template #footer>
         <template v-if="leaveState">
           <ElButton type="primary" @click="chooseLeave(false)">
@@ -863,15 +906,15 @@ defineExpose({
           </ElButton>
         </template>
       </template>
-    </ElDialog>
+    </WorkspaceModal>
   </div>
 </template>
 <style scoped>
 .scene-workspace {
   display: flex;
   min-width: 0;
-  height: calc(var(--vben-content-height, calc(100dvh - 112px)) - 120px);
-  min-height: 480px;
+  height: 100%;
+  min-height: 0;
   color: hsl(var(--foreground));
   background: hsl(var(--background));
   border: 1px solid hsl(var(--border));

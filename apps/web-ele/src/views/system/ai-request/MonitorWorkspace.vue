@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 
+import { ElTabPane, ElTabs } from 'element-plus';
+
 import CallLogPanel from './CallLogPanel.vue';
 import ConversationWorkspace from './conversations/ConversationWorkspace.vue';
 
@@ -10,23 +12,18 @@ const logsVisited = ref(false);
 </script>
 <template>
   <section class="monitor-workspace">
-    <nav class="monitor-tabs" aria-label="调用监控视图">
-      <button
-        :aria-pressed="tab === 'conversations'"
-        @click="tab = 'conversations'"
-      >
-        我的对话
-      </button>
-      <button
-        :aria-pressed="tab === 'logs'"
-        @click="
-          logsVisited = true;
-          tab = 'logs';
-        "
-      >
-        请求日志
-      </button>
-    </nav>
+    <ElTabs
+      v-model="tab"
+      class="monitor-tabs"
+      @tab-change="
+        (value) => {
+          if (value === 'logs') logsVisited = true;
+        }
+      "
+    >
+      <ElTabPane label="我的对话" name="conversations" />
+      <ElTabPane label="请求日志" name="logs" />
+    </ElTabs>
     <div
       v-show="tab === 'conversations'"
       class="monitor-pane monitor-conversations"
@@ -44,10 +41,8 @@ const logsVisited = ref(false);
   display: flex;
   flex-direction: column;
   min-width: 0;
-  height: calc(var(--vben-content-height, calc(100dvh - 112px)) - 120px);
-  min-height: 520px;
-  border: 1px solid hsl(var(--border));
-  border-radius: 10px;
+  height: 100%;
+  min-height: 0;
 }
 
 .monitor-pane {
@@ -71,22 +66,7 @@ const logsVisited = ref(false);
 }
 
 .monitor-tabs {
-  display: flex;
   flex: none;
-  gap: 8px;
-  padding: 12px 16px;
-  border-bottom: 1px solid hsl(var(--border));
-}
-
-.monitor-tabs button {
-  padding: 8px 16px;
-  color: hsl(var(--muted-foreground));
-  border-radius: 6px;
-}
-
-.monitor-tabs button[aria-pressed='true'] {
-  color: hsl(var(--primary));
-  background: hsl(var(--muted));
 }
 
 @media (max-width: 767px) {

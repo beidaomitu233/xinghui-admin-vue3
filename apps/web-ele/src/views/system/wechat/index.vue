@@ -2,6 +2,8 @@
 import { onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 
+import { Loading } from '@vben/common-ui';
+
 const router = useRouter();
 onMounted(() => {
   void router.replace({
@@ -10,4 +12,6 @@ onMounted(() => {
   });
 });
 </script>
-<template><div role="status" class="p-6">正在打开微信业务配置…</div></template>
+<template>
+  <Loading :spinning="true" text="正在打开微信业务配置…" class="m-6" />
+</template>

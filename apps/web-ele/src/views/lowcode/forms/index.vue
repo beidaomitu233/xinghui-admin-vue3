@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import type { FormDefinition, Page as FormPage } from '#/api/lowcode/forms';
+import type { VxeTableGridOptions } from '#/adapter/vxe-table';
+import type { FormDefinition } from '#/api/lowcode/forms';
 
-import { onBeforeUnmount, onMounted, ref } from 'vue';
+import { onBeforeUnmount, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 
 import { Page } from '@vben/common-ui';
@@ -9,6 +10,7 @@ import { useAccessStore } from '@vben/stores';
 
 import { ElMessage, ElMessageBox } from 'element-plus';
 
+import { useVbenVxeGrid } from '#/adapter/vxe-table';
 import {
   getForm,
   listForms,
@@ -16,8 +18,8 @@ import {
   removeForm,
   updateForm,
 } from '#/api/lowcode/forms';
-import AdminPageHeader from '#/components/admin-page-header.vue';
 
+import { safeGridTotal } from '../record-form';
 import FormDesigner from './FormDesigner.vue';
 import FormSharing from './FormSharing.vue';
 
@@ -27,59 +29,179 @@ const can = (action: string) =>
   access.accessCodes.includes(`lowcode:form:${action}`);
 const recordCan = (action: string) =>
   access.accessCodes.includes(`lowcode:record:${action}`);
-const result = ref<FormPage<FormDefinition>>({
-  records: [],
-  total: '0',
-  pageNum: 1,
-  pageSize: 10,
-});
 const editor = ref(false);
 const sharingOpened = ref(false);
 const sharingForm = ref<FormDefinition>();
 function openSharing(form: FormDefinition) {
+  if (!can('publish')) return;
   sharingForm.value = form;
   sharingOpened.value = true;
 }
 const failed = ref(false);
-const loading = ref(false);
-const name = ref('');
-const pageNum = ref(1);
-const pageSize = ref(10);
 const readOnly = ref(false);
 const source = ref<FormDefinition>();
 let serial = 0;
+let openGeneration = 0;
 onBeforeUnmount(() => {
   serial++;
+  openGeneration++;
+  latestQuery = Promise.resolve({ items: [], total: 0 });
+});
+let refreshVersion = 0;
+type GridResult = { items: FormDefinition[]; total: number };
+let latestQuery: Promise<GridResult> = Promise.resolve({ items: [], total: 0 });
+function listParameters(
+  pageNum: number,
+  pageSize: number,
+  sort: undefined | { field: string; order?: null | string },
+  values: Record<string, unknown> = {},
+) {
+  return {
+    pageNum,
+    pageSize,
+    name: String(values.name ?? '') || undefined,
+    orderBy: sort?.order ? sort.field : 'id',
+    order: sort?.order === 'asc' ? ('asc' as const) : ('desc' as const),
+  };
+}
+const gridOptions: VxeTableGridOptions<FormDefinition> = {
+  height: 'auto',
+  rowConfig: { keyField: 'id' },
+  columns: [
+    { field: 'name', title: '名称', minWidth: 180, sortable: true },
+    { field: 'formKey', title: '标识', minWidth: 160, sortable: true },
+    {
+      field: 'status',
+      title: '状态',
+      width: 100,
+      sortable: true,
+      formatter: ({ row }) =>
+        ({ draft: '草稿', enabled: '已发布', disabled: '已停用' })[row.status],
+    },
+    {
+      field: 'publishedVersion',
+      title: '发布版本',
+      width: 110,
+      sortable: true,
+    },
+    { field: 'revision', title: '修订', width: 90 },
+    {
+      field: 'actions',
+      title: '操作',
+      fixed: 'right',
+      width: 480,
+      slots: { default: 'actions' },
+    },
+  ],
+  pagerConfig: { pageSize: 10, pageSizes: [10, 20, 50, 100] },
+  sortConfig: { remote: true, multiple: false },
+  toolbarConfig: {
+    custom: true,
+    refresh: true,
+    refreshOptions: { code: 'query' },
+    search: true,
+    zoom: true,
+  },
+  proxyConfig: {
+    sort: true,
+    ajax: {
+      query: ({ page, sort }, values) => {
+        const run = ++serial;
+        failed.value = false;
+        latestQuery = (async (): Promise<GridResult> => {
+          if (!can('list')) return { items: [], total: 0 };
+          let parameters = listParameters(
+            page.currentPage,
+            page.pageSize,
+            sort,
+            values,
+          );
+          for (;;) {
+            const requestRefresh = refreshVersion;
+            let response: Awaited<ReturnType<typeof listForms>> | undefined;
+            let failure: unknown;
+            try {
+              response = await listForms(parameters);
+            } catch (error) {
+              failure = error;
+            }
+            if (run !== serial) return latestQuery;
+            if (!can('list')) return { items: [], total: 0 };
+            if (gridApi.grid.getCurrentPage) {
+              const submitted = gridApi.formApi.getLatestSubmissionValues();
+              const current = listParameters(
+                gridApi.grid.getCurrentPage(),
+                gridApi.grid.getPageSize(),
+                gridApi.grid.getSortColumns()[0],
+                submitted,
+              );
+              if (JSON.stringify(current) !== JSON.stringify(parameters)) {
+                parameters = current;
+                continue;
+              }
+            }
+            if (requestRefresh !== refreshVersion) continue;
+            if (failure) {
+              failed.value = true;
+              throw failure;
+            }
+            if (!response) throw new Error('列表未返回结果');
+            return {
+              items: response.records,
+              total: safeGridTotal(response.total),
+            };
+          }
+        })();
+        return latestQuery;
+      },
+    },
+  },
+};
+const [Grid, gridApi] = useVbenVxeGrid<FormDefinition>({
+  gridOptions,
+  formOptions: {
+    showCollapseButton: false,
+    submitOnEnter: true,
+    schema: [
+      {
+        fieldName: 'name',
+        component: 'Input',
+        label: '名称',
+        componentProps: { clearable: true, maxlength: 100 },
+      },
+    ],
+    handleSubmit: async () => {
+      const values = await gridApi.formApi.getValues();
+      gridApi.formApi.setLatestSubmissionValues(values);
+      await gridApi.grid.setCurrentPage(1);
+      await gridApi.query(values);
+    },
+    handleReset: async () => {
+      await gridApi.formApi.resetForm();
+      const values = await gridApi.formApi.getValues();
+      gridApi.formApi.setLatestSubmissionValues(values);
+      await gridApi.grid.clearSort();
+
+      await gridApi.grid.setCurrentPage(1);
+      await gridApi.query(values);
+    },
+  },
 });
 async function load() {
-  if (!can('list')) return;
-  const run = ++serial;
-  loading.value = true;
-  failed.value = false;
-  try {
-    const data = await listForms({
-      pageNum: pageNum.value,
-      pageSize: pageSize.value,
-      name: name.value,
-    });
-    if (run === serial) result.value = data;
-  } catch {
-    if (run === serial) {
-      failed.value = true;
-      result.value.records = [];
-    }
-  } finally {
-    if (run === serial) loading.value = false;
-  }
-}
-function search() {
-  pageNum.value = 1;
-  void load();
+  refreshVersion++;
+  await gridApi.query();
 }
 async function open(row?: FormDefinition, view = false) {
+  const run = ++openGeneration;
+  const allowed = () =>
+    run === openGeneration &&
+    (row ? can('query') && (view || can('edit')) : can('add'));
+  if (!allowed()) return;
   if (row) {
     try {
-      source.value = await getForm(row.id);
+      const definition = await getForm(row.id);
+      if (!allowed()) return;
+      source.value = definition;
     } catch {
       return;
     }
@@ -87,6 +209,21 @@ async function open(row?: FormDefinition, view = false) {
   readOnly.value = view;
   editor.value = true;
 }
+watch(
+  () => [can('query'), can('edit'), can('add'), can('publish')],
+  () => {
+    openGeneration++;
+    if (
+      editor.value &&
+      (source.value
+        ? !can('query') || (!readOnly.value && !can('edit'))
+        : !can('add'))
+    )
+      editor.value = false;
+    if (!can('publish')) sharingOpened.value = false;
+  },
+  { flush: 'sync' },
+);
 async function action(
   row: FormDefinition,
   type: 'disable' | 'publish' | 'remove',
@@ -118,144 +255,87 @@ async function action(
     /* Shared interceptor reports the error. */
   }
 }
-onMounted(() => void load());
 </script>
 <template>
-  <!-- Prettier formats adjacent inline controls; avoid conflicting whitespace rules. -->
-  <!-- eslint-disable vue/multiline-html-element-content-newline, vue/html-closing-bracket-newline -->
-  <Page content-class="admin-page">
-    <AdminPageHeader title="表单管理">
-      <template #actions>
-        <el-button v-if="can('add')" type="primary" @click="open()">
-          新增表单
-        </el-button>
-      </template>
-    </AdminPageHeader>
-    <el-card>
+  <Page title="表单管理" auto-content-height>
+    <el-alert
+      v-if="!can('list')"
+      title="没有表单设计列表权限"
+      type="warning"
+      closable
+    />
+    <template v-else>
       <el-alert
-        v-if="!can('list')"
-        title="没有表单设计列表权限"
-        type="warning"
+        v-if="failed"
+        title="表单加载失败"
+        type="error"
         closable
-      />
-      <template v-else>
-        <el-form inline @submit.prevent="search">
-          <el-form-item label="名称">
-            <el-input
-              v-model="name"
-              maxlength="100"
-              placeholder="搜索表单名称"
-              @keyup.enter="search"
-            />
-          </el-form-item>
-          <el-form-item>
-            <el-button type="primary" :loading="loading" @click="search">
-              查询
-            </el-button>
-          </el-form-item>
-        </el-form>
-        <el-alert v-if="failed" title="表单加载失败" type="error" closable>
-          <el-button @click="load">重试</el-button>
-        </el-alert>
-        <el-table
-          v-loading="loading"
-          :data="result.records"
-          row-key="id"
-          border
-          empty-text="暂无表单，可通过新增创建"
-        >
-          <el-table-column prop="name" label="名称" min-width="180" />
-          <el-table-column prop="formKey" label="标识" min-width="160" />
-          <el-table-column label="状态" width="100">
-            <template #default="{ row }">
-              {{
-                row.status === 'draft'
-                  ? '草稿'
-                  : row.status === 'enabled'
-                    ? '已发布'
-                    : '已停用'
-              }}
-            </template>
-          </el-table-column>
-          <el-table-column
-            prop="publishedVersion"
-            label="发布版本"
-            width="100"
-          />
-          <el-table-column prop="revision" label="修订" width="80" />
-          <el-table-column label="操作" min-width="480">
-            <template #default="{ row }">
-              <el-button v-if="can('query')" link @click="open(row, true)">
-                详情
-              </el-button>
-              <el-button
-                v-if="can('query') && can('edit')"
-                link
-                type="primary"
-                @click="open(row)"
-              >
-                设计
-              </el-button>
-              <el-button
-                v-if="can('publish')"
-                link
-                @click="action(row, 'publish')"
-              >
-                发布
-              </el-button>
-              <el-button v-if="can('publish')" link @click="openSharing(row)">
-                分享填写
-              </el-button>
-              <el-button
-                v-if="row.status === 'enabled' && can('edit') && can('query')"
-                link
-                @click="action(row, 'disable')"
-              >
-                停用
-              </el-button>
-              <el-button
-                v-if="
-                  row.publishedVersion &&
-                  recordCan('add') &&
-                  row.status === 'enabled'
-                "
-                link
-                type="primary"
-                @click="router.push(`/lowcode/runtime/${row.id}`)"
-              >
-                填写
-              </el-button>
-              <el-button
-                v-if="row.publishedVersion && recordCan('list')"
-                link
-                type="primary"
-                @click="router.push(`/lowcode/records/${row.id}`)"
-              >
-                数据
-              </el-button>
-              <el-button
-                v-if="can('remove')"
-                link
-                type="danger"
-                @click="action(row, 'remove')"
-              >
-                删除
-              </el-button>
-            </template>
-          </el-table-column>
-        </el-table>
-        <el-pagination
-          class="mt-4"
-          v-model:current-page="pageNum"
-          v-model:page-size="pageSize"
-          :total="Number(result.total)"
-          :page-sizes="[10, 20, 50, 100]"
-          layout="total,sizes,prev,pager,next"
-          @current-change="load"
-          @size-change="search"
-        />
-      </template>
-    </el-card>
+        class="mb-3"
+      >
+        <el-button @click="load">重试</el-button>
+      </el-alert>
+      <Grid table-title="表单列表">
+        <template #toolbar-actions>
+          <el-button v-if="can('add')" type="primary" @click="open()">
+            新增表单
+          </el-button>
+        </template>
+        <template #actions="{ row }">
+          <el-button v-if="can('query')" link @click="open(row, true)">
+            详情
+          </el-button>
+          <el-button
+            v-if="can('query') && can('edit')"
+            link
+            type="primary"
+            @click="open(row)"
+          >
+            设计
+          </el-button>
+          <el-button v-if="can('publish')" link @click="action(row, 'publish')">
+            发布
+          </el-button>
+          <el-button v-if="can('publish')" link @click="openSharing(row)">
+            分享填写
+          </el-button>
+          <el-button
+            v-if="row.status === 'enabled' && can('edit') && can('query')"
+            link
+            @click="action(row, 'disable')"
+          >
+            停用
+          </el-button>
+          <el-button
+            v-if="
+              row.publishedVersion &&
+              recordCan('add') &&
+              row.status === 'enabled'
+            "
+            link
+            type="primary"
+            @click="router.push(`/lowcode/runtime/${row.id}`)"
+          >
+            填写
+          </el-button>
+          <el-button
+            v-if="row.publishedVersion && recordCan('list')"
+            link
+            type="primary"
+            @click="router.push(`/lowcode/records/${row.id}`)"
+          >
+            数据
+          </el-button>
+          <el-button
+            v-if="can('remove')"
+            link
+            type="danger"
+            @click="action(row, 'remove')"
+          >
+            删除
+          </el-button>
+        </template>
+      </Grid>
+    </template>
     <FormDesigner
       v-model="editor"
       :source="source"

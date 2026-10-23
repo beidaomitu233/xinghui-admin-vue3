@@ -2,17 +2,18 @@
 import type {
   AiModelChange,
   AiModelConfig,
-  AiModelPage,
   ModelTestResult,
 } from '#/api/system/ai-model';
 
-import { onMounted, reactive, ref } from 'vue';
+import { onBeforeUnmount, reactive, ref, watch } from 'vue';
 
-import { Page } from '@vben/common-ui';
+import { Loading, Page, useVbenModal } from '@vben/common-ui';
 import { useAccessStore } from '@vben/stores';
 
 import { ElMessage, ElMessageBox } from 'element-plus';
 
+import { useVbenForm, z } from '#/adapter/form';
+import { useVbenVxeGrid } from '#/adapter/vxe-table';
 import {
   createAiModel,
   getAiModel,
@@ -23,21 +24,13 @@ import {
   testAiModel,
   updateAiModel,
 } from '#/api/system/ai-model';
-import AdminPageHeader from '#/components/admin-page-header.vue';
 
 const accessStore = useAccessStore();
 const can = (permission: string) =>
   accessStore.accessCodes.includes(permission);
-const page = ref<AiModelPage>({
-  records: [],
-  total: 0,
-  pageNum: 1,
-  pageSize: 10,
-});
-const loading = ref(false);
 const failed = ref(false);
 const saving = ref(false);
-const statusChangingId = ref<number>();
+const statusChangingId = ref<AiModelConfig['id']>();
 const dialogVisible = ref(false);
 const detailVisible = ref(false);
 const editing = ref<AiModelConfig>();
@@ -52,14 +45,7 @@ const credentialForm = reactive({
 });
 const testVisible = ref(false);
 const testResult = ref<ModelTestResult>();
-const testingId = ref<number>();
-const query = reactive({
-  providerCode: '',
-  modelCode: '',
-  enabled: '' as '' | 'false' | 'true',
-  pageNum: 1,
-  pageSize: 10,
-});
+const testingId = ref<AiModelConfig['id']>();
 const form = reactive({
   providerCode: '',
   modelCode: '',
@@ -67,52 +53,351 @@ const form = reactive({
   credentialEnvName: '',
   timeoutSeconds: 30,
 });
+const [EditForm, editFormApi] = useVbenForm({
+  showDefaultActions: false,
+  wrapperClass: 'grid-cols-1',
+  commonConfig: { componentProps: { class: 'w-full' }, labelWidth: 120 },
+  schema: [
+    {
+      component: 'Input',
+      fieldName: 'providerCode',
+      label: '供应方标识',
+      rules: z.string().trim().min(1).max(64),
+      componentProps: { maxlength: 64, placeholder: '如 openai' },
+    },
+    {
+      component: 'Input',
+      fieldName: 'modelCode',
+      label: '模型代号',
+      rules: z.string().trim().min(1).max(128),
+      componentProps: { maxlength: 128, placeholder: '如 gpt-4.1-mini' },
+    },
+    {
+      component: 'Input',
+      fieldName: 'endpointUrl',
+      label: 'HTTPS 服务端点',
+      rules: z.string().trim().url().startsWith('https://').max(2048),
+      componentProps: {
+        maxlength: 2048,
+        placeholder: 'https://api.example.com/v1',
+      },
+    },
+    {
+      component: 'Input',
+      fieldName: 'credentialEnvName',
+      label: '凭据环境变量名',
+      componentProps: { maxlength: 128, placeholder: '如 OPENAI_API_KEY' },
+    },
+    {
+      component: 'InputNumber',
+      fieldName: 'timeoutSeconds',
+      label: '超时（秒）',
+      defaultValue: 30,
+      rules: z.number().int().min(1).max(300),
+      componentProps: { min: 1, max: 300 },
+    },
+  ],
+});
+const [CredentialForm, credentialFormApi] = useVbenForm({
+  showDefaultActions: false,
+  layout: 'vertical',
+  wrapperClass: 'grid-cols-1',
+  commonConfig: {
+    componentProps: () => ({
+      class: 'w-full',
+      disabled: credentialSaving.value,
+    }),
+  },
+  schema: [
+    {
+      component: 'Select',
+      fieldName: 'mode',
+      label: '密钥来源',
+      defaultValue: 'ENV',
+      componentProps: {
+        options: [
+          { label: '加密数据库', value: 'DB' },
+          { label: '环境变量引用', value: 'ENV' },
+        ],
+      },
+    },
+    {
+      component: 'Input',
+      fieldName: 'apiKey',
+      label: 'API Key',
+      description: () =>
+        credentialTarget.value?.credentialConfigured ? '已配置' : '未配置',
+      dependencies: {
+        triggerFields: ['mode'],
+        if: (values) => values.mode === 'DB',
+      },
+      componentProps: {
+        type: 'password',
+        showPassword: true,
+        autocomplete: 'new-password',
+        placeholder: '留空保持原密钥',
+        maxlength: 8192,
+      },
+    },
+    {
+      component: 'Checkbox',
+      fieldName: 'clearKey',
+      label: '明确清除数据库密钥',
+      defaultValue: false,
+    },
+  ],
+});
 
-async function load() {
-  if (!can('ai:model:list')) return;
-  loading.value = true;
-  failed.value = false;
-  try {
-    page.value = await listAiModels({
-      pageNum: query.pageNum,
-      pageSize: query.pageSize,
-      ...(query.providerCode.trim()
-        ? { providerCode: query.providerCode.trim() }
-        : {}),
-      ...(query.modelCode.trim() ? { modelCode: query.modelCode.trim() } : {}),
-      ...(query.enabled ? { enabled: query.enabled === 'true' } : {}),
-    });
-  } catch {
-    page.value = { ...page.value, records: [], total: 0 };
-    failed.value = true;
-    ElMessage.error('加载模型配置失败');
-  } finally {
-    loading.value = false;
-  }
-}
+let listGeneration = 0;
+let refreshRevision = 0;
+let listResult = { items: [] as AiModelConfig[], total: 0 };
+const text = (value: unknown) =>
+  typeof value === 'string' ? value.trim() || undefined : undefined;
+const booleanFilter = (value: unknown) => {
+  if (value === true || value === 'true') return true;
+  if (value === false || value === 'false') return false;
+  return undefined;
+};
+const queryFilters = (values: Record<string, unknown>) => ({
+  providerCode: text(values.providerCode),
+  modelCode: text(values.modelCode),
+  enabled: booleanFilter(values.enabled),
+});
+const queryParameters = (
+  page: { currentPage: number; pageSize: number },
+  sort: { field?: string; order?: null | string },
+  values: Record<string, unknown>,
+) => ({
+  pageNum: page.currentPage,
+  pageSize: page.pageSize,
+  ...queryFilters(values),
+  ...(sort.order === 'asc' || sort.order === 'desc'
+    ? { orderBy: sort.field, order: sort.order as 'asc' | 'desc' }
+    : {}),
+});
+type GridQuery = {
+  page: { currentPage: number; pageSize: number };
+  sort: { field: string; order: 'asc' | 'desc' | null };
+};
+const [Grid, gridApi] = useVbenVxeGrid<AiModelConfig>({
+  formOptions: {
+    handleSubmit: async (values) => {
+      gridApi.formApi.setLatestSubmissionValues(values);
+      await gridApi.grid.setCurrentPage(1);
+      await gridApi.query();
+    },
+    showCollapseButton: true,
+    collapsedRows: 1,
+    handleReset: async () => {
+      await gridApi.formApi.resetForm();
+      await gridApi.grid.clearSort();
+      gridApi.formApi.setLatestSubmissionValues(
+        await gridApi.formApi.getValues(),
+      );
+      await gridApi.grid.setCurrentPage(1);
+      await gridApi.query();
+    },
+    schema: [
+      {
+        component: 'Input',
+        fieldName: 'providerCode',
+        label: '供应方',
+        componentProps: {
+          clearable: true,
+          maxlength: 64,
+          placeholder: '如 openai',
+        },
+      },
+      {
+        component: 'Input',
+        fieldName: 'modelCode',
+        label: '模型代号',
+        componentProps: {
+          clearable: true,
+          maxlength: 128,
+          placeholder: '精确匹配',
+        },
+      },
+      {
+        component: 'Select',
+        fieldName: 'enabled',
+        label: '状态',
+        componentProps: {
+          clearable: true,
+          options: [
+            { label: '启用', value: 'true' },
+            { label: '停用', value: 'false' },
+          ],
+        },
+      },
+    ],
+  },
+  gridOptions: {
+    rowConfig: { keyField: 'id' },
+    columns: [
+      { field: 'providerCode', title: '供应方', minWidth: 130, sortable: true },
+      { field: 'modelCode', title: '模型代号', minWidth: 180, sortable: true },
+      { field: 'endpointUrl', title: '服务端点', minWidth: 220 },
+      { title: '凭据', minWidth: 160, slots: { default: 'credential' } },
+      {
+        field: 'timeoutSeconds',
+        title: '超时（秒）',
+        width: 130,
+        sortable: true,
+      },
+      {
+        field: 'enabled',
+        title: '状态',
+        width: 100,
+        sortable: true,
+        slots: { default: 'enabled' },
+      },
+      {
+        title: '操作',
+        minWidth: 300,
+        fixed: 'right',
+        slots: { default: 'actions' },
+      },
+    ],
+    pagerConfig: { pageSize: 10, pageSizes: [10, 20, 50, 100] },
+    sortConfig: { remote: true },
+    toolbarConfig: {
+      refresh: true,
+      refreshOptions: { code: 'query' },
+      custom: true,
+      search: true,
+    },
+    proxyConfig: {
+      sort: true,
+      ajax: {
+        query: async (
+          { page, sort }: GridQuery,
+          values: Record<string, unknown>,
+        ) => {
+          const generation = ++listGeneration;
+          failed.value = false;
+          if (!can('ai:model:list'))
+            return (listResult = { items: [], total: 0 });
+          try {
+            let observedRefresh = refreshRevision;
+            let parameters = queryParameters(page, sort, values);
+            let result: Awaited<ReturnType<typeof listAiModels>> | undefined;
+            for (;;) {
+              let failure: unknown;
+              try {
+                result = await listAiModels(parameters);
+              } catch (error_) {
+                failure = error_;
+              }
+              if (generation !== listGeneration) return listResult;
+              // 本仓 Vxe 在 loading 中忽略新的 query；返回前以原生页码、表头和最近提交值接续。
+              if (gridApi.grid.getCurrentPage) {
+                const submitted = gridApi.formApi.getLatestSubmissionValues();
+                if (
+                  JSON.stringify(queryFilters(submitted)) !==
+                  JSON.stringify(queryFilters(parameters))
+                )
+                  await gridApi.grid.setCurrentPage(1);
+                const current = queryParameters(
+                  {
+                    currentPage: gridApi.grid.getCurrentPage(),
+                    pageSize: gridApi.grid.getPageSize(),
+                  },
+                  gridApi.grid.getSortColumns()[0] ?? {},
+                  submitted,
+                );
+                if (
+                  JSON.stringify(current) !== JSON.stringify(parameters) ||
+                  observedRefresh !== refreshRevision
+                ) {
+                  parameters = current;
+                  observedRefresh = refreshRevision;
+                  continue;
+                }
+              }
+              if (failure) throw failure;
+              if (!result) throw new Error('列表未返回结果');
+              break;
+            }
 
-function search() {
-  query.pageNum = 1;
-  void load();
-}
+            if (generation !== listGeneration || !can('ai:model:list'))
+              return listResult;
+            const total = Number(result.total);
+            if (!Number.isSafeInteger(total) || total < 0)
+              throw new Error('Invalid total');
+            listResult = { items: result.records, total };
+            return listResult;
+          } catch (error) {
+            if (generation !== listGeneration) return listResult;
+            failed.value = true;
+            listResult = { items: [], total: 0 };
+            throw error;
+          }
+        },
+      },
+    },
+  },
+});
+const load = () => {
+  ++refreshRevision;
+  return gridApi.query();
+};
+watch(
+  () => can('ai:model:list'),
+  () => {
+    ++listGeneration;
+    listResult = { items: [], total: 0 };
+    gridApi.grid?.loadData?.([]);
+    void gridApi.grid?.setCurrentPage?.(1)?.then(() => gridApi.query());
+  },
+);
+onBeforeUnmount(() => {
+  ++listGeneration;
+});
 
-function resetSearch() {
-  query.providerCode = '';
-  query.modelCode = '';
-  query.enabled = '';
-  search();
-}
-
-function onPageChange(pageNum: number) {
-  query.pageNum = pageNum;
-  void load();
-}
-
-function onPageSizeChange(pageSize: number) {
-  query.pageSize = pageSize;
-  query.pageNum = 1;
-  void load();
-}
+const [EditModal, editModalApi] = useVbenModal({
+  onBeforeClose: () => !saving.value,
+  onOpenChange: (open) => {
+    dialogVisible.value = open;
+  },
+});
+const [DetailModal, detailModalApi] = useVbenModal({
+  onOpenChange: (open) => {
+    detailVisible.value = open;
+  },
+});
+const [CredentialModal, credentialModalApi] = useVbenModal({
+  onBeforeClose: () => !credentialSaving.value,
+  onOpenChange: (open) => {
+    credentialVisible.value = open;
+  },
+  onClosed: () => {
+    credentialForm.apiKey = '';
+  },
+});
+const [TestModal, testModalApi] = useVbenModal({
+  footer: false,
+  onOpenChange: (open) => {
+    testVisible.value = open;
+  },
+});
+watch(dialogVisible, (open) =>
+  open ? editModalApi.open() : editModalApi.setState({ isOpen: false }),
+);
+watch(detailVisible, (open) =>
+  open ? detailModalApi.open() : void detailModalApi.close(),
+);
+watch(credentialVisible, (open) =>
+  open
+    ? credentialModalApi.open()
+    : credentialModalApi.setState({ isOpen: false }),
+);
+watch(credentialVisible, (open) => {
+  if (!open) void credentialFormApi.setFieldValue('apiKey', '', false);
+});
+watch(testVisible, (open) =>
+  open ? testModalApi.open() : void testModalApi.close(),
+);
 
 function openCreate() {
   editing.value = undefined;
@@ -124,6 +409,7 @@ function openCreate() {
     timeoutSeconds: 30,
   });
   dialogVisible.value = true;
+  void editFormApi.setValues(form);
 }
 
 async function openEdit(row: AiModelConfig) {
@@ -144,6 +430,7 @@ async function openEdit(row: AiModelConfig) {
     timeoutSeconds: latest.timeoutSeconds,
   });
   dialogVisible.value = true;
+  void editFormApi.setValues(form);
 }
 
 async function showDetail(row: AiModelConfig) {
@@ -156,6 +443,12 @@ async function showDetail(row: AiModelConfig) {
 }
 
 async function save() {
+  if (saving.value) return;
+  const validation = await editFormApi.validate();
+  if (!validation.valid) return;
+  const values = await editFormApi.getValues();
+  if (saving.value) return;
+  Object.assign(form, values);
   const data: AiModelChange = {
     providerCode: form.providerCode.trim().toLowerCase(),
     modelCode: form.modelCode.trim(),
@@ -245,6 +538,7 @@ async function openCredential(row: AiModelConfig) {
     credentialForm.apiKey = '';
     credentialForm.clearKey = false;
     credentialVisible.value = true;
+    void credentialFormApi.setValues(credentialForm);
   } catch {
     /* The shared interceptor displays the service error. */
   }
@@ -256,6 +550,9 @@ async function saveCredential() {
     !can('ai:model:edit')
   )
     return;
+  const values = await credentialFormApi.getValues();
+  if (credentialSaving.value) return;
+  Object.assign(credentialForm, values);
   credentialSaving.value = true;
   try {
     credentialTarget.value = await saveAiModelCredential(
@@ -286,25 +583,19 @@ async function runTest(row: AiModelConfig) {
     testingId.value = undefined;
   }
 }
-onMounted(load);
 </script>
 
 <template>
-  <Page content-class="admin-page">
-    <AdminPageHeader
-      title="AI模型配置"
-      description="配置模型、凭据并测试 OpenRouter 连接。"
-    >
-      <template #actions>
-        <el-button
-          v-if="can('ai:model:add')"
-          type="primary"
-          @click="openCreate"
-        >
-          新增模型
-        </el-button>
-      </template>
-    </AdminPageHeader>
+  <Page
+    header-class="flex-wrap gap-3"
+    title="AI模型配置"
+    description="配置模型、凭据并测试 OpenRouter 连接。"
+  >
+    <template #extra>
+      <el-button v-if="can('ai:model:add')" type="primary" @click="openCreate">
+        新增模型
+      </el-button>
+    </template>
     <div class="min-w-0 space-y-4">
       <el-alert
         title="密钥不会回显，模型测试会向 OpenRouter 发送一条简短请求。"
@@ -312,170 +603,87 @@ onMounted(load);
         closable
         show-icon
       />
-      <el-card>
-        <el-form inline @submit.prevent="search">
-          <el-form-item label="供应方">
-            <el-input
-              v-model="query.providerCode"
-              clearable
-              maxlength="64"
-              placeholder="如 openai"
-              @keyup.enter="search"
-            />
-          </el-form-item>
-          <el-form-item label="模型代号">
-            <el-input
-              v-model="query.modelCode"
-              clearable
-              maxlength="128"
-              placeholder="精确匹配"
-              @keyup.enter="search"
-            />
-          </el-form-item>
-          <el-form-item label="状态">
-            <el-select
-              v-model="query.enabled"
-              clearable
-              placeholder="全部"
-              class="w-32"
-            >
-              <el-option label="启用" value="true" />
-              <el-option label="停用" value="false" />
-            </el-select>
-          </el-form-item>
-          <el-form-item>
-            <el-button type="primary" @click="search">查询</el-button>
-            <el-button @click="resetSearch">重置</el-button>
-            <el-button :loading="loading" @click="load">刷新</el-button>
-          </el-form-item>
-        </el-form>
-
-        <el-alert
-          v-if="failed"
-          class="mb-4"
-          title="加载失败，请检查权限或服务状态后重试"
-          type="error"
-        >
-          <template #default>
-            <el-button link type="primary" @click="load">重新加载</el-button>
-          </template>
-        </el-alert>
-        <el-empty
-          v-if="!can('ai:model:list')"
-          description="无模型配置查看权限"
-        />
-        <el-empty
-          v-else-if="!loading && !failed && page.total === 0"
-          description="暂无模型配置"
-        />
-        <el-table v-else v-loading="loading" :data="page.records" row-key="id">
-          <el-table-column prop="providerCode" label="供应方" min-width="130" />
-          <el-table-column prop="modelCode" label="模型代号" min-width="180" />
-          <el-table-column
-            prop="endpointUrl"
-            label="服务端点"
-            min-width="220"
-            show-overflow-tooltip
-          />
-          <el-table-column label="凭据" min-width="160">
-            <template #default="{ row }">
-              {{
-                row.credentialMode === 'DB'
-                  ? '加密数据库'
-                  : row.credentialEnvName || '环境变量'
-              }}
-              · {{ row.credentialConfigured ? '已配置' : '未配置' }}
-            </template>
-          </el-table-column>
-          <el-table-column
-            prop="timeoutSeconds"
-            label="超时（秒）"
-            width="110"
-          />
-          <el-table-column label="状态" width="90">
-            <template #default="{ row }">
-              <el-tag :type="row.enabled ? 'success' : 'info'">
-                {{ row.enabled ? '启用' : '停用' }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column label="操作" min-width="230" fixed="right">
-            <template #default="{ row }">
-              <el-button
-                v-if="can('ai:model:query')"
-                link
-                type="primary"
-                @click="showDetail(row)"
-              >
-                详情
-              </el-button>
-              <el-button
-                v-if="can('ai:model:edit')"
-                link
-                type="primary"
-                @click="openEdit(row)"
-              >
-                编辑
-              </el-button>
-              <el-button
-                v-if="can('ai:model:edit')"
-                link
-                type="primary"
-                @click="openCredential(row)"
-              >
-                凭据
-              </el-button>
-              <el-button
-                v-if="can('ai:model:test')"
-                link
-                type="primary"
-                :loading="testingId === row.id"
-                :disabled="!row.enabled || testingId !== undefined"
-                @click="runTest(row)"
-              >
-                测试模型
-              </el-button>
-              <el-button
-                v-if="can('ai:model:edit')"
-                link
-                :type="row.enabled ? 'warning' : 'success'"
-                :loading="statusChangingId === row.id"
-                @click="changeStatus(row)"
-              >
-                {{ row.enabled ? '停用' : '启用' }}
-              </el-button>
-              <el-button
-                v-if="can('ai:model:remove') && !row.enabled"
-                link
-                type="danger"
-                @click="remove(row)"
-              >
-                删除
-              </el-button>
-            </template>
-          </el-table-column>
-        </el-table>
-        <div
-          v-if="can('ai:model:list') && Number(page.total) > 0"
-          class="mt-4 flex justify-end"
-        >
-          <el-pagination
-            :current-page="query.pageNum"
-            :page-size="query.pageSize"
-            :page-sizes="[10, 20, 50, 100]"
-            :total="Number(page.total)"
-            layout="total, sizes, prev, pager, next"
-            @current-change="onPageChange"
-            @size-change="onPageSizeChange"
-          />
-        </div>
-      </el-card>
+      <el-alert
+        v-if="failed"
+        title="加载失败，请检查权限或服务状态后重试"
+        type="error"
+      >
+        <el-button link type="primary" @click="load">重新加载</el-button>
+      </el-alert>
+      <el-empty v-if="!can('ai:model:list')" description="无模型配置查看权限" />
+      <Grid v-else>
+        <template #credential="{ row }">
+          {{
+            row.credentialMode === 'DB'
+              ? '加密数据库'
+              : row.credentialEnvName || '环境变量'
+          }}
+          · {{ row.credentialConfigured ? '已配置' : '未配置' }}
+        </template>
+        <template #enabled="{ row }">
+          <el-tag :type="row.enabled ? 'success' : 'info'">
+            {{ row.enabled ? '启用' : '停用' }}
+          </el-tag>
+        </template>
+        <template #actions="{ row }">
+          <el-button
+            v-if="can('ai:model:query')"
+            link
+            type="primary"
+            @click="showDetail(row)"
+          >
+            详情
+          </el-button>
+          <el-button
+            v-if="can('ai:model:edit')"
+            link
+            type="primary"
+            @click="openEdit(row)"
+          >
+            编辑
+          </el-button>
+          <el-button
+            v-if="can('ai:model:edit')"
+            link
+            type="primary"
+            @click="openCredential(row)"
+          >
+            凭据
+          </el-button>
+          <el-button
+            v-if="can('ai:model:test')"
+            link
+            type="primary"
+            :loading="testingId === row.id"
+            :disabled="!row.enabled || testingId !== undefined"
+            @click="runTest(row)"
+          >
+            测试模型
+          </el-button>
+          <el-button
+            v-if="can('ai:model:edit')"
+            link
+            :type="row.enabled ? 'warning' : 'success'"
+            :loading="statusChangingId === row.id"
+            @click="changeStatus(row)"
+          >
+            {{ row.enabled ? '停用' : '启用' }}
+          </el-button>
+          <el-button
+            v-if="can('ai:model:remove') && !row.enabled"
+            link
+            type="danger"
+            @click="remove(row)"
+          >
+            删除
+          </el-button>
+        </template>
+      </Grid>
     </div>
 
-    <el-dialog
-      v-model="dialogVisible"
+    <EditModal
       :title="editing ? '编辑模型配置' : '新增模型配置'"
-      width="620px"
+      class="w-full max-w-[620px]"
     >
       <el-alert
         class="mb-4"
@@ -483,48 +691,18 @@ onMounted(load);
         type="info"
         closable
       />
-      <el-form :model="form" label-width="120px">
-        <el-form-item label="供应方标识" required>
-          <el-input
-            v-model="form.providerCode"
-            maxlength="64"
-            placeholder="如 openai"
-          />
-        </el-form-item>
-        <el-form-item label="模型代号" required>
-          <el-input
-            v-model="form.modelCode"
-            maxlength="128"
-            placeholder="如 gpt-4.1-mini"
-          />
-        </el-form-item>
-        <el-form-item label="HTTPS 服务端点" required>
-          <el-input
-            v-model="form.endpointUrl"
-            maxlength="2048"
-            placeholder="https://api.example.com/v1"
-          />
-        </el-form-item>
-        <el-form-item label="凭据环境变量名">
-          <el-input
-            v-model="form.credentialEnvName"
-            maxlength="128"
-            placeholder="大写下划线格式，如 OPENAI_API_KEY"
-          />
-        </el-form-item>
-        <el-form-item label="超时（秒）" required>
-          <el-input-number v-model="form.timeoutSeconds" :min="1" :max="300" />
-        </el-form-item>
-      </el-form>
+      <EditForm />
       <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
+        <el-button :disabled="saving" @click="dialogVisible = false">
+          取消
+        </el-button>
         <el-button type="primary" :loading="saving" @click="save">
           保存
         </el-button>
       </template>
-    </el-dialog>
+    </EditModal>
 
-    <el-dialog v-model="detailVisible" title="模型配置详情" width="620px">
+    <DetailModal title="模型配置详情" class="w-full max-w-[620px]">
       <el-descriptions v-if="detail" :column="1" border>
         <el-descriptions-item label="供应方">
           {{ detail.providerCode }}
@@ -557,47 +735,15 @@ onMounted(load);
       <template #footer>
         <el-button @click="detailVisible = false">关闭</el-button>
       </template>
-    </el-dialog>
+    </DetailModal>
 
-    <el-dialog
-      v-model="credentialVisible"
+    <CredentialModal
       title="模型凭据"
-      width="540px"
+      class="w-full max-w-[540px]"
       :close-on-click-modal="!credentialSaving"
       :close-on-press-escape="!credentialSaving"
-      :show-close="!credentialSaving"
-      @closed="credentialForm.apiKey = ''"
     >
-      <el-form
-        label-width="120px"
-        :disabled="credentialSaving"
-        @submit.prevent="saveCredential"
-      >
-        <el-form-item label="密钥来源">
-          <el-select v-model="credentialForm.mode">
-            <el-option label="加密数据库" value="DB" />
-            <el-option label="环境变量引用" value="ENV" />
-          </el-select>
-        </el-form-item>
-        <el-form-item v-if="credentialForm.mode === 'DB'" label="API Key">
-          <el-input
-            v-model="credentialForm.apiKey"
-            type="password"
-            show-password
-            autocomplete="new-password"
-            placeholder="留空保持原密钥"
-            :maxlength="8192"
-          />
-        </el-form-item>
-        <el-form-item label="当前状态">
-          {{ credentialTarget?.credentialConfigured ? '已配置' : '未配置' }}
-        </el-form-item>
-        <el-form-item>
-          <el-checkbox v-model="credentialForm.clearKey">
-            明确清除数据库密钥
-          </el-checkbox>
-        </el-form-item>
-      </el-form>
+      <CredentialForm />
       <template #footer>
         <el-button
           :disabled="credentialSaving"
@@ -613,9 +759,9 @@ onMounted(load);
           保存凭据
         </el-button>
       </template>
-    </el-dialog>
-    <el-dialog v-model="testVisible" title="模型测试结果" width="620px">
-      <p v-if="testingId !== undefined" role="status">正在等待供应方响应…</p>
+    </CredentialModal>
+    <TestModal title="模型测试结果" class="w-full max-w-[620px]">
+      <Loading :spinning="testingId !== undefined" text="正在等待供应方响应…" />
       <el-descriptions v-if="testResult" :column="1" border>
         <el-descriptions-item label="结果">
           {{ testResult.message }}（{{ testResult.outcome }}）
@@ -639,6 +785,6 @@ onMounted(load);
           <pre class="whitespace-pre-wrap">{{ testResult.content || '-' }}</pre>
         </el-descriptions-item>
       </el-descriptions>
-    </el-dialog>
+    </TestModal>
   </Page>
 </template>

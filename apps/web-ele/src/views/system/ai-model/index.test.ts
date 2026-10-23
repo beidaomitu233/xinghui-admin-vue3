@@ -1,47 +1,28 @@
-import type { PropType } from 'vue';
+import type { AiModelPage } from '#/api/system/ai-model';
 
-import type { AiModelConfig } from '#/api/system/ai-model';
+import { DOMWrapper, flushPromises, mount } from '@vue/test-utils';
 
-import { flushPromises, mount } from '@vue/test-utils';
-import { defineComponent, h } from 'vue';
+import ElementPlus from 'element-plus';
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-
-import { listAiModels } from '#/api/system/ai-model';
+import { initComponentAdapter } from '#/adapter/component';
+import { initSetupVbenForm } from '#/adapter/form';
+import { createAiModel, listAiModels } from '#/api/system/ai-model';
 
 import ModelPage from './index.vue';
 
 const accessState = vi.hoisted(() => ({ codes: [] as string[] }));
 
-vi.mock('@vben/common-ui', () => ({
-  Page: { template: '<div><slot /></div>' },
-}));
 vi.mock('@vben/stores', () => ({
   useAccessStore: () => ({ accessCodes: accessState.codes }),
-}));
-vi.mock('element-plus', () => ({
-  ElMessage: { error: vi.fn(), warning: vi.fn(), success: vi.fn() },
-  ElMessageBox: { confirm: vi.fn() },
-  ElLoadingDirective: { mounted: () => {}, updated: () => {} },
-  ElAlert: { name: 'ElAlert', render: () => null },
-  ElButton: { name: 'ElButton', render: () => null },
-  ElCard: { name: 'ElCard', render: () => null },
-  ElCheckbox: { name: 'ElCheckbox', render: () => null },
-  ElDescriptions: { name: 'ElDescriptions', render: () => null },
-  ElDescriptionsItem: { name: 'ElDescriptionsItem', render: () => null },
-  ElDialog: { name: 'ElDialog', render: () => null },
-  ElEmpty: { name: 'ElEmpty', render: () => null },
-  ElForm: { name: 'ElForm', render: () => null },
-  ElFormItem: { name: 'ElFormItem', render: () => null },
-  ElInput: { name: 'ElInput', render: () => null },
-  ElInputNumber: { name: 'ElInputNumber', render: () => null },
-  ElOption: { name: 'ElOption', render: () => null },
-  ElPagination: { name: 'ElPagination', render: () => null },
-  ElSelect: { name: 'ElSelect', render: () => null },
-  ElSwitch: { name: 'ElSwitch', render: () => null },
-  ElTable: { name: 'ElTable', render: () => null },
-  ElTableColumn: { name: 'ElTableColumn', render: () => null },
-  ElTag: { name: 'ElTag', render: () => null },
 }));
 vi.mock('#/api/system/ai-model', () => ({
   createAiModel: vi.fn(),
@@ -54,83 +35,32 @@ vi.mock('#/api/system/ai-model', () => ({
   testAiModel: vi.fn(),
 }));
 
-const Container = defineComponent({
-  props: { title: String, description: String },
-  setup(props, { slots }) {
-    return () => h('div', [props.title, props.description, slots.default?.()]);
-  },
-});
-
-const Button = defineComponent({
-  emits: ['click'],
-  setup(_, { emit, slots }) {
-    return () =>
-      h('button', { onClick: () => emit('click') }, slots.default?.());
-  },
-});
-
-const Input = defineComponent({
-  props: { modelValue: String },
-  emits: ['update:modelValue', 'keyup'],
-  setup(_, { emit }) {
-    return () =>
-      h('input', {
-        onInput: (event: Event) =>
-          emit('update:modelValue', (event.target as HTMLInputElement).value),
-      });
-  },
-});
-
-const ModelTable = defineComponent({
-  props: {
-    data: { type: Array as PropType<AiModelConfig[]>, default: () => [] },
-  },
-  setup(props) {
-    return () =>
-      h(
-        'div',
-        props.data.map((entry) =>
-          h(
-            'div',
-            { class: 'model-row' },
-            [
-              entry.providerCode,
-              entry.modelCode,
-              entry.endpointUrl,
-              entry.credentialEnvName ?? '',
-            ].join(' '),
-          ),
-        ),
-      );
-  },
-});
-
+const pages: ReturnType<typeof mount>[] = [];
 function mountPage() {
-  return mount(ModelPage, {
-    global: {
-      stubs: {
-        ElAlert: Container,
-        ElButton: Button,
-        ElCard: Container,
-        ElDescriptions: Container,
-        ElDescriptionsItem: Container,
-        ElDialog: Container,
-        ElEmpty: Container,
-        ElForm: Container,
-        ElFormItem: Container,
-        ElInput: Input,
-        ElInputNumber: Container,
-        ElOption: Container,
-        ElPagination: Container,
-        ElSelect: Container,
-        ElSwitch: Container,
-        ElTable: ModelTable,
-        ElTableColumn: { template: '<div />' },
-        ElTag: Container,
-      },
-      directives: { loading: () => {} },
-    },
+  const wrapper = mount(ModelPage, {
+    attachTo: document.body,
+    global: { plugins: [ElementPlus] },
   });
+  pages.push(wrapper);
+  return wrapper;
+}
+beforeAll(async () => {
+  await initComponentAdapter();
+  await initSetupVbenForm();
+});
+afterEach(() => {
+  for (const wrapper of pages) if (wrapper.exists()) wrapper.unmount();
+  pages.length = 0;
+  document.body.innerHTML = '';
+});
+function deferred<T>() {
+  let resolve: (value: T) => void = () => {
+    throw new Error('Deferred not initialized');
+  };
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
 }
 
 describe('aI model configuration page', () => {
@@ -199,5 +129,79 @@ describe('aI model configuration page', () => {
 
     expect(listAiModels).not.toHaveBeenCalled();
     expect(wrapper.text()).toContain('无模型配置查看权限');
+  });
+  it('coalesces a same-parameter refresh after a write and blocks double submit during async form reads', async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+    const initialCall = vi.mocked(listAiModels).mock.results[0];
+    if (initialCall?.type !== 'return')
+      throw new Error('Initial native query missing');
+    const original: AiModelPage = await initialCall.value;
+    const slow = deferred<AiModelPage>();
+    const accepted = deferred<string>();
+    const originalModel = original.records[0];
+    if (!originalModel) throw new Error('Initial model fixture missing');
+    const updated: AiModelPage = {
+      ...original,
+      total: 2,
+      records: [
+        ...original.records,
+        {
+          ...originalModel,
+          id: '9007199254740993123',
+          modelCode: 'created-during-list',
+        },
+      ],
+    };
+    vi.mocked(listAiModels)
+      .mockReturnValueOnce(slow.promise)
+      .mockResolvedValueOnce(updated);
+    vi.mocked(createAiModel).mockReturnValueOnce(accepted.promise);
+    const grid = wrapper.findComponent({ name: 'VxeGrid' });
+    expect(grid.exists()).toBe(true);
+    void (
+      grid.vm as unknown as { commitProxy: (code: string) => Promise<unknown> }
+    ).commitProxy('query');
+    await flushPromises();
+    expect(listAiModels).toHaveBeenCalledTimes(2);
+    const create = wrapper
+      .findAll('button')
+      .find((button) => button.text() === '新增模型');
+    if (!create) throw new Error('Create action missing');
+    await create.trigger('click');
+    await flushPromises();
+    const dialog = document.querySelector<HTMLElement>(
+      '[role="dialog"][data-state="open"]',
+    );
+    if (!dialog) throw new Error('Native model editor missing');
+    for (const [placeholder, value] of [
+      ['如 openai', 'openai'],
+      ['如 gpt-4.1-mini', 'created-during-list'],
+      ['https://api.example.com/v1', 'https://api.example.com/v1'],
+    ]) {
+      const input = dialog.querySelector<HTMLInputElement>(
+        `input[placeholder="${placeholder}"]`,
+      );
+      if (!input) throw new Error(`Input missing: ${placeholder}`);
+      await new DOMWrapper(input).setValue(value);
+    }
+    const save = [...dialog.querySelectorAll('button')].find(
+      (button) => button.textContent?.trim() === '保存',
+    );
+    if (!save) throw new Error('Save action missing');
+    const saveButton = new DOMWrapper(save);
+    await Promise.all([
+      saveButton.trigger('click'),
+      saveButton.trigger('click'),
+    ]);
+    await flushPromises();
+    expect(createAiModel).toHaveBeenCalledTimes(1);
+    accepted.resolve('9007199254740993123');
+    await flushPromises();
+    slow.resolve(original);
+    await flushPromises();
+    await vi.waitFor(() => expect(listAiModels).toHaveBeenCalledTimes(3));
+    expect(wrapper.text()).toContain('created-during-list');
+    expect(createAiModel).toHaveBeenCalledTimes(1);
   });
 });

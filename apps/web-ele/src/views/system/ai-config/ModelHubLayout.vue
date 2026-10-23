@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { ElButton, ElInput } from 'element-plus';
+import { Page } from '@vben/common-ui';
 
-import AdminPageHeader from '#/components/admin-page-header.vue';
+import { ElButton, ElInput, ElTabPane, ElTabs } from 'element-plus';
 
 defineProps<{
   busy?: boolean;
@@ -24,12 +24,14 @@ const panes = [
 </script>
 
 <template>
-  <section class="model-hub" aria-label="AI 配置工作区">
-    <AdminPageHeader
-      title="AI 配置"
-      description="管理业务模型、供应商与接入渠道"
-    >
-      <template #actions>
+  <Page
+    auto-content-height
+    header-class="flex-wrap gap-3"
+    title="AI 配置"
+    description="管理业务模型、供应商与接入渠道"
+  >
+    <template #extra>
+      <div class="flex flex-wrap gap-2">
         <slot name="header-actions"></slot>
         <ElButton
           v-if="canAddChannel"
@@ -46,54 +48,55 @@ const panes = [
         >
           添加模型
         </ElButton>
-      </template>
-    </AdminPageHeader>
-    <div class="hub-workspace">
-      <aside class="hub-sidebar">
-        <div class="hub-sidebar-heading">
-          <div class="hub-sidebar-tabs" role="tablist" aria-label="管理对象">
-            <button
-              v-for="item in panes"
-              :key="item.value"
-              type="button"
-              role="tab"
-              :aria-selected="view === item.value"
-              :class="{ active: view === item.value }"
-              :disabled="busy"
-              @click="emit('selectView', item.value)"
+      </div>
+    </template>
+    <section class="model-hub" aria-label="AI 配置工作区">
+      <div class="hub-workspace">
+        <aside class="hub-sidebar">
+          <div class="hub-sidebar-heading">
+            <ElTabs
+              :model-value="view"
+              aria-label="管理对象"
+              @tab-change="emit('selectView', $event as 'models' | 'suppliers')"
             >
-              {{ item.label }}
-            </button>
+              <ElTabPane
+                v-for="item in panes"
+                :key="item.value"
+                :name="item.value"
+                :label="item.label"
+                :disabled="busy"
+              />
+            </ElTabs>
+            <span class="hub-count">{{ count }}</span>
           </div>
-          <span class="hub-count">{{ count }}</span>
-        </div>
-        <ElInput
-          :model-value="query"
-          :aria-label="view === 'models' ? '搜索模型' : '搜索供应商或渠道'"
-          :placeholder="view === 'models' ? '搜索模型' : '搜索供应商或渠道'"
-          clearable
-          :disabled="busy"
-          class="hub-search"
-          @update:model-value="emit('search', $event)"
-        />
-        <nav
-          class="hub-list"
-          :aria-label="view === 'models' ? '业务模型' : '供应商渠道'"
+          <ElInput
+            :model-value="query"
+            :aria-label="view === 'models' ? '搜索模型' : '搜索供应商或渠道'"
+            :placeholder="view === 'models' ? '搜索模型' : '搜索供应商或渠道'"
+            clearable
+            :disabled="busy"
+            class="hub-search"
+            @update:model-value="emit('search', $event)"
+          />
+          <nav
+            class="hub-list"
+            :aria-label="view === 'models' ? '业务模型' : '供应商渠道'"
+          >
+            <slot name="sidebar"></slot>
+          </nav>
+          <footer class="hub-sidebar-footer">
+            <slot name="sidebar-footer"></slot>
+          </footer>
+        </aside>
+        <section
+          class="hub-detail"
+          :aria-label="view === 'models' ? '当前模型配置' : '当前供应商配置'"
         >
-          <slot name="sidebar"></slot>
-        </nav>
-        <footer class="hub-sidebar-footer">
-          <slot name="sidebar-footer"></slot>
-        </footer>
-      </aside>
-      <section
-        class="hub-detail"
-        :aria-label="view === 'models' ? '当前模型配置' : '当前供应商配置'"
-      >
-        <slot></slot>
-      </section>
-    </div>
-  </section>
+          <slot></slot>
+        </section>
+      </div>
+    </section>
+  </Page>
 </template>
 
 <style scoped>
@@ -104,8 +107,8 @@ const panes = [
   flex-direction: column;
   gap: 16px;
   min-width: 0;
-  height: calc(var(--vben-content-height, calc(100dvh - 112px)) - 48px);
-  min-height: 560px;
+  height: 100%;
+  min-height: 0;
   color: hsl(var(--foreground));
 }
 
@@ -150,33 +153,6 @@ const panes = [
   min-height: 0;
   padding: 24px 16px 0;
   border-right: 1px solid hsl(var(--border));
-}
-
-.hub-sidebar-tabs {
-  display: flex;
-  gap: 24px;
-}
-
-.hub-sidebar-tabs button {
-  padding: 0 0 8px;
-  color: hsl(var(--muted-foreground));
-  background: transparent;
-  border-bottom: 2px solid transparent;
-}
-
-.hub-sidebar-tabs button.active {
-  font-weight: 600;
-  color: hsl(var(--foreground));
-  border-bottom-color: hsl(var(--primary));
-}
-
-.hub-sidebar-tabs button:focus-visible {
-  outline: 2px solid hsl(var(--primary));
-  outline-offset: 3px;
-}
-
-.hub-sidebar-tabs button:disabled {
-  cursor: wait;
 }
 
 .hub-list {

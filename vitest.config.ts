@@ -26,5 +26,11 @@ export default defineConfig({
       '**/{stylelint,eslint}.config.*',
       '.prettierrc.mjs',
     ],
+    server: {
+      deps: {
+        // Transform the native controls' ESM style imports, as in the application test runner.
+        inline: ['element-plus'],
+      },
+    },
   },
 });

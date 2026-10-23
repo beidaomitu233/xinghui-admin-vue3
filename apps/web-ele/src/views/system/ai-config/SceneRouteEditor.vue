@@ -5,6 +5,8 @@ import type { SceneModelOption, SceneModelPolicy } from '#/api/system/ai-scene';
 
 import { computed } from 'vue';
 
+import { VbenButtonGroup } from '@vben/common-ui';
+
 import { ElButton, ElCheckbox, ElOption, ElSelect } from 'element-plus';
 
 import {
@@ -142,7 +144,7 @@ function setFallback(value: boolean) {
           :label="option.maskedLabel"
         />
       </ElSelect>
-      <div class="route-order-actions">
+      <VbenButtonGroup :gap="4" size="small">
         <ElButton
           text
           :disabled="readonly || index === 0"
@@ -159,7 +161,7 @@ function setFallback(value: boolean) {
         >
           下移
         </ElButton>
-      </div>
+      </VbenButtonGroup>
     </div>
     <ElCheckbox
       :model-value="value.fallback"

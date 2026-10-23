@@ -11,14 +11,29 @@ export interface NoticeInfo {
   updateBy: string;
   updateTime: string;
   remark: string;
+  startTime?: string;
+  endTime?: string;
 }
 
-export function getNoticeList(params: any) {
-  return requestClient.get('/system/notice/list', { params });
+export interface NoticeQuery {
+  pageNum: number;
+  pageSize: number;
+  noticeTitle?: string;
+  noticeType?: string;
+  status?: string;
+  orderBy?: string;
+  order?: 'asc' | 'desc';
+}
+export function getNoticeList(params: NoticeQuery) {
+  return requestClient.get<{
+    records?: NoticeInfo[];
+    rows?: NoticeInfo[];
+    total: number | string;
+  }>('/system/notice/list', { params });
 }
 
 export function getNotice(noticeId: number) {
-  return requestClient.get(`/system/notice/${noticeId}`);
+  return requestClient.get<NoticeInfo>(`/system/notice/${noticeId}`);
 }
 
 export function addNotice(data: any) {

@@ -4,6 +4,13 @@ import type { CallLogDetail } from '#/api/system/ai-call-log';
 import { computed } from 'vue';
 
 import {
+  ElCollapse,
+  ElCollapseItem,
+  ElDescriptions,
+  ElDescriptionsItem,
+} from 'element-plus';
+
+import {
   costValue,
   entryLabels,
   exact,
@@ -82,29 +89,36 @@ const diagnostics = computed(() => [
 <template>
   <article class="call-detail">
     <h3>概览</h3>
-    <dl class="call-facts">
-      <div v-for="[label, value] in overview" :key="String(label)">
-        <dt>{{ label }}</dt>
-        <dd>{{ exact(value, '未提供') }}</dd>
-      </div>
-    </dl>
+    <ElDescriptions :column="1" border>
+      <ElDescriptionsItem
+        v-for="[label, value] in overview"
+        :key="String(label)"
+        :label="String(label)"
+      >
+        {{ exact(value, '未提供') }}
+      </ElDescriptionsItem>
+    </ElDescriptions>
     <h3>用量与时间</h3>
-    <dl class="call-facts">
-      <div v-for="[field, label] in tokenFields" :key="field">
-        <dt>{{ label }} Token</dt>
-        <dd>{{ tokenValue(call, call[field]) }}</dd>
-      </div>
-      <div v-for="[field, label] in timingFields" :key="field">
-        <dt>{{ label }}</dt>
-        <dd>
-          {{
-            field === 'firstOutputMs' || field === 'firstTextMs'
-              ? outputTime(call, call[field])
-              : exact(call[field]) + (call[field] === null ? '' : ' ms')
-          }}
-        </dd>
-      </div>
-    </dl>
+    <ElDescriptions :column="1" border>
+      <ElDescriptionsItem
+        v-for="[field, label] in tokenFields"
+        :key="field"
+        :label="`${label} Token`"
+      >
+        {{ tokenValue(call, call[field]) }}
+      </ElDescriptionsItem>
+      <ElDescriptionsItem
+        v-for="[field, label] in timingFields"
+        :key="field"
+        :label="label"
+      >
+        {{
+          field === 'firstOutputMs' || field === 'firstTextMs'
+            ? outputTime(call, call[field])
+            : exact(call[field]) + (call[field] === null ? '' : ' ms')
+        }}
+      </ElDescriptionsItem>
+    </ElDescriptions>
     <p>
       首输出指首个非空模型内容，响应头、首字节与首文本分别计时。缓存、推理为用量子集，不重复相加。
     </p>
@@ -148,15 +162,19 @@ const diagnostics = computed(() => [
       }}</pre>
     </template>
     <p v-else>响应正文不可用或无权查看。</p>
-    <details class="call-diagnostics">
-      <summary>诊断信息</summary>
-      <dl class="call-facts">
-        <div v-for="[label, value] in diagnostics" :key="String(label)">
-          <dt>{{ label }}</dt>
-          <dd>{{ exact(value, '未提供') }}</dd>
-        </div>
-      </dl>
-    </details>
+    <ElCollapse>
+      <ElCollapseItem title="诊断信息" name="diagnostics">
+        <ElDescriptions :column="1" border>
+          <ElDescriptionsItem
+            v-for="[label, value] in diagnostics"
+            :key="String(label)"
+            :label="String(label)"
+          >
+            {{ exact(value, '未提供') }}
+          </ElDescriptionsItem>
+        </ElDescriptions>
+      </ElCollapseItem>
+    </ElCollapse>
   </article>
 </template>
 

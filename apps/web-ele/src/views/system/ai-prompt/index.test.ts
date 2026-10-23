@@ -1,15 +1,23 @@
-import type { PropType } from 'vue';
-
 import type {
   PromptSceneSummary,
   PromptSceneView,
 } from '#/api/system/ai-prompt-scene';
 
-import { flushPromises, mount } from '@vue/test-utils';
-import { defineComponent, h, ref } from 'vue';
+import { DOMWrapper, flushPromises, mount } from '@vue/test-utils';
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import ElementPlus, { ElMessageBox } from 'element-plus';
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 
+import { initComponentAdapter } from '#/adapter/component';
+import { initSetupVbenForm } from '#/adapter/form';
 import {
   listPromptScenes,
   previewPromptScene,
@@ -31,96 +39,10 @@ const apiMocks = vi.hoisted(() => ({
   setPromptSceneEnabled: vi.fn(),
   updatePromptSceneDraft: vi.fn(),
 }));
-
-vi.mock('@vben/common-ui', () => ({
-  Page: { template: '<div><slot /></div>' },
-}));
 vi.mock('@vben/stores', () => ({
   useAccessStore: () => ({ accessCodes: accessState.codes }),
 }));
-vi.mock('element-plus', () => ({
-  ElMessage: { error: vi.fn(), warning: vi.fn(), success: vi.fn() },
-  ElMessageBox: { confirm: vi.fn() },
-  ElLoadingDirective: { mounted: () => {}, updated: () => {} },
-  ElAlert: { name: 'ElAlert', render: () => null },
-  ElButton: { name: 'ElButton', render: () => null },
-  ElCard: { name: 'ElCard', render: () => null },
-  ElDescriptions: { name: 'ElDescriptions', render: () => null },
-  ElDescriptionsItem: { name: 'ElDescriptionsItem', render: () => null },
-  ElDialog: { name: 'ElDialog', render: () => null },
-  ElEmpty: { name: 'ElEmpty', render: () => null },
-  ElForm: { name: 'ElForm', render: () => null },
-  ElFormItem: { name: 'ElFormItem', render: () => null },
-  ElInput: { name: 'ElInput', render: () => null },
-  ElOption: { name: 'ElOption', render: () => null },
-  ElPagination: { name: 'ElPagination', render: () => null },
-  ElSelect: { name: 'ElSelect', render: () => null },
-  ElSwitch: { name: 'ElSwitch', render: () => null },
-  ElTable: { name: 'ElTable', render: () => null },
-  ElTableColumn: { name: 'ElTableColumn', render: () => null },
-  ElTag: { name: 'ElTag', render: () => null },
-}));
 vi.mock('#/api/system/ai-prompt-scene', () => apiMocks);
-
-const rows = ref<PromptSceneSummary[]>([]);
-const Container = defineComponent({
-  props: {
-    title: String,
-    description: String,
-    label: String,
-    modelValue: [Boolean, Number, String],
-  },
-  setup(props, { slots }) {
-    return () =>
-      h('div', [
-        props.title,
-        props.description,
-        props.label,
-        slots.default?.(),
-        slots.footer?.(),
-      ]);
-  },
-});
-
-const Button = defineComponent({
-  props: { disabled: Boolean, loading: Boolean, link: Boolean, type: String },
-  emits: ['click'],
-  setup(props, { emit, slots }) {
-    return () =>
-      h(
-        'button',
-        { disabled: props.disabled, onClick: () => emit('click') },
-        slots.default?.(),
-      );
-  },
-});
-
-const Table = defineComponent({
-  props: {
-    data: { type: Array as PropType<PromptSceneSummary[]>, default: () => [] },
-  },
-  setup(props, { slots }) {
-    return () => {
-      rows.value = props.data;
-      return h('div', { class: 'scene-table' }, slots.default?.());
-    };
-  },
-});
-
-const Column = defineComponent({
-  props: { label: String, prop: String },
-  setup(props, { slots }) {
-    return () =>
-      h('div', { class: 'scene-column' }, [
-        props.label,
-        ...rows.value.map(
-          (row) =>
-            slots.default?.({ row }) ??
-            h('span', String((row as any)[props.prop ?? ''] ?? '')),
-        ),
-      ]);
-  },
-});
 
 const summary: PromptSceneSummary = {
   id: 7,
@@ -167,36 +89,30 @@ const scene: PromptSceneView = {
   createTime: '2026-09-27T02:00:00',
 };
 
+const pages: ReturnType<typeof mount>[] = [];
 function mountPage() {
-  return mount(PromptScenePage, {
-    global: {
-      stubs: {
-        ElAlert: Container,
-        ElButton: Button,
-        ElCard: Container,
-        ElDescriptions: Container,
-        ElDescriptionsItem: Container,
-        ElDialog: Container,
-        ElEmpty: Container,
-        ElForm: Container,
-        ElFormItem: Container,
-        ElInput: Container,
-        ElOption: Container,
-        ElPagination: Container,
-        ElSelect: Container,
-        ElSwitch: Container,
-        ElTable: Table,
-        ElTableColumn: Column,
-        ElTag: Container,
-      },
-      directives: { loading: () => {} },
-    },
+  const wrapper = mount(PromptScenePage, {
+    attachTo: document.body,
+    global: { plugins: [ElementPlus] },
   });
+  pages.push(wrapper);
+  return wrapper;
 }
+beforeAll(async () => {
+  await initComponentAdapter();
+  await initSetupVbenForm();
+});
+afterEach(() => {
+  for (const wrapper of pages) if (wrapper.exists()) wrapper.unmount();
+  pages.length = 0;
+  vi.restoreAllMocks();
+  document.body.innerHTML = '';
+});
 
 describe('aI prompt scene page', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue('confirm');
     accessState.codes = [
       'ai:prompt:list',
       'ai:prompt:query',
@@ -206,7 +122,6 @@ describe('aI prompt scene page', () => {
       'ai:prompt:enable',
       'ai:prompt:remove',
     ];
-    rows.value = [];
     apiMocks.listPromptScenes.mockResolvedValue({
       records: [summary],
       total: 1,
@@ -265,7 +180,8 @@ describe('aI prompt scene page', () => {
     expect(previewButton).toBeDefined();
     await requireTestFixture(previewButton).trigger('click');
     await flushPromises();
-    const runButton = wrapper
+    const portal = new DOMWrapper(document.body);
+    const runButton = portal
       .findAll('button')
       .find((button) => button.text() === '生成中性预览');
     expect(runButton).toBeDefined();
@@ -276,8 +192,8 @@ describe('aI prompt scene page', () => {
       revision: summary.revision,
       values: { recordName: 'Sample record' },
     });
-    expect(wrapper.text()).toContain('Summarize Sample record');
-    expect(wrapper.text()).toContain('不调用 AI 模型');
+    expect(portal.text()).toContain('Summarize Sample record');
+    expect(portal.text()).toContain('不调用 AI 模型');
   });
 
   it('does not call list or show privileged controls without the list permission', async () => {

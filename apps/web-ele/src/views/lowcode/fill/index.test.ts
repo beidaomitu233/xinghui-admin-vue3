@@ -2,9 +2,25 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { reactive } from 'vue';
 
 import ElementPlus, { ElMessageBox } from 'element-plus';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
+
+import { initComponentAdapter } from '#/adapter/component';
+import { initSetupVbenForm } from '#/adapter/form';
 
 import FillPage from './index.vue';
+
+beforeAll(async () => {
+  await initComponentAdapter();
+  await initSetupVbenForm();
+});
 
 const context = vi.hoisted(() => ({
   push: vi.fn(),
@@ -21,7 +37,10 @@ vi.mock('vue-router', () => ({
   useRouter: () => ({ push: context.push }),
 }));
 vi.mock('#/store/auth', () => ({ useAuthStore: () => context }));
-vi.mock('@vben/hooks', () => ({ useAppConfig: () => ({ apiURL: '/api' }) }));
+vi.mock('@vben/hooks', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  useAppConfig: () => ({ apiURL: '/api' }),
+}));
 vi.mock('@vben/stores', () => ({ useAccessStore: () => context }));
 const definition = {
   title: '报名填写',

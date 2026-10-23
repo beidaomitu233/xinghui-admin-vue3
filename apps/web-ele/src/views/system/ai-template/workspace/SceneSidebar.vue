@@ -1,9 +1,19 @@
 <script setup lang="ts">
 import type { SceneSummary } from '#/api/system/ai-scene';
 
-import { ElButton, ElEmpty, ElInput, ElSkeleton } from 'element-plus';
+import { computed } from 'vue';
 
-defineProps<{
+import { Loading } from '@vben/common-ui';
+
+import {
+  ElAlert,
+  ElButton,
+  ElEmpty,
+  ElInput,
+  ElPagination,
+} from 'element-plus';
+
+const props = defineProps<{
   activeKey: null | string;
   loading: boolean;
   page: number;
@@ -16,6 +26,11 @@ defineEmits<{
   select: [key: string];
   'update:search': [value: string];
 }>();
+const totalCount = computed(() => {
+  const count = Number(props.total);
+  return Number.isSafeInteger(count) && count >= 0 ? count : 0;
+});
+const invalidTotal = computed(() => !Number.isSafeInteger(Number(props.total)));
 </script>
 <template>
   <aside class="scene-sidebar">
@@ -29,7 +44,7 @@ defineEmits<{
       :model-value="search"
       @update:model-value="$emit('update:search', $event)"
     />
-    <ElSkeleton v-if="loading" :rows="5" animated />
+    <Loading v-if="loading" :spinning="true" text="正在读取场景…" />
     <ElEmpty
       v-else-if="scenes.length === 0"
       description="暂无匹配场景"
@@ -54,25 +69,21 @@ defineEmits<{
         </span>
       </ElButton>
     </nav>
-    <div class="scene-pages">
-      <ElButton
-        text
-        size="small"
-        :disabled="loading || page <= 1"
-        @click="$emit('page', page - 1)"
-      >
-        上一页
-      </ElButton>
-      <span>{{ page }}</span>
-      <ElButton
-        text
-        size="small"
-        :disabled="loading || BigInt(page * 100) >= BigInt(total)"
-        @click="$emit('page', page + 1)"
-      >
-        下一页
-      </ElButton>
-    </div>
+    <ElAlert
+      v-if="invalidTotal"
+      title="场景总数无效，请重新读取"
+      type="error"
+      :closable="false"
+    />
+    <ElPagination
+      :current-page="page"
+      :page-size="100"
+      :total="totalCount"
+      :disabled="loading || invalidTotal"
+      layout="prev,pager,next"
+      small
+      @current-change="$emit('page', $event)"
+    />
   </aside>
 </template>
 <style scoped>

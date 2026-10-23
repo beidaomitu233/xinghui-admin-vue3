@@ -8,7 +8,6 @@ import type {
 
 import {
   computed,
-  nextTick,
   onActivated,
   onBeforeUnmount,
   onDeactivated,
@@ -16,8 +15,13 @@ import {
   watch,
 } from 'vue';
 
+import { Loading, useVbenDrawer } from '@vben/common-ui';
 import { useAccessStore } from '@vben/stores';
 
+import { ElAlert, ElButton } from 'element-plus';
+
+import { useVbenForm } from '#/adapter/form';
+import { useVbenVxeGrid } from '#/adapter/vxe-table';
 import {
   callLogStatistics,
   exportCallLogs,
@@ -50,11 +54,10 @@ const rows = ref<CallLogRow[]>([]);
 const stats = ref<CallLogStatistics>();
 const total = ref('0');
 const page = ref(1);
+const pageSize = ref(20);
+const sorting = ref<{ order?: 'asc' | 'desc'; orderBy?: string }>({});
 const detail = ref<Detail>();
 const detailOpen = ref(false);
-const drawer = ref<HTMLElement>();
-const closeButton = ref<HTMLButtonElement>();
-let returnFocus: HTMLElement | null = null;
 const loading = ref(false);
 const detailLoading = ref(false);
 const detailError = ref('');
@@ -88,6 +91,7 @@ function clear() {
   queried.value = false;
   exporting.value = false;
   error.value = '';
+  gridApi?.grid?.loadData?.([]);
 }
 function validDates() {
   const start = from.value ? new Date(from.value).getTime() : null;
@@ -112,7 +116,12 @@ async function load() {
   try {
     const params = query();
     const [result, counts] = await Promise.all([
-      listCallLogs({ ...params, pageNum: page.value, pageSize: 20 }),
+      listCallLogs({
+        ...params,
+        ...sorting.value,
+        pageNum: page.value,
+        pageSize: pageSize.value,
+      }),
       callLogStatistics(params),
     ]);
     if (run !== generation || !enabled.value) return;
@@ -127,9 +136,13 @@ async function load() {
     if (run === generation) loading.value = false;
   }
 }
-function search() {
+let submittedRevision = 0;
+async function search() {
+  ++submittedRevision;
+  if (!gridApi.grid.setCurrentPage) return;
   page.value = 1;
-  void load();
+  await gridApi.grid?.setCurrentPage?.(1);
+  await gridApi.query();
 }
 async function open(row: CallLogRow) {
   if (!enabled.value || !can('query')) return;
@@ -165,41 +178,241 @@ function closeDetail() {
   detailOpen.value = false;
   detailLoading.value = false;
 }
-function drawerKeys(event: KeyboardEvent) {
-  if (event.key === 'Escape') {
-    event.preventDefault();
-    closeDetail();
-    return;
-  }
-  if (event.key !== 'Tab') return;
-  const controls = [
-    ...(drawer.value?.querySelectorAll<HTMLElement>(
-      'button, summary, [tabindex="0"]',
-    ) ?? []),
-  ];
-  const first = controls[0];
-  const last = controls.at(-1);
-  if (event.shiftKey && document.activeElement === first) {
-    event.preventDefault();
-    last?.focus();
-  } else if (!event.shiftKey && document.activeElement === last) {
-    event.preventDefault();
-    first?.focus();
-  }
-}
-watch(detailOpen, async (opened) => {
-  if (opened) {
-    returnFocus =
-      document.activeElement instanceof HTMLElement
-        ? document.activeElement
-        : null;
-    await nextTick();
-    if (detailOpen.value) closeButton.value?.focus();
-  } else {
-    returnFocus?.focus();
-    returnFocus = null;
-  }
+const [DetailDrawer, drawerApi] = useVbenDrawer({
+  title: '交互详情',
+  footer: false,
+  openAutoFocus: true,
+  onOpenChange: (open) => {
+    if (!open) closeDetail();
+  },
 });
+watch(detailOpen, (open) => (open ? drawerApi.open() : void drawerApi.close()));
+
+const [QueryForm, formApi] = useVbenForm({
+  submitButtonOptions: { content: '查询' },
+  showCollapseButton: true,
+  collapsedRows: 1,
+  wrapperClass: 'grid-cols-1 md:grid-cols-2 xl:grid-cols-3',
+  commonConfig: { componentProps: { class: 'w-full' } },
+  handleSubmit: search,
+  handleReset: async () => {
+    await formApi.resetForm();
+    sorting.value = {};
+    await gridApi.grid.clearSort();
+    search();
+  },
+  handleValuesChange: (values) => {
+    const { from: start, to: end, ...fields } = values;
+    from.value = start || '';
+    to.value = end || '';
+    filters.value = {
+      ...fields,
+      scope: fields.scope ?? 'OWN',
+      tenantRef: fields.scope === 'AUDIT' ? fields.tenantRef : undefined,
+      subjectRef: fields.scope === 'AUDIT' ? fields.subjectRef : undefined,
+    } as CallLogFilters;
+  },
+  schema: [
+    {
+      component: 'Select',
+      fieldName: 'scope',
+      label: '范围',
+      defaultValue: 'OWN',
+      componentProps: () => ({
+        'aria-label': '日志范围',
+        options: [
+          { label: '我的交互', value: 'OWN' },
+          ...(can('audit') ? [{ label: '平台审计', value: 'AUDIT' }] : []),
+        ],
+      }),
+    },
+    ...(['from', 'to'] as const).map((fieldName) => ({
+      component: 'DatePicker' as const,
+      fieldName,
+      label: fieldName === 'from' ? '开始' : '结束',
+      componentProps: {
+        type: 'datetime',
+        valueFormat: 'YYYY-MM-DDTHH:mm:ss',
+        clearable: true,
+      },
+    })),
+    {
+      component: 'Select',
+      fieldName: 'entryType',
+      label: '类型',
+      componentProps: {
+        clearable: true,
+        options: Object.entries(entryLabels).map(([value, label]) => ({
+          value,
+          label,
+        })),
+      },
+    },
+    {
+      component: 'Select',
+      fieldName: 'status',
+      label: '状态',
+      componentProps: {
+        clearable: true,
+        options: Object.entries(statusLabels).map(([value, label]) => ({
+          value,
+          label,
+        })),
+      },
+    },
+    ...[
+      ['requestId', '请求 ID'],
+      ['modelRef', '模型 ID'],
+      ['providerCode', '供应商'],
+      ['appId', '应用 ID'],
+      ['sceneKey', '场景'],
+    ].map(([fieldName, label]) => ({
+      component: 'Input' as const,
+      fieldName: fieldName!,
+      label,
+      componentProps: { clearable: true, 'aria-label': label },
+    })),
+    ...[
+      ['tenantRef', '租户'],
+      ['subjectRef', '发起人'],
+    ].map(([fieldName, label]) => ({
+      component: 'Input' as const,
+      fieldName: fieldName!,
+      label,
+      componentProps: { 'aria-label': label },
+      dependencies: {
+        triggerFields: ['scope'],
+        if: (values: Record<string, unknown>) => values.scope === 'AUDIT',
+      },
+    })),
+  ],
+});
+type GridQuery = {
+  page: { currentPage: number; pageSize: number };
+  sort: { field: string; order: 'asc' | 'desc' | null };
+};
+const [Grid, gridApi] = useVbenVxeGrid<CallLogRow>({
+  gridOptions: {
+    rowConfig: { keyField: 'callId' },
+    columns: [
+      {
+        field: 'startedAt',
+        title: '时间（本地） / 类型',
+        minWidth: 190,
+        sortable: true,
+        slots: { default: 'time' },
+      },
+      { title: '模型 / 渠道', minWidth: 200, slots: { default: 'model' } },
+      {
+        field: 'status',
+        title: '状态',
+        minWidth: 130,
+        sortable: true,
+        slots: { default: 'status' },
+      },
+      {
+        field: 'inputTokens',
+        title: '输入 Token',
+        minWidth: 130,
+        sortable: true,
+        slots: { default: 'input' },
+      },
+      {
+        field: 'outputTokens',
+        title: '输出 Token',
+        minWidth: 130,
+        sortable: true,
+        slots: { default: 'output' },
+      },
+      {
+        field: 'elapsedMs',
+        title: '总耗时',
+        minWidth: 150,
+        sortable: true,
+        slots: { default: 'duration' },
+      },
+      {
+        field: 'firstOutputMs',
+        title: '首输出',
+        minWidth: 150,
+        sortable: true,
+        slots: { default: 'firstOutput' },
+      },
+      { title: '实报费用', minWidth: 110, slots: { default: 'cost' } },
+      {
+        title: '操作',
+        minWidth: 160,
+        fixed: 'right',
+        slots: { default: 'actions' },
+      },
+    ],
+    pagerConfig: { pageSize: 20, pageSizes: [10, 20, 50, 100] },
+    sortConfig: { remote: true },
+    toolbarConfig: {
+      refresh: true,
+      refreshOptions: { code: 'query' },
+      custom: true,
+    },
+    proxyConfig: {
+      sort: true,
+      ajax: {
+        query: async ({ page: pagination, sort }: GridQuery) => {
+          page.value = pagination.currentPage;
+          pageSize.value = pagination.pageSize;
+          sorting.value = sort.order
+            ? { orderBy: sort.field, order: sort.order as 'asc' | 'desc' }
+            : {};
+          let revision = submittedRevision;
+          for (;;) {
+            const requested = JSON.stringify({
+              page: page.value,
+              size: pageSize.value,
+              sort: sorting.value,
+              revision,
+            });
+            await load();
+            if (gridApi.grid.getCurrentPage) {
+              if (revision !== submittedRevision)
+                await gridApi.grid.setCurrentPage(1);
+              const currentSort = gridApi.grid.getSortColumns()[0];
+              const order = currentSort?.order;
+              sorting.value =
+                currentSort && (order === 'asc' || order === 'desc')
+                  ? { orderBy: currentSort.field, order }
+                  : {};
+              page.value = gridApi.grid.getCurrentPage();
+              pageSize.value = gridApi.grid.getPageSize();
+              revision = submittedRevision;
+              if (
+                requested !==
+                JSON.stringify({
+                  page: page.value,
+                  size: pageSize.value,
+                  sort: sorting.value,
+                  revision,
+                })
+              )
+                continue;
+            }
+            break;
+          }
+          const count = Number(total.value);
+          if (!Number.isSafeInteger(count) || count < 0) {
+            rows.value = [];
+            error.value = '日志总数超出可安全分页范围，请缩小查询范围。';
+            throw new Error('Invalid total');
+          }
+          return { items: rows.value, total: count };
+        },
+      },
+    },
+  },
+});
+async function sameRequest(requestId: string) {
+  filters.value = { ...filters.value, requestId };
+  await formApi.setValues({ requestId });
+  await search();
+}
 async function download() {
   if (!enabled.value || !can('export') || exporting.value || !validDates())
     return;
@@ -231,9 +444,21 @@ async function download() {
     if (run === exportGeneration) exporting.value = false;
   }
 }
+let filterFingerprint = JSON.stringify({
+  ...filters.value,
+  from: from.value,
+  to: to.value,
+});
 watch(
   [filters, from, to],
   () => {
+    const fingerprint = JSON.stringify({
+      ...filters.value,
+      from: from.value,
+      to: to.value,
+    });
+    if (fingerprint === filterFingerprint) return;
+    filterFingerprint = fingerprint;
     clear();
     page.value = 1;
   },
@@ -260,7 +485,9 @@ watch(
     from.value = '';
     to.value = '';
     page.value = 1;
-    if (enabled.value) void load();
+    void formApi.resetForm();
+    sorting.value = {};
+    if (enabled.value) void search();
   },
   { immediate: true, flush: 'sync' },
 );
@@ -275,110 +502,20 @@ onBeforeUnmount(clear);
 </script>
 
 <template>
-  <section class="call-log" aria-label="请求日志">
-    <p v-if="!can('list')">没有请求日志查看权限。</p>
+  <section class="min-w-0 space-y-4" aria-label="请求日志">
+    <el-empty v-if="!can('list')" description="没有请求日志查看权限" />
     <template v-else>
-      <header>
-        <div>
-          <h2>请求日志</h2>
-          <p>每行代表一次上游交互，包含连接测试与目录扫描。默认最近7日。</p>
-        </div>
-        <button
-          v-if="can('export')"
-          :disabled="exporting || !enabled"
-          @click="download"
-        >
-          {{ exporting ? '导出中…' : '导出结构化日志' }}
-        </button>
-      </header>
-      <div v-if="error" role="alert" class="call-error">
-        {{ error }}
-        <button aria-label="关闭提示" @click="error = ''">关闭</button>
-      </div>
-      <form class="call-filters" @submit.prevent="search">
-        <label>
-          范围
-          <select v-model="filters.scope" aria-label="日志范围">
-            <option value="OWN">我的交互</option>
-            <option v-if="can('audit')" value="AUDIT">平台审计</option>
-          </select>
-        </label>
-        <label>
-          开始
-          <input
-            v-model="from"
-            aria-label="日志开始时间"
-            type="datetime-local"
-          />
-        </label>
-        <label>
-          结束
-          <input v-model="to" aria-label="日志结束时间" type="datetime-local" />
-        </label>
-        <label>
-          类型
-          <select v-model="filters.entryType" aria-label="交互类型">
-            <option :value="undefined">全部</option>
-            <option
-              v-for="(label, value) in entryLabels"
-              :key="value"
-              :value="value"
-            >
-              {{ label }}
-            </option>
-          </select>
-        </label>
-        <label>
-          状态
-          <select v-model="filters.status" aria-label="日志状态">
-            <option :value="undefined">全部</option>
-            <option
-              v-for="(label, value) in statusLabels"
-              :key="value"
-              :value="value"
-            >
-              {{ label }}
-            </option>
-          </select>
-        </label>
-        <button type="submit" :disabled="loading || !enabled">
-          {{ loading ? '读取中…' : '查询' }}
-        </button>
-        <details class="call-advanced">
-          <summary>
-            高级筛选
-            <span v-if="filters.requestId">· 已按请求筛选</span>
-          </summary>
-          <div class="call-advanced-fields">
-            <label
-              v-for="[field, label] in [
-                ['requestId', '请求 ID'],
-                ['modelRef', '模型 ID'],
-                ['providerCode', '供应商'],
-                ['appId', '应用 ID'],
-                ['sceneKey', '场景'],
-              ] as const"
-              :key="field"
-            >
-              {{ label }}
-              <input v-model="filters[field]" :aria-label="label" />
-            </label>
-            <template v-if="filters.scope === 'AUDIT'">
-              <label>
-                租户
-                <input v-model="filters.tenantRef" aria-label="租户" />
-              </label>
-              <label>
-                发起人
-                <input v-model="filters.subjectRef" aria-label="发起人" />
-              </label>
-            </template>
-          </div>
-        </details>
-      </form>
-      <p v-if="filters.scope === 'AUDIT'">
-        平台审计范围由服务端核验；私有正文仍按原访问权限保护。
+      <p class="text-muted-foreground">
+        每行代表一次上游交互，包含连接测试与目录扫描。默认最近7日。
       </p>
+      <ElAlert v-if="error" :title="error" type="error" @close="error = ''" />
+      <QueryForm />
+      <ElAlert
+        v-if="filters.scope === 'AUDIT'"
+        title="平台审计范围由服务端核验；私有正文仍按原访问权限保护。"
+        type="info"
+        :closable="false"
+      />
       <dl v-if="stats" class="call-stats">
         <div>
           <dt>上游交互</dt>
@@ -399,200 +536,81 @@ onBeforeUnmount(clear);
           <small>{{ exact(stats.unknownOutputCalls) }} 次输出未知</small>
         </div>
       </dl>
-      <div class="call-table" tabindex="0" aria-label="上游交互列表">
-        <table>
-          <thead>
-            <tr>
-              <th>时间（本地） / 类型</th>
-              <th>模型 / 渠道</th>
-              <th>状态</th>
-              <th>Token 输入 / 输出</th>
-              <th>总耗时 / 首输出</th>
-              <th>实报费用</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="row in rows" :key="row.callId">
-              <td>
-                {{ localDateTime(row.startedAt) }}
-                <small>{{ entryLabels[row.entryType] }}</small>
-              </td>
-              <td>
-                {{
-                  row.modelCode ?? row.returnedModel ?? row.modelRef ?? '未提供'
-                }}
-                <small>
-                  {{ row.configName ?? row.providerCode ?? '未提供' }}
-                </small>
-              </td>
-              <td>
-                {{ statusLabels[row.status] ?? row.status }}
-                <small v-if="row.errorCode">{{ row.errorCode }}</small>
-              </td>
-              <td>
-                {{ tokenValue(row, row.inputTokens) }} /
-                {{ tokenValue(row, row.outputTokens) }}
-              </td>
-              <td>
-                {{ exact(row.elapsedMs)
-                }}{{ row.elapsedMs === null ? '' : ' ms' }}
-                <small>{{ outputTime(row) }}</small>
-              </td>
-              <td>{{ costValue(row) }}</td>
-              <td>
-                <button v-if="can('query')" @click="open(row)">详情</button>
-                <button
-                  v-if="row.requestId"
-                  @click="
-                    filters.requestId = row.requestId;
-                    search();
-                  "
-                >
-                  同一请求
-                </button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <p v-if="queried && !loading && rows.length === 0 && !error">
-        当前范围没有上游交互记录。
-      </p>
-      <p v-else-if="!queried && !loading && !error">设置范围后点击查询。</p>
-      <footer>
-        <span v-if="queried">共 {{ total }} 次交互 · 第 {{ page }} 页</span>
-        <span v-else>尚未查询</span>
-        <button
-          :disabled="page <= 1 || loading"
-          @click="
-            page--;
-            load();
-          "
-        >
-          上一页
-        </button>
-        <button
-          :disabled="rows.length < 20 || loading"
-          @click="
-            page++;
-            load();
-          "
-        >
-          下一页
-        </button>
-      </footer>
-      <div v-if="detailOpen" class="call-overlay" @click.self="closeDetail">
-        <section
-          ref="drawer"
-          class="call-drawer"
-          role="dialog"
-          aria-modal="true"
-          aria-label="交互详情"
-          @keydown="drawerKeys"
-        >
-          <header>
-            <h2>交互详情</h2>
-            <button ref="closeButton" @click="closeDetail">关闭详情</button>
-          </header>
-          <div class="call-drawer-content">
-            <p v-if="detailError" role="alert">
-              {{ detailError }}
-              <button aria-label="关闭详情提示" @click="detailError = ''">
-                关闭
-              </button>
-            </p>
-            <p v-if="detailLoading">读取中…</p>
-            <CallLogDetail v-if="detail" :detail="detail" />
-          </div>
-        </section>
-      </div>
+      <Grid>
+        <template #toolbar-actions>
+          <ElButton
+            v-if="can('export')"
+            :loading="exporting"
+            :disabled="!enabled"
+            @click="download"
+          >
+            导出结构化日志
+          </ElButton>
+        </template>
+        <template #time="{ row }">
+          {{ localDateTime(row.startedAt) }}
+          <small>
+            {{ entryLabels[row.entryType as keyof typeof entryLabels] }}
+          </small>
+        </template>
+        <template #model="{ row }">
+          {{ row.modelCode ?? row.returnedModel ?? row.modelRef ?? '未提供' }}
+          <small>{{ row.configName ?? row.providerCode ?? '未提供' }}</small>
+        </template>
+        <template #status="{ row }">
+          {{ statusLabels[row.status] ?? row.status }}
+          <small v-if="row.errorCode">{{ row.errorCode }}</small>
+        </template>
+        <template #input="{ row }">
+          {{ tokenValue(row, row.inputTokens) }}
+        </template>
+        <template #output="{ row }">
+          {{ tokenValue(row, row.outputTokens) }}
+        </template>
+        <template #duration="{ row }">
+          {{ exact(row.elapsedMs) }}{{ row.elapsedMs === null ? '' : ' ms' }}
+        </template>
+        <template #firstOutput="{ row }">{{ outputTime(row) }}</template>
+        <template #cost="{ row }">{{ costValue(row) }}</template>
+        <template #actions="{ row }">
+          <ElButton v-if="can('query')" link type="primary" @click="open(row)">
+            详情
+          </ElButton>
+          <ElButton
+            v-if="row.requestId"
+            link
+            type="primary"
+            @click="sameRequest(row.requestId)"
+          >
+            同一请求
+          </ElButton>
+        </template>
+      </Grid>
+      <DetailDrawer class="w-full max-w-[680px]">
+        <ElAlert
+          v-if="detailError"
+          :title="detailError"
+          type="error"
+          @close="detailError = ''"
+        />
+        <Loading :spinning="detailLoading" text="读取交互详情…">
+          <CallLogDetail v-if="detail" :detail="detail" />
+        </Loading>
+      </DetailDrawer>
     </template>
   </section>
 </template>
-
 <style scoped>
-.call-log {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  max-width: 100%;
-  height: 100%;
-  min-height: 0;
-  padding: 16px 20px;
-  overflow: auto;
-  color: hsl(var(--foreground));
-  background: hsl(var(--background));
-}
-
-header,
-footer {
-  display: flex;
-  flex: none;
-  flex-wrap: wrap;
-  gap: 12px;
-  align-items: center;
-  justify-content: space-between;
-}
-
-h2 {
-  font-size: 18px;
-  font-weight: 600;
-}
-
-p,
-small {
-  color: hsl(var(--muted-foreground));
-}
-
 small {
   display: block;
   margin-top: 5px;
-}
-
-.call-filters {
-  display: grid;
-  flex: none;
-  grid-template-columns:
-    minmax(100px, 0.7fr) repeat(2, minmax(165px, 1.3fr))
-    repeat(2, minmax(100px, 0.7fr)) auto;
-  gap: 12px;
-  align-items: end;
-  margin: 12px 0;
-}
-
-label {
-  display: grid;
-  gap: 6px;
-  min-width: 0;
-  font-size: 12px;
-}
-
-input,
-select,
-button {
-  min-width: 0;
-  padding: 7px 10px;
-  color: inherit;
-  background: hsl(var(--background));
-  border: 1px solid hsl(var(--border));
-  border-radius: 6px;
-}
-
-button {
-  cursor: pointer;
-}
-
-button:disabled {
-  cursor: default;
-  opacity: 0.5;
+  color: hsl(var(--muted-foreground));
 }
 
 .call-stats {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 12px;
-  margin-bottom: 20px;
 }
 
 .call-stats div {
@@ -606,109 +624,5 @@ button:disabled {
   margin-top: 8px;
   font-size: 20px;
   overflow-wrap: anywhere;
-}
-
-.call-table {
-  flex: 1;
-  max-width: 100%;
-  min-height: 0;
-  overflow: auto;
-}
-
-table {
-  width: 100%;
-  font-size: 13px;
-  border-collapse: collapse;
-}
-
-th,
-td {
-  min-width: 100px;
-  max-width: 240px;
-  padding: 12px 8px;
-  text-align: left;
-  overflow-wrap: anywhere;
-  border-bottom: 1px solid hsl(var(--border));
-}
-
-td button {
-  margin: 3px;
-}
-
-footer {
-  margin-top: 12px;
-}
-
-.call-advanced {
-  grid-column: 1 / -1;
-  min-width: 0;
-}
-
-summary {
-  font-size: 12px;
-  color: hsl(var(--muted-foreground));
-  cursor: pointer;
-}
-
-.call-advanced-fields {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 12px;
-  max-height: 130px;
-  padding: 12px 0;
-  overflow: auto;
-}
-
-.call-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 1000;
-  display: flex;
-  justify-content: flex-end;
-  background: rgb(0 0 0 / 25%);
-}
-
-.call-drawer {
-  display: flex;
-  flex-direction: column;
-  width: min(680px, 94vw);
-  min-width: 0;
-  height: 100%;
-  color: hsl(var(--foreground));
-  background: hsl(var(--background));
-  box-shadow: -6px 0 24px rgb(0 0 0 / 12%);
-}
-
-.call-drawer > header {
-  padding: 16px 20px;
-  border-bottom: 1px solid hsl(var(--border));
-}
-
-.call-drawer-content {
-  flex: 1;
-  min-height: 0;
-  padding: 0 20px 20px;
-  overflow: auto;
-}
-
-@media (max-width: 1000px) {
-  .call-filters {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .call-log {
-    overflow: auto;
-  }
-
-  .call-table {
-    flex: none;
-    max-height: 45vh;
-  }
-}
-
-.call-error {
-  padding: 12px;
-  border: 1px solid hsl(var(--border));
-  border-radius: 6px;
 }
 </style>
