@@ -21,10 +21,10 @@ defineProps<{ description?: string; title: string }>();
 
 <style scoped>
 :global(.admin-page.admin-page) {
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   gap: 16px;
-  box-sizing: border-box;
   min-width: 0;
   height: auto;
   padding: 24px;
