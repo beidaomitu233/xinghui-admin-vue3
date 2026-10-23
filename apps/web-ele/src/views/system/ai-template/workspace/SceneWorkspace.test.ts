@@ -338,10 +338,8 @@ describe('scene workspace actual editing and autosave', () => {
     window.dispatchEvent(cleanUnload);
     expect(cleanUnload.defaultPrevented).toBe(false);
     api.createScene.mockRejectedValue(new Error('unknown acceptance'));
-    await wrapper
-      .findAll('button')
-      .find((button) => button.text() === '新建场景')
-      ?.trigger('click');
+    wrapper.vm.openCreate();
+    await flushPromises();
     await wrapper
       .get('input[aria-label="新建场景名称"]')
       .setValue('结果未知的新建');
@@ -404,10 +402,8 @@ describe('scene workspace actual editing and autosave', () => {
         : detail(key),
     );
     const wrapper = await open();
-    await wrapper
-      .findAll('button')
-      .find((button) => button.text() === '新建场景')
-      ?.trigger('click');
+    wrapper.vm.openCreate();
+    await flushPromises();
     await wrapper.get('input[aria-label="新建场景名称"]').setValue('新场景');
     await wrapper.get('form[aria-label="新建场景"]').trigger('submit');
     await flushPromises();
@@ -425,10 +421,8 @@ describe('scene workspace actual editing and autosave', () => {
       .mockRejectedValueOnce(new Error('offline'))
       .mockResolvedValue({ ...detail('new-scene', 0), definition: null });
     const wrapper = await open();
-    await wrapper
-      .findAll('button')
-      .find((button) => button.text() === '新建场景')
-      ?.trigger('click');
+    wrapper.vm.openCreate();
+    await flushPromises();
     await wrapper.get('input[aria-label="新建场景名称"]').setValue('新场景');
     await wrapper.get('form[aria-label="新建场景"]').trigger('submit');
     await flushPromises();
@@ -455,7 +449,7 @@ describe('scene workspace actual editing and autosave', () => {
     await vi.advanceTimersByTimeAsync(1000);
     await wrapper.findAll('.scene-item')[1]?.trigger('click');
     await flushPromises();
-    expect(wrapper.get('h1').text()).toBe('second');
+    expect(wrapper.get('.scene-main h2').text()).toBe('second');
     expect(api.saveScene).not.toHaveBeenCalled();
   });
   it('keeps a READ_ONLY legacy scene intact without substituting an editable blank definition', async () => {

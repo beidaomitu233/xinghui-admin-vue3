@@ -16,6 +16,7 @@ import {
   updateDictItem,
   updateDictType,
 } from '#/api/system/dict';
+import AdminPageHeader from '#/components/admin-page-header.vue';
 import PageHint from '#/components/page-hint.vue';
 
 const accessStore = useAccessStore();
@@ -155,21 +156,25 @@ onMounted(() => loadTypes());
 </script>
 
 <template>
-  <Page title="字典管理">
+  <Page content-class="admin-page">
+    <AdminPageHeader title="字典管理">
+      <template #actions>
+        <el-button
+          v-if="can('system:dict:type:add')"
+          type="primary"
+          @click="openType()"
+        >
+          新增类型
+        </el-button>
+      </template>
+    </AdminPageHeader>
     <div
-      class="grid gap-4 p-4 lg:grid-cols-[minmax(280px,1fr)_minmax(480px,2fr)]"
+      class="grid min-w-0 gap-4 xl:grid-cols-[minmax(240px,1fr)_minmax(0,2fr)]"
     >
       <el-card>
         <template #header>
           <div class="flex items-center justify-between">
             <span>字典类型</span>
-            <el-button
-              v-if="can('system:dict:type:add')"
-              type="primary"
-              @click="openType()"
-            >
-              新增类型
-            </el-button>
           </div>
         </template>
         <div v-loading="loadingTypes" class="space-y-2">

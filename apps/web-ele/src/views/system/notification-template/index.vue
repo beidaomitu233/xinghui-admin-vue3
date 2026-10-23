@@ -13,6 +13,7 @@ import {
   listNotificationTemplates,
   updateNotificationTemplate,
 } from '#/api/system/notification-template';
+import AdminPageHeader from '#/components/admin-page-header.vue';
 import PageHint from '#/components/page-hint.vue';
 
 const accessStore = useAccessStore();
@@ -103,25 +104,24 @@ onMounted(load);
 </script>
 
 <template>
-  <Page title="通知模板" description="管理平台事件模板">
+  <Page content-class="admin-page">
+    <AdminPageHeader title="通知模板" description="管理平台事件模板">
+      <template #actions>
+        <el-button
+          v-if="can('system:notificationTemplate:add')"
+          type="primary"
+          @click="open()"
+        >
+          新增模板
+        </el-button>
+      </template>
+    </AdminPageHeader>
     <div class="space-y-4 p-4">
       <PageHint
         title="模板定义事件内容，投递结果请查看收件箱"
         details="模板仅定义事件内容。待投递请求不代表用户已收到通知；请勿用公告替代个人收件箱。"
       />
       <el-card>
-        <template #header>
-          <div class="flex items-center justify-between">
-            <span>事件模板</span>
-            <el-button
-              v-if="can('system:notificationTemplate:add')"
-              type="primary"
-              @click="open()"
-            >
-              新增模板
-            </el-button>
-          </div>
-        </template>
         <el-alert
           v-if="failed"
           title="加载失败，请重试"
