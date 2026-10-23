@@ -1,13 +1,18 @@
 <script setup lang="ts">
+import type { Sortable } from '@vben/hooks';
+
 import type {
+  FieldType,
   FieldValue,
   FormDefinition,
   FormDraft,
   FormField,
 } from '#/api/lowcode/forms';
 
-import { computed, ref, toRaw, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, toRaw, watch } from 'vue';
 
+import { useSortable } from '@vben/hooks';
+import { IconifyIcon } from '@vben/icons';
 import { useAccessStore } from '@vben/stores';
 
 import { ElMessage, ElMessageBox } from 'element-plus';
@@ -92,16 +97,132 @@ watch(
     failed.value = false;
   },
 );
-function addField() {
-  if (draft.value.schema.fields.length >= 100) return;
+const paletteElement = ref<HTMLElement>();
+const canvasElement = ref<HTMLElement>();
+const identities = new WeakMap<object, string>();
+let nextIdentity = 0;
+const paletteIcons: Record<FieldType, string> = {
+  text: 'lucide:type',
+  textarea: 'lucide:align-left',
+  number: 'lucide:hash',
+  date: 'lucide:calendar',
+  select: 'lucide:list-checks',
+  multiselect: 'lucide:list-todo',
+  switch: 'lucide:toggle-left',
+};
+function fieldIdentity(item: FormField) {
+  const raw = toRaw(item);
+  const existing = identities.get(raw);
+  if (existing) return existing;
+  const key = `designer-${++nextIdentity}`;
+  identities.set(raw, key);
+  return key;
+}
+function addField(
+  type: FieldType = 'text',
+  position = draft.value.schema.fields.length,
+) {
+  if (busy.value || props.readOnly || draft.value.schema.fields.length >= 100)
+    return;
+  position = Math.max(0, Math.min(position, draft.value.schema.fields.length));
   let index = 1;
   while (
     draft.value.schema.fields.some((item) => item.fieldKey === `field_${index}`)
   )
     index++;
-  draft.value.schema.fields.push(newField(index));
-  selected.value = draft.value.schema.fields.length - 1;
+  const item = newField(index);
+  item.type = type;
+  item.label =
+    fieldTypes.find((entry) => entry.value === type)?.label ?? '字段';
+  changeType(item);
+  draft.value.schema.fields.splice(position, 0, item);
+  selected.value = position;
 }
+function reorder(oldIndex: number, newIndex: number) {
+  const fields = draft.value.schema.fields;
+  const active = fields[selected.value];
+  const item = fields.splice(oldIndex, 1)[0];
+  if (item) fields.splice(newIndex, 0, item);
+  selected.value = active ? Math.max(0, fields.indexOf(active)) : 0;
+}
+let dragRun = 0;
+let paletteSortable: Sortable | undefined;
+let canvasSortable: Sortable | undefined;
+function destroyDrag() {
+  paletteSortable?.destroy();
+  canvasSortable?.destroy();
+  paletteSortable = undefined;
+  canvasSortable = undefined;
+}
+watch(
+  [paletteElement, canvasElement, () => props.modelValue, () => props.readOnly],
+  async () => {
+    const run = ++dragRun;
+    destroyDrag();
+    await nextTick();
+    const paletteNode = paletteElement.value;
+    const canvasNode = canvasElement.value;
+    if (!props.modelValue || props.readOnly || !paletteNode || !canvasNode)
+      return;
+    const palette = await useSortable(paletteNode, {
+      group: { name: 'lowcode-fields', pull: 'clone', put: false },
+      sort: false,
+      draggable: '.palette-field',
+      animation: 150,
+      disabled: busy.value,
+    }).initializeSortable();
+    const canvas = await useSortable(canvasNode, {
+      group: { name: 'lowcode-fields', pull: true, put: true },
+      draggable: '.designer-field',
+      handle: '.field-drag',
+      animation: 150,
+      disabled: busy.value,
+      onAdd(event) {
+        const type = event.item.dataset.type as FieldType;
+        const position = event.newIndex ?? draft.value.schema.fields.length;
+        // Keep Vue's original palette node/listeners; Sortable's source clone has no Vue listeners.
+        if (event.clone?.parentNode === event.from)
+          event.clone.replaceWith(event.item);
+        else {
+          event.item.remove();
+          event.from.insertBefore(
+            event.item,
+            event.from.children[event.oldIndex ?? 0] ?? null,
+          );
+        }
+        if (fieldTypes.some((entry) => entry.value === type))
+          addField(type, position);
+      },
+      onUpdate(event) {
+        if (event.oldIndex === undefined || event.newIndex === undefined)
+          return;
+        // Restore DOM first; Vue then applies the canonical model reorder using stable keys.
+        event.item.remove();
+        event.from.insertBefore(
+          event.item,
+          event.from.children[event.oldIndex] ?? null,
+        );
+        reorder(event.oldIndex, event.newIndex);
+      },
+    }).initializeSortable();
+    if (run !== dragRun) {
+      palette?.destroy();
+      canvas?.destroy();
+      return;
+    }
+    paletteSortable = palette;
+    canvasSortable = canvas;
+  },
+  { flush: 'post' },
+);
+watch(busy, (value) => {
+  paletteSortable?.option('disabled', value);
+  canvasSortable?.option('disabled', value);
+});
+onBeforeUnmount(() => {
+  dragRun++;
+  destroyDrag();
+});
 function removeField(index: number) {
   draft.value.schema.fields.splice(index, 1);
   selected.value = Math.max(
@@ -238,7 +359,7 @@ async function reload() {
   <el-dialog
     v-model="opened"
     :title="readOnly ? '表单详情' : '表单设计'"
-    width="min(1200px,96vw)"
+    width="min(1480px,96vw)"
     :close-on-click-modal="false"
     :show-close="!busy"
     :close-on-press-escape="!busy"
@@ -267,59 +388,95 @@ async function reload() {
         />
       </el-form-item>
     </el-form>
-    <div class="grid gap-4 md:grid-cols-[280px_1fr]">
-      <el-card>
-        <template #header>
-          字段
-          <el-button
-            :disabled="busy || readOnly || draft.schema.fields.length >= 100"
-            @click="addField"
+    <div class="form-designer-layout">
+      <section class="designer-palette" aria-label="字段组件">
+        <h3>字段组件</h3>
+        <p>拖到画布，或点击添加</p>
+        <div ref="paletteElement" class="palette-items">
+          <button
+            v-for="type in fieldTypes"
+            :key="type.value"
+            type="button"
+            class="palette-field"
+            :data-type="type.value"
+            :disabled="busy || readOnly"
+            @click="addField(type.value)"
           >
-            添加字段
-          </el-button>
-        </template>
-        <div
-          v-for="(item, index) in draft.schema.fields"
-          :key="index"
-          class="mb-2 rounded border p-2"
-          :class="{ 'border-primary': selected === index }"
-        >
-          <el-button text @click="selected = index">
-            {{ index + 1 }}. {{ item.label || item.fieldKey }}
-          </el-button>
-          <div>
-            <el-button
-              size="small"
-              :disabled="busy || readOnly || index === 0"
-              @click="move(index, -1)"
-            >
-              上移
-            </el-button>
-            <el-button
-              size="small"
-              :disabled="
-                busy || readOnly || index === draft.schema.fields.length - 1
-              "
-              @click="move(index, 1)"
-            >
-              下移
-            </el-button>
-            <el-button
-              size="small"
-              type="danger"
-              :disabled="busy || readOnly"
-              @click="removeField(index)"
-            >
-              移除
-            </el-button>
-          </div>
+            <IconifyIcon :icon="paletteIcons[type.value]" class="size-4" />
+            {{ type.label }}
+          </button>
         </div>
-        <el-empty
-          v-if="draft.schema.fields.length === 0"
-          description="请添加字段"
-        />
-      </el-card>
-      <el-card>
+      </section>
+      <section class="designer-canvas-section" aria-label="表单画布">
+        <div class="canvas-heading">
+          <h3>{{ draft.name || '表单画布' }}</h3>
+          <span>{{ draft.schema.fields.length }} 个字段</span>
+        </div>
+        <div ref="canvasElement" class="designer-canvas">
+          <article
+            v-for="(item, index) in draft.schema.fields"
+            :key="fieldIdentity(item)"
+            class="designer-field"
+            :class="{ 'is-selected': selected === index }"
+            :data-field-id="fieldIdentity(item)"
+            :aria-label="`选择字段 ${item.label}`"
+            tabindex="0"
+            @click="selected = index"
+            @keydown.enter="selected = index"
+          >
+            <div class="field-toolbar">
+              <button
+                type="button"
+                class="field-drag"
+                :aria-label="`拖拽 ${item.label}`"
+                :disabled="busy || readOnly"
+              >
+                <IconifyIcon icon="lucide:grip-vertical" class="size-4" />
+              </button>
+              <span>{{ item.fieldKey }}</span>
+              <el-button
+                text
+                size="small"
+                :disabled="busy || readOnly || index === 0"
+                @click.stop="move(index, -1)"
+              >
+                上移
+              </el-button>
+              <el-button
+                text
+                size="small"
+                :disabled="
+                  busy || readOnly || index === draft.schema.fields.length - 1
+                "
+                @click.stop="move(index, 1)"
+              >
+                下移
+              </el-button>
+              <el-button
+                text
+                size="small"
+                type="danger"
+                :disabled="busy || readOnly"
+                @click.stop="removeField(index)"
+              >
+                移除
+              </el-button>
+            </div>
+            <div class="field-rendering">
+              <RuntimeFields
+                :model-value="initialData({ fields: [item] })"
+                :schema="{ fields: [item] }"
+                disabled
+              />
+            </div>
+          </article>
+          <p v-if="draft.schema.fields.length === 0" class="canvas-empty">
+            将字段拖到这里，开始设计表单
+          </p>
+        </div>
+      </section>
+      <el-card class="field-properties">
+        <template #header>字段设置</template>
         <el-form v-if="field" label-width="110px" :disabled="busy || readOnly">
           <el-form-item label="字段标识" required>
             <el-input
@@ -461,3 +618,162 @@ async function reload() {
     </template>
   </el-dialog>
 </template>
+
+<style scoped>
+.form-designer-layout {
+  display: grid;
+  grid-template-columns: 170px minmax(0, 1fr) 310px;
+  gap: 16px;
+  align-items: start;
+  max-height: calc(100dvh - 260px);
+  overflow: auto;
+}
+
+.designer-palette {
+  padding: 12px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+}
+
+.designer-palette h3,
+.canvas-heading h3 {
+  margin: 0;
+  font-weight: 600;
+}
+
+.designer-palette p,
+.canvas-heading span {
+  margin: 8px 0;
+  font-size: 12px;
+  color: hsl(var(--muted-foreground));
+}
+
+.palette-items {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.palette-field {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 10px;
+  color: hsl(var(--foreground));
+  cursor: grab;
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border));
+  border-radius: 6px;
+}
+
+.palette-field:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.designer-canvas-section {
+  min-width: 0;
+  padding: 16px;
+  background: hsl(var(--muted) / 40%);
+  border-radius: 8px;
+}
+
+.canvas-heading {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.designer-canvas {
+  min-height: 300px;
+  padding-top: 12px;
+}
+
+.designer-field {
+  padding: 12px;
+  margin-bottom: 12px;
+  outline-offset: 2px;
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+}
+
+.designer-field.is-selected {
+  border-color: hsl(var(--primary));
+  box-shadow: 0 0 0 1px hsl(var(--primary));
+}
+
+.field-toolbar {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.field-toolbar > span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  color: hsl(var(--muted-foreground));
+}
+
+.field-toolbar :deep(.el-button + .el-button) {
+  margin-left: 0;
+}
+
+.field-drag {
+  padding: 4px;
+  cursor: grab;
+}
+
+.field-rendering {
+  pointer-events: none;
+}
+
+.field-rendering :deep(.el-form-item) {
+  margin-bottom: 8px;
+}
+
+.canvas-empty {
+  padding: 64px 12px;
+  color: hsl(var(--muted-foreground));
+  text-align: center;
+}
+
+.field-properties {
+  min-width: 0;
+}
+
+@media (max-width: 1100px) {
+  .form-designer-layout {
+    grid-template-columns: minmax(0, 1fr) 300px;
+  }
+
+  .designer-palette {
+    grid-column: 1 / -1;
+  }
+
+  .palette-items {
+    flex-flow: row wrap;
+  }
+}
+
+@media (max-width: 700px) {
+  .form-designer-layout {
+    grid-template-columns: minmax(0, 1fr);
+    max-height: calc(100dvh - 300px);
+  }
+
+  .designer-palette {
+    grid-column: auto;
+  }
+
+  .designer-canvas-section {
+    padding: 10px;
+  }
+}
+</style>

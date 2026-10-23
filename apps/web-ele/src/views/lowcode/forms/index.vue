@@ -16,8 +16,10 @@ import {
   removeForm,
   updateForm,
 } from '#/api/lowcode/forms';
+import AdminPageHeader from '#/components/admin-page-header.vue';
 
 import FormDesigner from './FormDesigner.vue';
+import FormSharing from './FormSharing.vue';
 
 const access = useAccessStore();
 const router = useRouter();
@@ -32,6 +34,12 @@ const result = ref<FormPage<FormDefinition>>({
   pageSize: 10,
 });
 const editor = ref(false);
+const sharingOpened = ref(false);
+const sharingForm = ref<FormDefinition>();
+function openSharing(form: FormDefinition) {
+  sharingForm.value = form;
+  sharingOpened.value = true;
+}
 const failed = ref(false);
 const loading = ref(false);
 const name = ref('');
@@ -115,8 +123,15 @@ onMounted(() => void load());
 <template>
   <!-- Prettier formats adjacent inline controls; avoid conflicting whitespace rules. -->
   <!-- eslint-disable vue/multiline-html-element-content-newline, vue/html-closing-bracket-newline -->
-  <Page title="表单管理">
-    <el-card class="m-4">
+  <Page class="admin-page">
+    <AdminPageHeader title="表单管理">
+      <template #actions>
+        <el-button v-if="can('add')" type="primary" @click="open()">
+          新增表单
+        </el-button>
+      </template>
+    </AdminPageHeader>
+    <el-card>
       <el-alert
         v-if="!can('list')"
         title="没有表单设计列表权限"
@@ -137,7 +152,6 @@ onMounted(() => void load());
             <el-button type="primary" :loading="loading" @click="search">
               查询
             </el-button>
-            <el-button v-if="can('add')" @click="open()">新增表单</el-button>
           </el-form-item>
         </el-form>
         <el-alert v-if="failed" title="表单加载失败" type="error" closable>
@@ -169,7 +183,7 @@ onMounted(() => void load());
             width="100"
           />
           <el-table-column prop="revision" label="修订" width="80" />
-          <el-table-column label="操作" min-width="420">
+          <el-table-column label="操作" min-width="480">
             <template #default="{ row }">
               <el-button v-if="can('query')" link @click="open(row, true)">
                 详情
@@ -188,6 +202,9 @@ onMounted(() => void load());
                 @click="action(row, 'publish')"
               >
                 发布
+              </el-button>
+              <el-button v-if="can('publish')" link @click="openSharing(row)">
+                分享填写
               </el-button>
               <el-button
                 v-if="row.status === 'enabled' && can('edit') && can('query')"
@@ -245,5 +262,6 @@ onMounted(() => void load());
       :read-only="readOnly"
       @saved="load"
     />
+    <FormSharing v-model="sharingOpened" :form="sharingForm" />
   </Page>
 </template>
