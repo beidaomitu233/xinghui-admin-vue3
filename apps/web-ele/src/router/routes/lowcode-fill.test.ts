@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { URL as NodeURL } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
 
@@ -15,7 +16,10 @@ describe('standalone filling entry', () => {
     expect(lowcodeFillRoute.children).toBeUndefined();
   });
   it('keeps capability URLs out of third-party statistics and referrers', () => {
-    const html = readFileSync('index.html', 'utf8');
+    const html = readFileSync(
+      new NodeURL('../../../index.html', import.meta.url),
+      'utf8',
+    );
     expect(html).toMatch(/<meta name="referrer" content="no-referrer"\s*\/>/u);
     expect(html).not.toMatch(/hm\.baidu\.com|_hmt|createElement\(['"]script/u);
     expect(html.match(/<script[^>]*src=["']https?:/gu)).toBeNull();
