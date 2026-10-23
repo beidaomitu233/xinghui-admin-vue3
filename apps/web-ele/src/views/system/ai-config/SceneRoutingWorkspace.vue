@@ -15,6 +15,7 @@ import type {
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { onBeforeRouteLeave } from 'vue-router';
 
+import { Loading } from '@vben/common-ui';
 import { useAccessStore } from '@vben/stores';
 
 import {
@@ -24,7 +25,6 @@ import {
   ElMessageBox,
   ElOption,
   ElSelect,
-  ElSkeleton,
 } from 'element-plus';
 
 import { listHubModels } from '#/api/system/ai-model-hub';
@@ -377,7 +377,7 @@ onBeforeUnmount(() => {
           message = '';
         "
       />
-      <ElSkeleton v-if="loading" :rows="4" animated />
+      <Loading v-if="loading" :spinning="true" text="正在读取场景路由…" />
       <ElSelect
         v-if="current && !loading"
         v-model="businessModel"

@@ -93,7 +93,12 @@ export interface CallLogStatistics {
 }
 const base = '/system/ai/call-logs';
 export const listCallLogs = (
-  params: CallLogFilters & { pageNum: number; pageSize: number },
+  params: CallLogFilters & {
+    order?: 'asc' | 'desc';
+    orderBy?: string;
+    pageNum: number;
+    pageSize: number;
+  },
 ) => requestClient.get<AiPage<CallLogRow>>(base, { params });
 export const callLogStatistics = (params: CallLogFilters) =>
   requestClient.get<CallLogStatistics>(`${base}/statistics`, { params });

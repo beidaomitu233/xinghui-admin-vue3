@@ -23,25 +23,23 @@ import {
 } from 'vue';
 import { onBeforeRouteLeave } from 'vue-router';
 
+import { useVbenDrawer, useVbenModal } from '@vben/common-ui';
 import { useAccessStore } from '@vben/stores';
 
 import {
   ElAlert,
   ElButton,
   ElCheckbox,
-  ElDialog,
-  ElDrawer,
   ElEmpty,
   ElForm,
   ElFormItem,
   ElMessageBox,
   ElOption,
   ElSelect,
-  ElTable,
-  ElTableColumn,
   ElTooltip,
 } from 'element-plus';
 
+import { useVbenVxeGrid } from '#/adapter/vxe-table';
 import {
   activateConfiguration,
   disableConfiguration,
@@ -951,6 +949,40 @@ onBeforeUnmount(() => {
   pendingTest = undefined;
   pendingSave.value = undefined;
 });
+const [RouteModal, routeModalApi] = useVbenModal({
+  onBeforeClose: () => !saving.value,
+  onOpenChange: (open) => {
+    routeEditorOpen.value = open;
+  },
+});
+watch(routeEditorOpen, (open) => routeModalApi.setState({ isOpen: open }), {
+  immediate: true,
+});
+const [TestDrawer, testDrawerApi] = useVbenDrawer({ onBeforeClose: closeTest });
+watch(testOpen, (open) => testDrawerApi.setState({ isOpen: open }), {
+  immediate: true,
+});
+const [AttemptsGrid, attemptsGridApi] = useVbenVxeGrid<
+  HubModelTest['attempts'][number]
+>({
+  gridOptions: {
+    columns: [
+      { title: '次序', width: 65, field: 'number', sortable: true },
+      { title: '供应商 / 模型', minWidth: 160, slots: { default: 'cell1' } },
+      { title: '状态', minWidth: 100, slots: { default: 'cell2' } },
+      { title: '切换记录', minWidth: 120, slots: { default: 'cell3' } },
+      { title: '耗时', width: 90, slots: { default: 'cell4' } },
+    ],
+    pagerConfig: { enabled: false },
+    proxyConfig: { enabled: false },
+    toolbarConfig: { custom: true },
+  },
+});
+watch(
+  () => testResult.value?.attempts ?? [],
+  (data) => attemptsGridApi.setGridOptions({ data }),
+  { immediate: true },
+);
 </script>
 
 <template>
@@ -1144,7 +1176,6 @@ onBeforeUnmount(() => {
       @configure="editor?.open(selectedChannel)"
       @configure-keys="editor?.open(selectedChannel, true)"
       @scan="refreshCatalog"
-      @page="readCatalog(selectedChannel.configId, $event)"
       @test="editor?.open(selectedChannel)"
       @toggle="toggleChannel"
     />
@@ -1172,12 +1203,10 @@ onBeforeUnmount(() => {
       }
     "
   />
-  <ElDialog
-    v-model="routeEditorOpen"
+  <RouteModal
     :title="editingRouteId ? '编辑供应商' : '添加供应商'"
-    width="min(560px, 95vw)"
+    class="w-full max-w-[560px]"
     :close-on-click-modal="false"
-    :show-close="!saving"
     :close-on-press-escape="!saving"
   >
     <p class="hub-dialog-model">
@@ -1237,12 +1266,10 @@ onBeforeUnmount(() => {
         {{ unknown ? '重试原保存' : '保存配置' }}
       </ElButton>
     </template>
-  </ElDialog>
-  <ElDrawer
-    :model-value="testOpen"
+  </RouteModal>
+  <TestDrawer
     title="测试调用"
-    size="min(620px, 100vw)"
-    :before-close="closeTest"
+    class="w-full max-w-[620px]"
     :close-on-click-modal="false"
   >
     <h2 class="hub-test-name">{{ testModel?.name }}</h2>
@@ -1263,42 +1290,28 @@ onBeforeUnmount(() => {
         <dd>{{ testResult.attemptCount }}</dd>
       </div>
     </dl>
-    <ElTable
-      v-if="testResult?.attempts?.length"
-      :data="testResult.attempts"
-      aria-label="真实供应商尝试轨迹"
-      class="hub-test-attempts"
-    >
-      <ElTableColumn prop="number" label="次序" width="65" />
-      <ElTableColumn label="供应商 / 模型" min-width="160">
-        <template #default="{ row }">
-          <strong>
-            {{
-              row.providerCode ? providerName(row.providerCode) : '未记录供应商'
-            }}
-          </strong>
-          <small>{{ row.upstreamModel || '未记录模型' }}</small>
-        </template>
-      </ElTableColumn>
-      <ElTableColumn label="状态" min-width="100">
-        <template #default="{ row }">
-          {{ testStatus(row.status) }}
-          <small v-if="row.errorCode">
-            {{ aiErrorMessage(row.errorCode) }}
-          </small>
-        </template>
-      </ElTableColumn>
-      <ElTableColumn label="切换记录" min-width="120">
-        <template #default="{ row }">
-          {{ switchReason(row.switchReason) }}
-        </template>
-      </ElTableColumn>
-      <ElTableColumn label="耗时" width="90">
-        <template #default="{ row }">
-          {{ row.elapsedMs === null ? '未记录' : `${row.elapsedMs} ms` }}
-        </template>
-      </ElTableColumn>
-    </ElTable>
+    <AttemptsGrid v-if="testResult?.attempts?.length">
+      <template #cell1="{ row }">
+        <strong>
+          {{
+            row.providerCode ? providerName(row.providerCode) : '未记录供应商'
+          }}
+        </strong>
+        <small>{{ row.upstreamModel || '未记录模型' }}</small>
+      </template>
+      <template #cell2="{ row }">
+        {{ testStatus(row.status) }}
+        <small v-if="row.errorCode">
+          {{ aiErrorMessage(row.errorCode) }}
+        </small>
+      </template>
+      <template #cell3="{ row }">
+        {{ switchReason(row.switchReason) }}
+      </template>
+      <template #cell4="{ row }">
+        {{ row.elapsedMs === null ? '未记录' : `${row.elapsedMs} ms` }}
+      </template>
+    </AttemptsGrid>
     <p v-if="!testResult" class="hub-dialog-help">
       使用当前模型已保存的供应商顺序与策略进行真实调用。
     </p>
@@ -1324,7 +1337,7 @@ onBeforeUnmount(() => {
         </ElButton>
       </ElTooltip>
     </template>
-  </ElDrawer>
+  </TestDrawer>
 </template>
 
 <style scoped>

@@ -8,12 +8,15 @@ import type {
   ConfigurationVersion,
 } from '#/api/system/ai-configuration';
 
-import { computed, onMounted, onUnmounted, reactive, ref } from 'vue';
+import { computed, onUnmounted, reactive, ref, watch } from 'vue';
 
+import { useVbenDrawer } from '@vben/common-ui';
 import { useAccessStore } from '@vben/stores';
 
 import { ElMessage, ElMessageBox } from 'element-plus';
 
+import { useVbenForm } from '#/adapter/form';
+import { useVbenVxeGrid } from '#/adapter/vxe-table';
 import {
   activateConfiguration,
   archiveConfiguration,
@@ -47,14 +50,6 @@ const page = ref<ConfigurationPage>({
   legacyModels: [],
   records: [],
   total: 0,
-  pageNum: 1,
-  pageSize: 10,
-});
-const query = reactive({
-  name: '',
-  providerCode: '',
-  environment: '',
-  status: '',
   pageNum: 1,
   pageSize: 10,
 });
@@ -128,19 +123,9 @@ const errorText: Record<string, string> = {
   OUTPUT_LIMIT: '输出达到限制',
 };
 
-async function load() {
-  if (!can('list')) return;
-  loading.value = true;
-  failed.value = false;
-  try {
-    page.value = await listConfigurations(query);
-    jsonObjectModels.value = page.value.jsonObjectModels ?? [];
-  } catch {
-    failed.value = true;
-    page.value.records = [];
-  } finally {
-    loading.value = false;
-  }
+function load() {
+  ++refreshRevision;
+  return gridApi.query();
 }
 function create() {
   confirmedCosts.value = false;
@@ -163,6 +148,9 @@ async function edit(row: ConfigurationRow) {
 }
 async function save(): Promise<AiConfiguration | undefined> {
   if (busy.value) return;
+  const values = await metadataFormApi.getValues();
+  if (busy.value) return;
+  Object.assign(editor, values);
   busy.value = true;
   try {
     const data = toDraft(editor, current.value);
@@ -359,164 +347,413 @@ function closeEditor() {
   });
   paste.value = '';
 }
-onMounted(load);
+
 onUnmounted(() => {
   alive = false;
   clearTimeout(timer);
   closeEditor();
 });
+let listGeneration = 0;
+let refreshRevision = 0;
+const text = (value: unknown) =>
+  typeof value === 'string' ? value.trim() || undefined : undefined;
+const queryFilters = (values: Record<string, unknown>) => ({
+  name: text(values.name),
+  providerCode: text(values.providerCode),
+  environment: text(values.environment),
+  status: text(values.status),
+});
+const queryParameters = (
+  page: { currentPage: number; pageSize: number },
+  sort: { field?: string; order?: null | string },
+  values: Record<string, unknown>,
+) => ({
+  pageNum: page.currentPage,
+  pageSize: page.pageSize,
+  ...queryFilters(values),
+  ...(sort.order === 'asc' || sort.order === 'desc'
+    ? { orderBy: sort.field, order: sort.order as 'asc' | 'desc' }
+    : {}),
+});
+type GridQuery = {
+  page: { currentPage: number; pageSize: number };
+  sort: { field: string; order: 'asc' | 'desc' | null };
+};
+const [Grid, gridApi] = useVbenVxeGrid<ConfigurationRow>({
+  formOptions: {
+    showCollapseButton: true,
+    collapsedRows: 1,
+    handleSubmit: async (values) => {
+      gridApi.formApi.setLatestSubmissionValues(values);
+      await gridApi.grid.setCurrentPage(1);
+      await gridApi.query();
+    },
+    handleReset: async () => {
+      await gridApi.formApi.resetForm();
+      gridApi.formApi.setLatestSubmissionValues(
+        await gridApi.formApi.getValues(),
+      );
+      await gridApi.grid.clearSort();
+      await gridApi.grid.setCurrentPage(1);
+      await gridApi.query();
+    },
+    schema: [
+      ...[
+        ['name', '名称'],
+        ['providerCode', '提供商'],
+        ['environment', '环境'],
+      ].map(([fieldName, label]) => ({
+        component: 'Input' as const,
+        fieldName: fieldName!,
+        label,
+        componentProps: { clearable: true },
+      })),
+      {
+        component: 'Select',
+        fieldName: 'status',
+        label: '状态',
+        componentProps: {
+          clearable: true,
+          options: Object.entries(statusText).map(([value, label]) => ({
+            value,
+            label,
+          })),
+        },
+      },
+    ],
+  },
+  gridOptions: {
+    columns: [
+      { title: '配置名称', minWidth: 160, field: 'name', sortable: true },
+      { title: '提供商', minWidth: 120, field: 'providerCode', sortable: true },
+      { title: '环境', width: 110, field: 'environment', sortable: true },
+      { title: '草稿模型数', width: 110, field: 'modelCount' },
+      { title: '已启用Key数', width: 120, field: 'usableKeyCount' },
+      {
+        title: '状态',
+        width: 90,
+        field: 'status',
+        sortable: true,
+        slots: { default: 'cell5' },
+      },
+      { title: '最近测试', minWidth: 165, field: 'latestTestTime' },
+      { title: '操作', minWidth: 350, slots: { default: 'cell7' } },
+    ],
+    pagerConfig: { pageSize: 10, pageSizes: [10, 20, 50, 100] },
+    sortConfig: { remote: true },
+    toolbarConfig: {
+      refresh: true,
+      refreshOptions: { code: 'query' },
+      custom: true,
+      search: true,
+    },
+    proxyConfig: {
+      sort: true,
+      ajax: {
+        query: async (
+          { page: pagination, sort }: GridQuery,
+          values: Record<string, unknown>,
+        ) => {
+          const run = ++listGeneration;
+          const token = access.accessToken;
+          if (!can('list')) return { items: [], total: 0 };
+          loading.value = true;
+          failed.value = false;
+          try {
+            let observedRefresh = refreshRevision;
+            let parameters = queryParameters(pagination, sort, values);
+            let value:
+              | Awaited<ReturnType<typeof listConfigurations>>
+              | undefined;
+            for (;;) {
+              let failure: unknown;
+              try {
+                value = await listConfigurations(parameters);
+              } catch (error_) {
+                failure = error_;
+              }
+              if (run !== listGeneration)
+                return {
+                  items: page.value.records,
+                  total: Number(page.value.total),
+                };
+              // 本仓 Vxe 在 loading 中忽略新的 query；返回前以原生页码、表头和最近提交值接续。
+              if (gridApi.grid.getCurrentPage) {
+                const submitted = gridApi.formApi.getLatestSubmissionValues();
+                if (
+                  JSON.stringify(queryFilters(submitted)) !==
+                  JSON.stringify(queryFilters(parameters))
+                )
+                  await gridApi.grid.setCurrentPage(1);
+                const current = queryParameters(
+                  {
+                    currentPage: gridApi.grid.getCurrentPage(),
+                    pageSize: gridApi.grid.getPageSize(),
+                  },
+                  gridApi.grid.getSortColumns()[0] ?? {},
+                  submitted,
+                );
+                if (
+                  JSON.stringify(current) !== JSON.stringify(parameters) ||
+                  observedRefresh !== refreshRevision
+                ) {
+                  parameters = current;
+                  observedRefresh = refreshRevision;
+                  continue;
+                }
+              }
+              if (failure) throw failure;
+              if (!value) throw new Error('列表未返回结果');
+              break;
+            }
+
+            if (run !== listGeneration || token !== access.accessToken)
+              return {
+                items: page.value.records,
+                total: Number(page.value.total),
+              };
+            const total = Number(value.total);
+            if (!Number.isSafeInteger(total) || total < 0)
+              throw new Error('Invalid total');
+            page.value = value;
+            jsonObjectModels.value = value.jsonObjectModels ?? [];
+            return { items: value.records, total };
+          } catch (error) {
+            if (run === listGeneration) {
+              failed.value = true;
+              page.value.records = [];
+              page.value.total = 0;
+            }
+            throw error;
+          } finally {
+            if (run === listGeneration) loading.value = false;
+          }
+        },
+      },
+    },
+  },
+});
+const [PairsGrid, pairsGridApi] = useVbenVxeGrid<
+  ConfigurationTest['pairs'][number]
+>({
+  gridOptions: {
+    columns: [
+      { title: '模型', minWidth: 160, field: 'modelCode', sortable: true },
+      { title: 'Key标签', field: 'keyLabel' },
+      { title: '结果', slots: { default: 'cell2' } },
+      { title: '原因', minWidth: 160, slots: { default: 'cell3' } },
+      { title: '耗时(ms)', field: 'elapsedMs' },
+    ],
+    pagerConfig: { enabled: false },
+    proxyConfig: { enabled: false },
+    toolbarConfig: { custom: true },
+  },
+});
+watch(
+  () => test.value?.pairs ?? [],
+  (data) => pairsGridApi.setGridOptions({ data }),
+  { immediate: true },
+);
+const [ImpactGrid, impactGridApi] = useVbenVxeGrid<ApplicationImpact>({
+  gridOptions: {
+    columns: [
+      { title: '应用', field: 'name', sortable: true },
+      { title: '应用ID', field: 'appId' },
+      { title: '版本', field: 'appVersionId' },
+    ],
+    pagerConfig: { enabled: false },
+    proxyConfig: { enabled: false },
+    toolbarConfig: { custom: true },
+  },
+});
+watch(
+  () => impact.value,
+  (data) => impactGridApi.setGridOptions({ data }),
+  { immediate: true },
+);
+const [VersionsGrid, versionsGridApi] = useVbenVxeGrid<ConfigurationVersion>({
+  gridOptions: {
+    columns: [
+      { title: '版本', field: 'configVersion' },
+      { title: '创建时间', field: 'createdAt', sortable: true },
+      { title: '状态', slots: { default: 'cell2' } },
+      { title: '准入搭配', slots: { default: 'cell3' } },
+    ],
+    pagerConfig: { enabled: false },
+    proxyConfig: { enabled: false },
+    toolbarConfig: { custom: true },
+  },
+});
+watch(
+  () => versions.value,
+  (data) => versionsGridApi.setGridOptions({ data }),
+  { immediate: true },
+);
+const [LegacyGrid, legacyGridApi] = useVbenVxeGrid<
+  ConfigurationPage['legacyModels'][number]
+>({
+  gridOptions: {
+    columns: [
+      { title: '提供商', field: 'providerCode', sortable: true },
+      { title: '模型', field: 'modelCode', sortable: true },
+      { title: '操作', slots: { default: 'cell2' } },
+    ],
+    pagerConfig: { enabled: false },
+    proxyConfig: { enabled: false },
+    toolbarConfig: { custom: true },
+  },
+});
+watch(
+  () => legacyRows.value,
+  (data) => legacyGridApi.setGridOptions({ data }),
+  { immediate: true },
+);
+const metadataValues = () => ({
+  name: editor.name,
+  environment: editor.environment,
+  providerCode: editor.providerCode,
+  modelCodes: editor.modelCodes,
+});
+const [MetadataForm, metadataFormApi] = useVbenForm({
+  showDefaultActions: false,
+  layout: 'vertical',
+  wrapperClass: 'grid-cols-1 md:grid-cols-2',
+  commonConfig: {
+    componentProps: () => ({ class: 'w-full', disabled: editorLocked.value }),
+  },
+  handleValuesChange: (values) => {
+    Object.assign(editor, values);
+  },
+  schema: [
+    {
+      component: 'Input',
+      fieldName: 'name',
+      label: '配置名称',
+      componentProps: { maxlength: 100, placeholder: '留空自动生成' },
+    },
+    {
+      component: 'Input',
+      fieldName: 'environment',
+      label: '环境',
+      componentProps: { maxlength: 32 },
+    },
+    {
+      component: 'Select',
+      fieldName: 'providerCode',
+      label: '提供商',
+      componentProps: () => ({
+        disabled: editorLocked.value || !!current.value,
+        options: [{ label: 'OpenRouter', value: 'openrouter' }],
+      }),
+    },
+    {
+      component: 'Select',
+      fieldName: 'modelCodes',
+      label: '模型（可搜索或手动添加）',
+      componentProps: () => ({
+        multiple: true,
+        filterable: true,
+        allowCreate: true,
+        defaultFirstOption: true,
+        reserveKeyword: false,
+        options: modelOptions.value.map((value) => ({ value, label: value })),
+        placeholder: '输入模型代号后回车',
+      }),
+    },
+  ],
+});
+watch(
+  () => JSON.stringify(metadataValues()),
+  () => {
+    if (visible.value) void metadataFormApi.setValues(metadataValues());
+  },
+);
+const [EditorDrawer, editorDrawerApi] = useVbenDrawer({
+  footer: false,
+  closeOnClickModal: false,
+  onBeforeClose: () => {
+    if (busy.value) return false;
+    closeEditor();
+    visible.value = false;
+    return true;
+  },
+});
+watch(visible, (open) => {
+  editorDrawerApi.setState({ isOpen: open });
+  if (open) void metadataFormApi.setValues(metadataValues());
+});
+onUnmounted(() => {
+  ++listGeneration;
+});
 </script>
 
 <template>
   <div class="key-settings-panel">
-    <div v-if="!visible" class="space-y-4 p-4">
+    <div class="space-y-4">
       <el-alert
         title="草稿保存不调用模型；测试通过后再明确启用。"
         type="info"
         closable
         show-icon
       />
-      <el-card>
-        <template #header>
-          <div class="flex flex-wrap items-center justify-between gap-2">
-            <span>提供商配置</span>
-            <div class="flex gap-2">
-              <el-button v-if="can('add')" @click="openLegacy">
-                导入原有模型
-              </el-button>
-              <el-button v-if="can('add')" type="primary" @click="create">
-                新建配置
-              </el-button>
-            </div>
-          </div>
+
+      <el-alert
+        v-if="failed"
+        title="加载失败，可重新查询"
+        type="error"
+        closable
+      />
+      <Grid>
+        <template #toolbar-actions>
+          <el-button v-if="can('add')" @click="openLegacy">
+            导入原有模型
+          </el-button>
+          <el-button v-if="can('add')" type="primary" @click="create">
+            新建配置
+          </el-button>
         </template>
-        <el-form
-          inline
-          @submit.prevent="
-            query.pageNum = 1;
-            load();
-          "
-        >
-          <el-form-item label="名称">
-            <el-input v-model="query.name" clearable maxlength="100" />
-          </el-form-item>
-          <el-form-item label="提供商">
-            <el-input v-model="query.providerCode" clearable maxlength="64" />
-          </el-form-item>
-          <el-form-item label="环境">
-            <el-input v-model="query.environment" clearable maxlength="32" />
-          </el-form-item>
-          <el-form-item label="状态">
-            <el-select v-model="query.status" clearable class="w-32">
-              <el-option
-                v-for="(label, value) in statusText"
-                :key="value"
-                :label="label"
-                :value="value"
-              />
-            </el-select>
-          </el-form-item>
-          <el-form-item>
-            <el-button
-              type="primary"
-              @click="
-                query.pageNum = 1;
-                load();
-              "
-            >
-              查询
-            </el-button>
-          </el-form-item>
-        </el-form>
-        <el-alert
-          v-if="failed"
-          title="加载失败，可重新查询"
-          type="error"
-          closable
-        />
-        <el-table v-loading="loading" :data="page.records" row-key="id" stripe>
-          <el-table-column prop="name" label="配置名称" min-width="160" />
-          <el-table-column prop="providerCode" label="提供商" min-width="120" />
-          <el-table-column prop="environment" label="环境" width="110" />
-          <el-table-column prop="modelCount" label="草稿模型数" width="110" />
-          <el-table-column
-            prop="usableKeyCount"
-            label="已启用Key数"
-            width="120"
-          />
-          <el-table-column label="状态" width="90">
-            <template #default="{ row }">
-              {{ statusText[row.status as keyof typeof statusText] }}
-            </template>
-          </el-table-column>
-          <el-table-column
-            prop="latestTestTime"
-            label="最近测试"
-            min-width="165"
-          />
-          <el-table-column label="操作" min-width="350">
-            <template #default="{ row }">
-              <el-button
-                v-if="can('query')"
-                link
-                type="primary"
-                @click="edit(row)"
-              >
-                {{ row.status === 'ARCHIVED' ? '查看' : '配置' }}
-              </el-button>
-              <el-button
-                v-if="can('test') && row.status !== 'ARCHIVED'"
-                link
-                @click="testRow(row)"
-              >
-                测试
-              </el-button>
-              <el-button v-if="can('query')" link @click="showImpact(row)">
-                影响
-              </el-button>
-              <el-button v-if="can('query')" link @click="showVersions(row)">
-                版本
-              </el-button>
-              <el-button
-                v-if="can('enable') && row.status === 'ACTIVE'"
-                link
-                type="warning"
-                @click="disable(row)"
-              >
-                紧急停用
-              </el-button>
-              <el-button
-                v-if="can('archive') && row.status !== 'ARCHIVED'"
-                link
-                @click="archive(row)"
-              >
-                归档
-              </el-button>
-            </template>
-          </el-table-column>
-        </el-table>
-        <el-pagination
-          v-model:current-page="query.pageNum"
-          v-model:page-size="query.pageSize"
-          class="mt-4"
-          :total="Number(page.total)"
-          layout="total, prev, pager, next"
-          @current-change="load"
-        />
-      </el-card>
+        <template #cell5="{ row }">
+          {{ statusText[row.status as keyof typeof statusText] }}
+        </template>
+        <template #cell7="{ row }">
+          <el-button v-if="can('query')" link type="primary" @click="edit(row)">
+            {{ row.status === 'ARCHIVED' ? '查看' : '配置' }}
+          </el-button>
+          <el-button
+            v-if="can('test') && row.status !== 'ARCHIVED'"
+            link
+            @click="testRow(row)"
+          >
+            测试
+          </el-button>
+          <el-button v-if="can('query')" link @click="showImpact(row)">
+            影响
+          </el-button>
+          <el-button v-if="can('query')" link @click="showVersions(row)">
+            版本
+          </el-button>
+          <el-button
+            v-if="can('enable') && row.status === 'ACTIVE'"
+            link
+            type="warning"
+            @click="disable(row)"
+          >
+            紧急停用
+          </el-button>
+          <el-button
+            v-if="can('archive') && row.status !== 'ARCHIVED'"
+            link
+            @click="archive(row)"
+          >
+            归档
+          </el-button>
+        </template>
+      </Grid>
     </div>
-    <section v-if="visible" class="configuration-editor">
-      <div class="mb-4 flex justify-between">
-        <h2>{{ current ? current.name : '新建配置' }}</h2>
-        <el-button
-          @click="
-            visible = false;
-            closeEditor();
-          "
-        >
-          返回配置列表
-        </el-button>
-      </div>
+    <EditorDrawer
+      :title="current ? current.name : '新建配置'"
+      class="w-full max-w-[1000px]"
+    >
       <el-alert
         v-if="current?.activeVersion"
         :title="`线上版本 ${current.activeVersion}；编辑及测试不会覆盖线上配置。`"
@@ -524,46 +761,8 @@ onUnmounted(() => {
         closable
         class="mb-4"
       />
+      <MetadataForm />
       <el-form label-position="top" :disabled="editorLocked">
-        <div class="grid gap-4 md:grid-cols-3">
-          <el-form-item label="配置名称">
-            <el-input
-              v-model="editor.name"
-              maxlength="100"
-              placeholder="留空自动生成"
-            />
-          </el-form-item>
-          <el-form-item label="环境">
-            <el-input v-model="editor.environment" maxlength="32" />
-          </el-form-item>
-          <el-form-item label="提供商">
-            <el-select
-              v-model="editor.providerCode"
-              :disabled="editorLocked || !!current"
-            >
-              <el-option label="OpenRouter" value="openrouter" />
-            </el-select>
-          </el-form-item>
-        </div>
-        <el-form-item label="模型（可搜索或手动添加）">
-          <el-select
-            v-model="editor.modelCodes"
-            multiple
-            filterable
-            allow-create
-            default-first-option
-            :reserve-keyword="false"
-            class="w-full"
-            placeholder="输入模型代号后回车"
-          >
-            <el-option
-              v-for="code in modelOptions"
-              :key="code"
-              :label="code"
-              :value="code"
-            />
-          </el-select>
-        </el-form-item>
         <el-form-item
           v-if="editor.modelCodes.length > 0"
           label="允许JSON对象（能力改变后需重新测试）"
@@ -662,10 +861,9 @@ onUnmounted(() => {
         </el-collapse>
       </el-form>
       <div class="mt-4">
-        <label v-if="can('test')" class="mb-3 block text-sm">
-          <input v-model="confirmedCosts" type="checkbox" />
+        <el-checkbox v-if="can('test')" v-model="confirmedCosts" class="mb-3">
           我确认主动测试可能产生模型费用
-        </label>
+        </el-checkbox>
         <div class="flex flex-wrap justify-end gap-2">
           <el-button
             v-if="current?.latestTestId && can('test')"
@@ -708,7 +906,7 @@ onUnmounted(() => {
           </el-button>
         </div>
       </div>
-    </section>
+    </EditorDrawer>
     <section v-if="testVisible" class="inline-section">
       <h3>逐搭配测试结果</h3>
       <el-button @click="testVisible = false">收起</el-button>
@@ -722,21 +920,16 @@ onUnmounted(() => {
           test.total
         }}
       </p>
-      <el-table :data="test?.pairs ?? []">
-        <el-table-column prop="modelCode" label="模型" min-width="160" />
-        <el-table-column prop="keyLabel" label="Key标签" />
-        <el-table-column label="结果">
-          <template #default="{ row }">
-            {{ pairText[row.status as keyof typeof pairText] }}
-          </template>
-        </el-table-column>
-        <el-table-column label="原因" min-width="160">
-          <template #default="{ row }">
-            {{ errorText[row.errorCode] ?? row.errorCode ?? '—' }}
-          </template>
-        </el-table-column>
-        <el-table-column prop="elapsedMs" label="耗时(ms)" />
-      </el-table>
+      <PairsGrid>
+        <template #cell2="{ row }">
+          {{ pairText[row.status as keyof typeof pairText] }}
+        </template>
+        <template #cell3="{ row }">
+          {{
+            row.errorCode ? (errorText[row.errorCode] ?? row.errorCode) : '—'
+          }}
+        </template>
+      </PairsGrid>
       <div class="mt-4">
         <el-button @click="poll">刷新</el-button>
         <el-button
@@ -753,27 +946,17 @@ onUnmounted(() => {
       <h3>在线应用影响</h3>
       <el-button @click="impactVisible = false">收起</el-button>
       <el-empty v-if="impact.length === 0" description="无在线应用引用" />
-      <el-table v-else :data="impact">
-        <el-table-column prop="name" label="应用" />
-        <el-table-column prop="appId" label="应用ID" />
-        <el-table-column prop="appVersionId" label="版本" />
-      </el-table>
+      <ImpactGrid />
     </section>
     <section v-if="versionsVisible" class="inline-section">
       <h3>历史配置版本</h3>
       <el-button @click="versionsVisible = false">收起</el-button>
-      <el-table :data="versions">
-        <el-table-column prop="configVersion" label="版本" />
-        <el-table-column prop="createdAt" label="创建时间" />
-        <el-table-column label="状态">
-          <template #default="{ row }">
-            {{ row.activated ? '已启用过' : '草稿' }}
-          </template>
-        </el-table-column>
-        <el-table-column label="准入搭配">
-          <template #default="{ row }">{{ row.admittedPairs.length }}</template>
-        </el-table-column>
-      </el-table>
+      <VersionsGrid>
+        <template #cell2="{ row }">
+          {{ row.activated ? '已启用过' : '草稿' }}
+        </template>
+        <template #cell3="{ row }">{{ row.admittedPairs.length }}</template>
+      </VersionsGrid>
     </section>
     <section v-if="legacyVisible" class="inline-section">
       <h3>导入原有模型为未测试草稿</h3>
@@ -783,15 +966,11 @@ onUnmounted(() => {
         type="info"
         closable
       />
-      <el-table :data="legacyRows">
-        <el-table-column prop="providerCode" label="提供商" />
-        <el-table-column prop="modelCode" label="模型" />
-        <el-table-column label="操作">
-          <template #default="{ row }">
-            <el-button link @click="importLegacy(row.id)">导入</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+      <LegacyGrid>
+        <template #cell2="{ row }">
+          <el-button link @click="importLegacy(row.id)">导入</el-button>
+        </template>
+      </LegacyGrid>
     </section>
   </div>
 </template>

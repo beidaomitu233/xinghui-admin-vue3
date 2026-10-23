@@ -77,7 +77,11 @@ export const scanDraftModels = (
   requestClient.post<ModelCatalogPage>(`${base}/draft-scan`, input, { signal });
 export const getStoredCatalog = (
   configId: string,
-  params: CatalogQuery & { keyId?: string },
+  params: CatalogQuery & {
+    keyId?: string;
+    order?: 'asc' | 'desc';
+    orderBy?: string;
+  },
 ) =>
   requestClient.get<StoredCatalog>(
     `${base}/channels/${encodeURIComponent(configId)}`,

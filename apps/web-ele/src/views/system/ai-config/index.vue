@@ -6,8 +6,6 @@ import { Page } from '@vben/common-ui';
 
 import { ElButton } from 'element-plus';
 
-import AdminPageHeader from '#/components/admin-page-header.vue';
-
 import ModelHubWorkspace from './ModelHubWorkspace.vue';
 import SceneRoutingWorkspace from './SceneRoutingWorkspace.vue';
 
@@ -25,29 +23,19 @@ watch(sceneKey, (value) => {
 });
 </script>
 <template>
-  <Page content-class="admin-page">
-    <div v-if="routing" class="hub-routing-workspace">
-      <AdminPageHeader title="AI 配置" description="维护业务模型与场景调用顺序">
-        <template #actions>
-          <ElButton @click="returnToModels">返回模型设置</ElButton>
-        </template>
-      </AdminPageHeader>
-      <SceneRoutingWorkspace
-        ref="routingWorkspace"
-        :initial-scene-key="sceneKey"
-      />
-    </div>
-    <ModelHubWorkspace v-else @routing="routing = true" />
+  <Page
+    header-class="flex-wrap gap-3"
+    v-if="routing"
+    title="AI 配置"
+    description="维护业务模型与场景调用顺序"
+  >
+    <template #extra>
+      <ElButton @click="returnToModels">返回模型设置</ElButton>
+    </template>
+    <SceneRoutingWorkspace
+      ref="routingWorkspace"
+      :initial-scene-key="sceneKey"
+    />
   </Page>
+  <ModelHubWorkspace v-else @routing="routing = true" />
 </template>
-<style scoped>
-.hub-routing-workspace {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.hub-routing-workspace > :deep(.el-button) {
-  align-self: flex-start;
-}
-</style>

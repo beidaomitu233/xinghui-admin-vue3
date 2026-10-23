@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import type { RequestStatus } from '#/api/system/ai-application';
 import type {
+  RequestAttempt,
   RequestLogDetail,
   RequestLogFilters,
   RequestLogRow,
   RequestLogStatistics,
+  RequestStage,
 } from '#/api/system/ai-request-log';
 
 import {
@@ -16,10 +18,13 @@ import {
   watch,
 } from 'vue';
 
+import { useVbenModal } from '@vben/common-ui';
 import { useAccessStore } from '@vben/stores';
 
 import { ElMessage } from 'element-plus';
 
+import { useVbenForm } from '#/adapter/form';
+import { useVbenVxeGrid } from '#/adapter/vxe-table';
 import {
   exportRequestLogs,
   getRequestLog,
@@ -50,6 +55,8 @@ const exporting = ref(false);
 const error = ref('');
 const detailOpen = ref(false);
 const detail = ref<RequestLogDetail>();
+const detailLoading = ref(false);
+const sorting = ref<{ order?: 'asc' | 'desc'; orderBy?: string }>({});
 let serial = 0;
 let detailSerial = 0;
 let exportGeneration = 0;
@@ -95,6 +102,7 @@ async function load() {
     const [page, statistics] = await Promise.all([
       listRequestLogs({
         ...query,
+        ...sorting.value,
         pageNum: pageNum.value,
         pageSize: pageSize.value,
       }),
@@ -104,7 +112,10 @@ async function load() {
     ]);
     if (run !== serial) return;
     rows.value = page.records;
-    total.value = Number(page.total);
+    const count = Number(page.total);
+    if (!Number.isSafeInteger(count) || count < 0)
+      throw new Error('Invalid total');
+    total.value = count;
     stats.value = statistics;
   } catch {
     if (run === serial) {
@@ -117,25 +128,20 @@ async function load() {
     if (run === serial) loading.value = false;
   }
 }
-function search() {
+let submittedRevision = 0;
+async function search() {
+  ++submittedRevision;
+  if (!gridApi.grid.setCurrentPage) return;
   pageNum.value = 1;
-  void load();
-}
-function changeScope() {
-  filters.value.tenantRef = undefined;
-  filters.value.subjectRef = undefined;
-  rows.value = [];
-  stats.value = undefined;
-  detailOpen.value = false;
-  detail.value = undefined;
-  detailSerial++;
-  search();
+  await gridApi.grid?.setCurrentPage?.(1);
+  await gridApi.query();
 }
 async function open(row: RequestLogRow) {
   if (!can('query')) return;
   const run = ++detailSerial;
   detail.value = undefined;
   detailOpen.value = true;
+  detailLoading.value = true;
   try {
     const result = await getRequestLog(row.request.requestId, snapshot());
     if (run === detailSerial) detail.value = result;
@@ -144,6 +150,8 @@ async function open(row: RequestLogRow) {
       detailOpen.value = false;
       error.value = '详情读取失败。';
     }
+  } finally {
+    if (run === detailSerial) detailLoading.value = false;
   }
 }
 async function download() {
@@ -190,10 +198,304 @@ async function download() {
     if (generation === exportGeneration && !inactive) exporting.value = false;
   }
 }
+const [QueryForm, formApi] = useVbenForm({
+  submitButtonOptions: { content: '查询' },
+  showCollapseButton: true,
+  collapsedRows: 1,
+  commonConfig: { componentProps: { class: 'w-full' } },
+  handleSubmit: search,
+  handleReset: async () => {
+    await formApi.resetForm();
+    await formApi.setValues({ scope: 'OWN', appId: props.appId });
+    sorting.value = {};
+    await gridApi.grid.clearSort();
+    search();
+  },
+  handleValuesChange: (values) => {
+    const { dates: range, ...fields } = values;
+    dates.value = range ?? null;
+    filters.value = {
+      ...fields,
+      scope: fields.scope ?? 'OWN',
+      appId: props.appId || fields.appId,
+      tenantRef: fields.scope === 'AUDIT' ? fields.tenantRef : undefined,
+      subjectRef: fields.scope === 'AUDIT' ? fields.subjectRef : undefined,
+    };
+  },
+  schema: [
+    {
+      component: 'Select',
+      fieldName: 'scope',
+      label: '范围',
+      defaultValue: 'OWN',
+      componentProps: () => ({
+        options: [
+          { label: '本人', value: 'OWN' },
+          ...(canAudit.value ? [{ label: '平台审计', value: 'AUDIT' }] : []),
+        ],
+      }),
+    },
+    {
+      component: 'Input',
+      fieldName: 'appId',
+      label: '应用 ID',
+      componentProps: () => ({
+        disabled: !!props.appId,
+        maxlength: 19,
+        clearable: true,
+      }),
+    },
+    ...[
+      ['requestId', '请求 ID'],
+      ['businessId', '业务记录'],
+      ['modelRef', '模型引用'],
+    ].map(([fieldName, label]) => ({
+      component: 'Input' as const,
+      fieldName: fieldName!,
+      label,
+      componentProps: { clearable: true, maxlength: 128 },
+    })),
+    {
+      component: 'Select',
+      fieldName: 'status',
+      label: '状态',
+      componentProps: {
+        clearable: true,
+        options: statuses.map((value) => ({ value, label: labels[value] })),
+      },
+    },
+    ...[
+      ['tenantRef', '租户'],
+      ['subjectRef', '主体'],
+    ].map(([fieldName, label]) => ({
+      component: 'Input' as const,
+      fieldName: fieldName!,
+      label,
+      dependencies: {
+        triggerFields: ['scope'],
+        if: (values: Record<string, unknown>) => values.scope === 'AUDIT',
+      },
+    })),
+    {
+      component: 'DatePicker',
+      fieldName: 'dates',
+      label: '时间',
+      componentProps: {
+        type: 'datetimerange',
+        startPlaceholder: '开始',
+        endPlaceholder: '结束',
+      },
+    },
+  ],
+});
+type GridQuery = {
+  page: { currentPage: number; pageSize: number };
+  sort: { field: string; order: 'asc' | 'desc' | null };
+};
+const [Grid, gridApi] = useVbenVxeGrid<RequestLogRow>({
+  gridOptions: {
+    columns: [
+      {
+        title: '请求 ID',
+        minWidth: 120,
+        field: 'request.requestId',
+        sortable: true,
+      },
+      { title: '场景 / 历史应用', minWidth: 140, field: 'appName' },
+      { title: '版本', width: 100, slots: { default: 'cell2' } },
+      { title: '业务记录', minWidth: 140, field: 'request.businessId' },
+      {
+        title: '状态',
+        width: 100,
+        field: 'request.status',
+        sortable: true,
+        slots: { default: 'cell4' },
+      },
+      { title: '阶段', width: 110, field: 'request.stage', sortable: true },
+      { title: '耗时', width: 100, slots: { default: 'cell6' } },
+      {
+        title: '尝试',
+        width: 80,
+        field: 'request.attemptCount',
+        sortable: true,
+      },
+      {
+        title: '输入 / 输出 Token',
+        minWidth: 150,
+        slots: { default: 'cell8' },
+      },
+      {
+        title: '租户',
+        minWidth: 100,
+        field: 'tenantRef',
+        visible: effectiveScope.value === 'AUDIT',
+      },
+      {
+        title: '主体',
+        minWidth: 100,
+        field: 'subjectRef',
+        visible: effectiveScope.value === 'AUDIT',
+      },
+      { title: '安全分类', minWidth: 150, field: 'request.errorCode' },
+      {
+        title: '操作',
+        width: 96,
+        fixed: 'right',
+        visible: true,
+        slots: { default: 'cell12' },
+      },
+    ],
+    pagerConfig: { pageSize: 20, pageSizes: [10, 20, 50, 100] },
+    sortConfig: { remote: true },
+    toolbarConfig: {
+      refresh: true,
+      refreshOptions: { code: 'query' },
+      custom: true,
+    },
+    proxyConfig: {
+      sort: true,
+      ajax: {
+        query: async ({ page, sort }: GridQuery) => {
+          pageNum.value = page.currentPage;
+          pageSize.value = page.pageSize;
+          sorting.value = sort.order
+            ? {
+                orderBy: sort.field.replace(/^request\./, ''),
+                order: sort.order as 'asc' | 'desc',
+              }
+            : {};
+          let revision = submittedRevision;
+          for (;;) {
+            const requested = JSON.stringify({
+              page: pageNum.value,
+              size: pageSize.value,
+              sort: sorting.value,
+              revision,
+            });
+            await load();
+            if (gridApi.grid.getCurrentPage) {
+              if (revision !== submittedRevision)
+                await gridApi.grid.setCurrentPage(1);
+              const currentSort = gridApi.grid.getSortColumns()[0];
+              const order = currentSort?.order;
+              sorting.value =
+                currentSort && (order === 'asc' || order === 'desc')
+                  ? {
+                      orderBy: currentSort.field.replace(/^request\./, ''),
+                      order,
+                    }
+                  : {};
+              pageNum.value = gridApi.grid.getCurrentPage();
+              pageSize.value = gridApi.grid.getPageSize();
+              revision = submittedRevision;
+              if (
+                requested !==
+                JSON.stringify({
+                  page: pageNum.value,
+                  size: pageSize.value,
+                  sort: sorting.value,
+                  revision,
+                })
+              )
+                continue;
+            }
+            break;
+          }
+          return { items: rows.value, total: total.value };
+        },
+      },
+    },
+  },
+});
+const [StagesGrid, stagesGridApi] = useVbenVxeGrid<RequestStage>({
+  gridOptions: {
+    columns: [
+      { title: '阶段', width: 100, field: 'stage', sortable: true },
+      { title: '结果', width: 130, field: 'outcome', sortable: true },
+      { title: '引用类型', width: 110, field: 'referenceKind', sortable: true },
+      { title: '引用 ID', minWidth: 120, field: 'referenceId' },
+      {
+        title: '引用版本',
+        minWidth: 120,
+        field: 'referenceVersion',
+        sortable: true,
+      },
+      { title: '分类', minWidth: 140, field: 'errorCode', sortable: true },
+      { title: '时间', minWidth: 180, field: 'createdAt', sortable: true },
+    ],
+    pagerConfig: { enabled: false },
+    proxyConfig: { enabled: false },
+    toolbarConfig: { custom: true },
+  },
+});
+watch(
+  () => detail.value?.stages ?? [],
+  (data) => stagesGridApi.setGridOptions({ data }),
+  { immediate: true },
+);
+const [AttemptsGrid, attemptsGridApi] = useVbenVxeGrid<RequestAttempt>({
+  gridOptions: {
+    columns: [
+      { title: '次数', width: 70, field: 'number', sortable: true },
+      {
+        title: '实际提供商 / 模型',
+        minWidth: 180,
+        slots: { default: 'cell1' },
+      },
+      {
+        title: '配置版本',
+        minWidth: 110,
+        field: 'configVersion',
+        sortable: true,
+      },
+      { title: '脱敏 Key', minWidth: 130, field: 'maskedKeyLabel' },
+      { title: 'Key 版本', minWidth: 100, slots: { default: 'cell4' } },
+      {
+        title: '选择原因',
+        minWidth: 130,
+        field: 'switchReason',
+        sortable: true,
+      },
+      { title: '终态', minWidth: 110, field: 'status', sortable: true },
+      { title: '输出配额', width: 100, slots: { default: 'cell7' } },
+      { title: '输入 / 输出', minWidth: 120, slots: { default: 'cell8' } },
+      { title: '上游追踪 ID', minWidth: 180, slots: { default: 'cell9' } },
+      { title: '分类', minWidth: 130, field: 'errorCode', sortable: true },
+    ],
+    pagerConfig: { enabled: false },
+    proxyConfig: { enabled: false },
+    toolbarConfig: { custom: true },
+  },
+});
+watch(
+  () => detail.value?.attempts ?? [],
+  (data) => attemptsGridApi.setGridOptions({ data }),
+  { immediate: true },
+);
+watch(effectiveScope, () => {
+  gridApi.grid?.hideColumn?.('tenantRef');
+  gridApi.grid?.hideColumn?.('subjectRef');
+  if (effectiveScope.value === 'AUDIT') {
+    gridApi.grid?.showColumn?.('tenantRef');
+    gridApi.grid?.showColumn?.('subjectRef');
+  }
+});
+const [DetailModal, detailModalApi] = useVbenModal({
+  onOpenChange: (open) => {
+    if (!open) {
+      detailOpen.value = false;
+      detailSerial++;
+      detail.value = undefined;
+    }
+  },
+});
+watch(detailOpen, (open) => detailModalApi.setState({ isOpen: open }));
+watch(detailLoading, (loading) => detailModalApi.setState({ loading }));
 watch(
   () => props.appId,
   (appId) => {
     filters.value.appId = appId;
+    void formApi.setValues({ appId });
     rows.value = [];
     stats.value = undefined;
     total.value = 0;
@@ -269,79 +571,7 @@ onBeforeUnmount(() => {
       closable
       class="mb-3"
     />
-    <el-form v-if="!controlledFilters" inline @submit.prevent="search">
-      <el-form-item label="范围">
-        <el-select
-          v-model="filters.scope"
-          placeholder="请选择范围"
-          style="width: 160px; min-width: 160px"
-          @change="changeScope"
-        >
-          <el-option label="本人" value="OWN" />
-          <el-option v-if="canAudit" label="平台审计" value="AUDIT" />
-        </el-select>
-      </el-form-item>
-      <el-form-item label="应用 ID">
-        <el-input
-          v-model="filters.appId"
-          :disabled="!!props.appId"
-          maxlength="19"
-          clearable
-        />
-      </el-form-item>
-      <el-form-item label="请求 ID">
-        <el-input v-model="filters.requestId" maxlength="19" clearable />
-      </el-form-item>
-      <el-form-item label="业务记录">
-        <el-input v-model="filters.businessId" maxlength="128" clearable />
-      </el-form-item>
-      <el-form-item label="模型引用">
-        <el-input v-model="filters.modelRef" maxlength="128" clearable />
-      </el-form-item>
-      <el-form-item label="状态">
-        <el-select
-          v-model="filters.status"
-          clearable
-          placeholder="全部状态"
-          style="width: 160px; min-width: 160px"
-        >
-          <el-option
-            v-for="status in statuses"
-            :key="status"
-            :label="labels[status]"
-            :value="status"
-          />
-        </el-select>
-      </el-form-item>
-      <el-form-item v-if="filters.scope === 'AUDIT'" label="租户">
-        <el-input v-model="filters.tenantRef" maxlength="64" clearable />
-      </el-form-item>
-      <el-form-item v-if="filters.scope === 'AUDIT'" label="主体">
-        <el-input v-model="filters.subjectRef" maxlength="128" clearable />
-      </el-form-item>
-      <el-form-item label="时间">
-        <el-date-picker
-          v-model="dates"
-          type="datetimerange"
-          start-placeholder="开始"
-          end-placeholder="结束"
-        />
-      </el-form-item>
-      <el-form-item>
-        <el-button type="primary" :loading="loading" @click="search">
-          查询
-        </el-button>
-        <el-button v-if="can('export')" :loading="exporting" @click="download">
-          导出 JSON
-        </el-button>
-      </el-form-item>
-    </el-form>
-    <div v-else class="mb-3 flex justify-end gap-2">
-      <el-button :loading="loading" @click="search">刷新日志</el-button>
-      <el-button v-if="can('export')" :loading="exporting" @click="download">
-        导出 JSON
-      </el-button>
-    </div>
+    <QueryForm v-if="!controlledFilters" />
     <el-alert
       v-if="error"
       :title="error"
@@ -365,93 +595,32 @@ onBeforeUnmount(() => {
         {{ stats.unknownInputAttempts }} / {{ stats.unknownOutputAttempts }}
       </el-descriptions-item>
     </el-descriptions>
-    <el-table
-      v-loading="loading"
-      :data="rows"
-      row-key="request.requestId"
-      border
-      empty-text="暂无授权范围内的请求"
-    >
-      <el-table-column
-        prop="request.requestId"
-        label="请求 ID"
-        min-width="120"
-      />
-      <el-table-column prop="appName" label="场景 / 历史应用" min-width="140" />
-      <el-table-column label="版本" width="100">
-        <template #default="{ row }">
-          {{
-            row.request.sceneVersionId ??
-            row.request.appVersionId ??
-            `草稿 ${row.request.draftRevision}`
-          }}
-        </template>
-      </el-table-column>
-      <el-table-column
-        prop="request.businessId"
-        label="业务记录"
-        min-width="140"
-      />
-      <el-table-column label="状态" width="100">
-        <template #default="{ row }">
-          {{ labels[row.request.status as RequestStatus] }}
-        </template>
-      </el-table-column>
-      <el-table-column prop="request.stage" label="阶段" width="110" />
-      <el-table-column label="耗时" width="100">
-        <template #default="{ row }">{{ row.elapsedMs }} ms</template>
-      </el-table-column>
-      <el-table-column prop="request.attemptCount" label="尝试" width="80" />
-      <el-table-column label="输入 / 输出 Token" min-width="150">
-        <template #default="{ row }">
-          {{ row.request.inputTokens ?? '未知' }} /
-          {{ row.request.outputTokens ?? '未知' }}
-        </template>
-      </el-table-column>
-      <el-table-column
-        v-if="effectiveScope === 'AUDIT'"
-        prop="tenantRef"
-        label="租户"
-        min-width="100"
-      />
-      <el-table-column
-        v-if="effectiveScope === 'AUDIT'"
-        prop="subjectRef"
-        label="主体"
-        min-width="100"
-      />
-      <el-table-column
-        prop="request.errorCode"
-        label="安全分类"
-        min-width="150"
-      />
-      <el-table-column
-        v-if="can('query')"
-        label="操作"
-        width="96"
-        fixed="right"
-      >
-        <template #default="{ row }">
-          <el-button link @click="open(row)">详情</el-button>
-        </template>
-      </el-table-column>
-    </el-table>
-    <el-pagination
-      v-model:current-page="pageNum"
-      v-model:page-size="pageSize"
-      :total="total"
-      :page-sizes="[10, 20, 50, 100]"
-      layout="total,sizes,prev,pager,next"
-      class="mt-3"
-      @current-change="load"
-      @size-change="search"
-    />
-    <el-dialog
-      v-model="detailOpen"
-      title="请求时间线"
-      width="min(1120px,95vw)"
-      @closed="detailSerial++"
-    >
+    <Grid>
+      <template #toolbar-actions>
+        <el-button v-if="can('export')" :loading="exporting" @click="download">
+          导出 JSON
+        </el-button>
+      </template>
+      <template #cell2="{ row }">
+        {{
+          row.request.sceneVersionId ??
+          row.request.appVersionId ??
+          `草稿 ${row.request.draftRevision}`
+        }}
+      </template>
+      <template #cell4="{ row }">
+        {{ labels[row.request.status as RequestStatus] }}
+      </template>
+      <template #cell6="{ row }">{{ row.elapsedMs }} ms</template>
+      <template #cell8="{ row }">
+        {{ row.request.inputTokens ?? '未知' }} /
+        {{ row.request.outputTokens ?? '未知' }}
+      </template>
+      <template #cell12="{ row }">
+        <el-button v-if="can('query')" link @click="open(row)">详情</el-button>
+      </template>
+    </Grid>
+    <DetailModal title="请求时间线" class="w-full max-w-[1120px]">
       <template v-if="detail">
         <p class="mb-3 break-all">
           请求 {{ detail.request.request.requestId }} ·
@@ -461,68 +630,28 @@ onBeforeUnmount(() => {
             labels[detail.request.request.status]
           }}
         </p>
-        <el-table :data="detail.stages" border class="mb-4">
-          <el-table-column prop="stage" label="阶段" width="100" />
-          <el-table-column prop="outcome" label="结果" width="130" />
-          <el-table-column prop="referenceKind" label="引用类型" width="110" />
-          <el-table-column prop="referenceId" label="引用 ID" min-width="120" />
-          <el-table-column
-            prop="referenceVersion"
-            label="引用版本"
-            min-width="120"
-          />
-          <el-table-column prop="errorCode" label="分类" min-width="140" />
-          <el-table-column prop="createdAt" label="时间" min-width="180" />
-        </el-table>
-        <el-table :data="detail.attempts" border empty-text="尚未调用供应商">
-          <el-table-column prop="number" label="次数" width="70" />
-          <el-table-column label="实际提供商 / 模型" min-width="180">
-            <template #default="{ row }">
-              {{ row.providerCode ?? '未知' }} / {{ row.modelCode ?? '未知' }}
-            </template>
-          </el-table-column>
-          <el-table-column
-            prop="configVersion"
-            label="配置版本"
-            min-width="110"
-          />
-          <el-table-column
-            prop="maskedKeyLabel"
-            label="脱敏 Key"
-            min-width="130"
-          />
-          <el-table-column label="Key 版本" min-width="100">
-            <template #default="{ row }">
-              {{ row.keyVersion ?? '未知' }}
-            </template>
-          </el-table-column>
-          <el-table-column
-            prop="switchReason"
-            label="选择原因"
-            min-width="130"
-          />
-          <el-table-column prop="status" label="终态" min-width="110" />
-          <el-table-column label="输出配额" width="100">
-            <template #default="{ row }">
-              {{ row.outputTokenLimit ?? '未知' }}
-            </template>
-          </el-table-column>
-          <el-table-column label="输入 / 输出" min-width="120">
-            <template #default="{ row }">
-              {{ row.inputTokens ?? '未知' }} / {{ row.outputTokens ?? '未知' }}
-            </template>
-          </el-table-column>
-          <el-table-column label="上游追踪 ID" min-width="180">
-            <template #default="{ row }">
-              {{ row.providerRequestId ?? '未知' }}
-            </template>
-          </el-table-column>
-          <el-table-column prop="errorCode" label="分类" min-width="130" />
-        </el-table>
+        <StagesGrid />
+        <AttemptsGrid>
+          <template #cell1="{ row }">
+            {{ row.providerCode ?? '未知' }} / {{ row.modelCode ?? '未知' }}
+          </template>
+          <template #cell4="{ row }">
+            {{ row.keyVersion ?? '未知' }}
+          </template>
+          <template #cell7="{ row }">
+            {{ row.outputTokenLimit ?? '未知' }}
+          </template>
+          <template #cell8="{ row }">
+            {{ row.inputTokens ?? '未知' }} / {{ row.outputTokens ?? '未知' }}
+          </template>
+          <template #cell9="{ row }">
+            {{ row.providerRequestId ?? '未知' }}
+          </template>
+        </AttemptsGrid>
       </template>
       <template #footer>
         <el-button @click="detailOpen = false">关闭</el-button>
       </template>
-    </el-dialog>
+    </DetailModal>
   </template>
 </template>

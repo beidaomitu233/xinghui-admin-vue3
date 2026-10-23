@@ -24,27 +24,25 @@ import {
 } from 'vue';
 import { onBeforeRouteLeave } from 'vue-router';
 
+import { useVbenDrawer } from '@vben/common-ui';
 import { useAccessStore } from '@vben/stores';
 
 import {
   ElAlert,
   ElButton,
   ElCheckbox,
-  ElDrawer,
-  ElEmpty,
   ElForm,
   ElFormItem,
   ElInput,
   ElMessageBox,
   ElOption,
-  ElPagination,
   ElPopconfirm,
   ElSelect,
-  ElTable,
-  ElTableColumn,
   ElTag,
 } from 'element-plus';
 
+import { useVbenForm } from '#/adapter/form';
+import { useVbenVxeGrid } from '#/adapter/vxe-table';
 import {
   activateConfiguration,
   disableConfiguration,
@@ -88,9 +86,6 @@ const providers = ref<SettingsProvider[]>([]);
 const current = ref<AiSettingsView>();
 const form = reactive(channelDraft());
 const baseline = ref('');
-const query = ref('');
-const page = ref(1);
-const total = ref('0');
 const loading = ref(false);
 const busy = ref(false);
 const editorOpen = ref(false);
@@ -278,17 +273,12 @@ const statusLabels: Record<ConnectionStatus, string> = {
 let alive = true;
 let selection = 0;
 let listGeneration = 0;
+let refreshRevision = 0;
 let timer: ReturnType<typeof setTimeout> | undefined;
 let pendingSave:
   | undefined
   | { body: AiSettingsChange; configId: null | string };
-let searchTimer: ReturnType<typeof setTimeout> | undefined;
-watch(query, () => {
-  page.value = 1;
-  listGeneration++;
-  clearTimeout(searchTimer);
-  searchTimer = setTimeout(() => void load(), 300);
-});
+
 function label(status?: ConnectionStatus) {
   return statusLabels[status ?? 'NOT_TESTED'];
 }
@@ -327,31 +317,177 @@ function apply(value?: AiSettingsView) {
   error.value = '';
   message.value = '';
 }
-async function load() {
+const text = (value: unknown) =>
+  typeof value === 'string' ? value.trim() || undefined : undefined;
+const queryFilters = (values: Record<string, unknown>) => ({
+  search: text(values.search),
+});
+const queryParameters = (
+  page: { currentPage: number; pageSize: number },
+  sort: { field?: string; order?: null | string },
+  values: Record<string, unknown>,
+) => ({
+  pageNum: page.currentPage,
+  pageSize: page.pageSize,
+  ...queryFilters(values),
+  ...(sort.order === 'asc' || sort.order === 'desc'
+    ? {
+        orderBy: sort.field === 'provider' ? 'providerCode' : sort.field,
+        order: sort.order as 'asc' | 'desc',
+      }
+    : {}),
+});
+type GridQuery = {
+  page: { currentPage: number; pageSize: number };
+  sort: { field: string; order: 'asc' | 'desc' | null };
+};
+const [Grid, gridApi] = useVbenVxeGrid<AiSettingsView>({
+  formOptions: {
+    showCollapseButton: false,
+    handleSubmit: async (values) => {
+      gridApi.formApi.setLatestSubmissionValues(values);
+      await gridApi.grid.setCurrentPage(1);
+      await gridApi.query();
+    },
+    handleReset: async () => {
+      await gridApi.formApi.resetForm();
+      gridApi.formApi.setLatestSubmissionValues(
+        await gridApi.formApi.getValues(),
+      );
+      await gridApi.grid.clearSort();
+      await gridApi.grid.setCurrentPage(1);
+      await gridApi.query();
+    },
+    schema: [
+      {
+        component: 'Input',
+        fieldName: 'search',
+        label: '搜索渠道',
+        componentProps: { clearable: true, placeholder: '搜索渠道' },
+      },
+    ],
+  },
+  gridOptions: {
+    columns: [
+      {
+        title: '渠道名称',
+        minWidth: 180,
+        field: 'name',
+        sortable: true,
+        slots: { default: 'cell0' },
+      },
+      {
+        title: '服务商',
+        minWidth: 120,
+        field: 'provider',
+        sortable: true,
+        slots: { default: 'cell1' },
+      },
+      { title: '启用', width: 95, slots: { default: 'cell2' } },
+      { title: '可用 Key', width: 110, slots: { default: 'cell3' } },
+      { title: '模型', width: 80, slots: { default: 'cell4' } },
+      { title: '连接状态', minWidth: 130, slots: { default: 'cell5' } },
+      {
+        title: '操作',
+        width: 140,
+        fixed: 'right',
+        slots: { default: 'cell6' },
+      },
+    ],
+    rowConfig: { keyField: 'configId' },
+    pagerConfig: { pageSize: 20, pageSizes: [10, 20, 50, 100] },
+    sortConfig: { remote: true },
+    toolbarConfig: {
+      refresh: true,
+      refreshOptions: { code: 'query' },
+      custom: true,
+      search: true,
+    },
+    proxyConfig: {
+      sort: true,
+      ajax: {
+        query: async (
+          { page, sort }: GridQuery,
+          values: Record<string, unknown>,
+        ) => {
+          const run = ++listGeneration;
+          const token = access.accessToken;
+          if (!can('list')) return { items: [], total: 0 };
+          loading.value = true;
+          try {
+            let observedRefresh = refreshRevision;
+            let parameters = queryParameters(page, sort, values);
+            let result: Awaited<ReturnType<typeof listAiSettings>> | undefined;
+            for (;;) {
+              let failure: unknown;
+              try {
+                result = await listAiSettings(parameters);
+              } catch (error_) {
+                failure = error_;
+              }
+              if (run !== listGeneration)
+                return { items: rows.value, total: 0 };
+              // 本仓 Vxe 在 loading 中忽略新的 query；返回前以原生页码、表头和最近提交值接续。
+              if (gridApi.grid.getCurrentPage) {
+                const submitted = gridApi.formApi.getLatestSubmissionValues();
+                if (
+                  JSON.stringify(queryFilters(submitted)) !==
+                  JSON.stringify(queryFilters(parameters))
+                )
+                  await gridApi.grid.setCurrentPage(1);
+                const current = queryParameters(
+                  {
+                    currentPage: gridApi.grid.getCurrentPage(),
+                    pageSize: gridApi.grid.getPageSize(),
+                  },
+                  gridApi.grid.getSortColumns()[0] ?? {},
+                  submitted,
+                );
+                if (
+                  JSON.stringify(current) !== JSON.stringify(parameters) ||
+                  observedRefresh !== refreshRevision
+                ) {
+                  parameters = current;
+                  observedRefresh = refreshRevision;
+                  continue;
+                }
+              }
+              if (failure) throw failure;
+              if (!result) throw new Error('列表未返回结果');
+              break;
+            }
+
+            if (
+              !alive ||
+              run !== listGeneration ||
+              token !== access.accessToken
+            )
+              return { items: rows.value, total: rows.value.length };
+            const count = Number(result.total);
+            if (!Number.isSafeInteger(count) || count < 0)
+              throw new Error('Invalid total');
+            rows.value = result.records;
+            return { items: result.records, total: count };
+          } catch (error_) {
+            if (alive && run === listGeneration)
+              error.value = '渠道列表读取失败，请重试。';
+            throw error_;
+          } finally {
+            if (alive && run === listGeneration) loading.value = false;
+          }
+        },
+      },
+    },
+  },
+});
+
+function load() {
+  ++refreshRevision;
   if (props.editorOnly) {
     emit('changed');
-    return;
+    return Promise.resolve();
   }
-  if (!can('list')) return;
-  clearTimeout(searchTimer);
-  const run = ++listGeneration;
-  loading.value = true;
-  try {
-    const result = await listAiSettings({
-      pageNum: page.value,
-      pageSize: 20,
-      search: query.value.trim() || undefined,
-    });
-    if (alive && run === listGeneration) {
-      rows.value = result.records;
-      total.value = result.total;
-    }
-  } catch {
-    if (alive && run === listGeneration)
-      error.value = '渠道列表读取失败，请重试。';
-  } finally {
-    if (alive && run === listGeneration) loading.value = false;
-  }
+  return gridApi.query();
 }
 const keyArea = ref<HTMLElement>();
 async function open(value?: AiSettingsView, focusKeys = false) {
@@ -426,12 +562,12 @@ async function requestClose(done?: () => void) {
   return true;
 }
 onBeforeRouteLeave(() => (editorOpen.value ? requestClose() : true));
-function beforeEditorClose(done: () => void) {
-  void requestClose(done);
-}
 async function save() {
   if (readonly.value && !(saveUnconfirmed.value && pendingSave && !busy.value))
     return;
+  const values = await metadataFormApi.getValues();
+  if (busy.value) return;
+  Object.assign(form, values);
   const validation = channelError(form);
   if (validation) {
     error.value = validation;
@@ -822,7 +958,6 @@ watch(
     selection++;
     listGeneration++;
     clearTimeout(timer);
-    clearTimeout(searchTimer);
     clearSecrets();
     resetCatalogs();
     pendingSave = undefined;
@@ -842,12 +977,72 @@ onBeforeUnmount(() => {
   selection++;
   listGeneration++;
   clearTimeout(timer);
-  clearTimeout(searchTimer);
   clearSecrets();
   pendingSave = undefined;
   resetCatalogs();
 });
 defineExpose({ open, requestClose, busy, isOpen: editorOpen });
+const metadataValues = () => ({ name: form.name, provider: form.provider });
+const [MetadataForm, metadataFormApi] = useVbenForm({
+  showDefaultActions: false,
+  layout: 'vertical',
+  wrapperClass: 'grid-cols-1 md:grid-cols-2',
+  commonConfig: {
+    componentProps: () => ({ class: 'w-full', disabled: readonly.value }),
+  },
+  handleValuesChange: (values) => {
+    Object.assign(form, values);
+  },
+  schema: [
+    {
+      component: 'Input',
+      fieldName: 'name',
+      label: '渠道名称',
+      rules: 'required',
+      componentProps: {
+        maxlength: 100,
+        placeholder: '例如：主渠道、备用渠道',
+        'aria-label': '渠道名称',
+      },
+    },
+    {
+      component: 'Select',
+      fieldName: 'provider',
+      label: '服务商',
+      componentProps: () => ({
+        disabled: readonly.value || !!current.value,
+        options: providers.value.map((provider) => ({
+          value: provider.code,
+          label: provider.name,
+        })),
+        'aria-label': '渠道服务商',
+        onChange: (value: string) => {
+          form.provider = value;
+          changeProvider();
+        },
+      }),
+    },
+  ],
+});
+watch(
+  () => JSON.stringify(metadataValues()),
+  () => {
+    if (editorOpen.value) void metadataFormApi.setValues(metadataValues());
+  },
+);
+const [ChannelDrawer, channelDrawerApi] = useVbenDrawer({
+  onBeforeClose: () => requestClose(),
+});
+watch(
+  editorOpen,
+  (open) => {
+    channelDrawerApi.setState({ isOpen: open });
+    if (open) void metadataFormApi.setValues(metadataValues());
+  },
+  {
+    immediate: true,
+  },
+);
 </script>
 
 <template>
@@ -879,144 +1074,73 @@ defineExpose({ open, requestClose, busy, isOpen: editorOpen });
         closable
         @close="dismissNotice"
       />
-      <div class="channel-toolbar">
-        <ElInput
-          v-model="query"
-          aria-label="搜索渠道"
-          placeholder="搜索渠道"
-          clearable
-          class="channel-search"
-        />
-        <ElButton :loading="loading" @click="load">刷新</ElButton>
-      </div>
-      <ElTable
-        v-loading="loading"
-        :data="rows"
-        row-key="configId"
-        class="channel-table"
-      >
-        <ElTableColumn label="渠道名称" min-width="180">
-          <template #default="{ row }">
-            <strong>{{ row.name }}</strong>
-            <p v-if="row.pendingChanges" class="channel-secondary">
-              修改待测试，当前仍使用原配置
-            </p>
-          </template>
-        </ElTableColumn>
-        <ElTableColumn label="服务商" min-width="120">
-          <template #default="{ row }">
-            {{
-              providers.find((item) => item.code === row.provider)?.name ??
-              row.provider
-            }}
-          </template>
-        </ElTableColumn>
-        <ElTableColumn label="启用" width="95">
-          <template #default="{ row }">
-            <ElTag :type="row.active ? 'success' : 'info'" effect="light">
-              {{ row.active ? '已启用' : '未启用' }}
-            </ElTag>
-          </template>
-        </ElTableColumn>
-        <ElTableColumn label="可用 Key" width="110">
-          <template #default="{ row }">
-            {{ keyCount(row) }} / {{ row.keys?.length ?? 0 }}
-          </template>
-        </ElTableColumn>
-        <ElTableColumn label="模型" width="80">
-          <template #default="{ row }">{{ row.models.length }}</template>
-        </ElTableColumn>
-        <ElTableColumn label="连接状态" min-width="130">
-          <template #default="{ row }">
-            <ElTag :type="tone(row.connection?.status)" effect="plain">
-              {{ label(row.connection?.status) }}
-            </ElTag>
-          </template>
-        </ElTableColumn>
-        <ElTableColumn label="操作" width="140" fixed="right">
-          <template #default="{ row }">
-            <ElButton link type="primary" :disabled="busy" @click="open(row)">
-              {{ can('edit') ? '编辑' : '查看' }}
-            </ElButton>
-            <ElButton
-              v-if="
-                can('enable') &&
-                can('query') &&
-                !row.active &&
-                ['SUCCEEDED', 'PARTIAL'].includes(row.connection?.status ?? '')
-              "
-              link
-              type="primary"
-              :disabled="busy"
-              @click="enable(row)"
-            >
-              启用已验证项
-            </ElButton>
-            <ElPopconfirm
-              v-if="can('enable') && can('query') && row.active"
-              title="停用此渠道？其他渠道不受影响。"
-              confirm-button-text="停用"
-              cancel-button-text="保留"
-              @confirm="disable(row)"
-            >
-              <template #reference>
-                <ElButton link type="danger" :disabled="busy">停用</ElButton>
-              </template>
-            </ElPopconfirm>
-          </template>
-        </ElTableColumn>
-        <template #empty>
-          <ElEmpty description="尚无可查看的渠道" :image-size="72" />
+
+      <Grid>
+        <template #cell0="{ row }">
+          <strong>{{ row.name }}</strong>
+          <p v-if="row.pendingChanges" class="channel-secondary">
+            修改待测试，当前仍使用原配置
+          </p>
         </template>
-      </ElTable>
-      <ElPagination
-        :current-page="page"
-        :page-size="20"
-        :total="Number(total)"
-        layout="total, prev, pager, next"
-        class="channel-pagination"
-        @current-change="
-          page = $event;
-          load();
-        "
-      />
+        <template #cell1="{ row }">
+          {{
+            providers.find((item) => item.code === row.provider)?.name ??
+            row.provider
+          }}
+        </template>
+        <template #cell2="{ row }">
+          <ElTag :type="row.active ? 'success' : 'info'" effect="light">
+            {{ row.active ? '已启用' : '未启用' }}
+          </ElTag>
+        </template>
+        <template #cell3="{ row }">
+          {{ keyCount(row) }} / {{ row.keys?.length ?? 0 }}
+        </template>
+        <template #cell4="{ row }">{{ row.models.length }}</template>
+        <template #cell5="{ row }">
+          <ElTag :type="tone(row.connection?.status)" effect="plain">
+            {{ label(row.connection?.status) }}
+          </ElTag>
+        </template>
+        <template #cell6="{ row }">
+          <ElButton link type="primary" :disabled="busy" @click="open(row)">
+            {{ can('edit') ? '编辑' : '查看' }}
+          </ElButton>
+          <ElButton
+            v-if="
+              can('enable') &&
+              can('query') &&
+              !row.active &&
+              ['SUCCEEDED', 'PARTIAL'].includes(row.connection?.status ?? '')
+            "
+            link
+            type="primary"
+            :disabled="busy"
+            @click="enable(row)"
+          >
+            启用已验证项
+          </ElButton>
+          <ElPopconfirm
+            v-if="can('enable') && can('query') && row.active"
+            title="停用此渠道？其他渠道不受影响。"
+            confirm-button-text="停用"
+            cancel-button-text="保留"
+            @confirm="disable(row)"
+          >
+            <template #reference>
+              <ElButton link type="danger" :disabled="busy">停用</ElButton>
+            </template>
+          </ElPopconfirm>
+        </template>
+      </Grid>
     </template>
-    <ElDrawer
-      :model-value="editorOpen"
+    <ChannelDrawer
       :title="current ? `渠道 · ${current.name}` : '新增渠道'"
-      size="min(820px, 100vw)"
-      destroy-on-close
+      class="w-full max-w-[820px]"
       :close-on-click-modal="false"
-      :before-close="beforeEditorClose"
-      @close="closeEditor"
     >
+      <MetadataForm />
       <ElForm class="channel-form" label-position="top" @submit.prevent="save">
-        <div class="channel-basics">
-          <ElFormItem label="渠道名称" required>
-            <ElInput
-              v-model="form.name"
-              :disabled="readonly"
-              aria-label="渠道名称"
-              maxlength="100"
-              placeholder="例如：主渠道、备用渠道"
-            />
-          </ElFormItem>
-          <ElFormItem label="服务商">
-            <ElSelect
-              v-model="form.provider"
-              aria-label="渠道服务商"
-              :disabled="readonly || Boolean(current)"
-              @change="changeProvider"
-            >
-              <ElOption
-                v-for="provider in providers"
-                :key="provider.code"
-                :label="provider.name"
-                :value="provider.code"
-              />
-            </ElSelect>
-          </ElFormItem>
-        </div>
         <p class="channel-secondary">
           服务地址：{{ form.endpointUrl }}
           <ElButton
@@ -1275,7 +1399,7 @@ defineExpose({ open, requestClose, busy, isOpen: editorOpen });
           </div>
         </div>
       </template>
-    </ElDrawer>
+    </ChannelDrawer>
   </section>
 </template>
 

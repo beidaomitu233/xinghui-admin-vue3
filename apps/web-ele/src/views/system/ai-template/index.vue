@@ -6,8 +6,6 @@ import { useAccessStore } from '@vben/stores';
 
 import { ElButton } from 'element-plus';
 
-import AdminPageHeader from '#/components/admin-page-header.vue';
-
 import LegacyWorkspace from './LegacyWorkspace.vue';
 import SceneWorkspace from './workspace/SceneWorkspace.vue';
 
@@ -23,12 +21,14 @@ const legacyAccess = computed(() =>
 );
 </script>
 <template>
-  <Page content-class="admin-page">
-    <AdminPageHeader
-      title="提示词配置"
-      description="维护场景提示词、数据引用与试运行配置"
-    >
-      <template v-if="sceneAccess" #actions>
+  <Page
+    auto-content-height
+    header-class="flex-wrap gap-3"
+    title="提示词配置"
+    description="维护场景提示词、数据引用与试运行配置"
+  >
+    <template v-if="sceneAccess" #extra>
+      <div class="flex flex-wrap gap-2">
         <ElButton @click="workspace?.refresh()">刷新</ElButton>
         <ElButton
           v-if="access.accessCodes.includes('ai:scene:add')"
@@ -37,8 +37,8 @@ const legacyAccess = computed(() =>
         >
           新建场景
         </ElButton>
-      </template>
-    </AdminPageHeader>
+      </div>
+    </template>
     <SceneWorkspace v-if="sceneAccess" ref="workspace" />
     <LegacyWorkspace v-else-if="legacyAccess" />
     <div v-else class="text-muted-foreground">暂无提示词配置访问权限</div>

@@ -23,6 +23,7 @@ import {
   watch,
 } from 'vue';
 
+import { useVbenDrawer } from '@vben/common-ui';
 import { useAccessStore } from '@vben/stores';
 
 import {
@@ -30,7 +31,6 @@ import {
   ElButton,
   ElCollapse,
   ElCollapseItem,
-  ElDrawer,
   ElEmpty,
   ElForm,
   ElFormItem,
@@ -424,6 +424,25 @@ onBeforeUnmount(() => {
   previewGeneration++;
   clearTimeout(searchTimer);
 });
+const [BindingDrawer, bindingDrawerApi] = useVbenDrawer({
+  onOpenChange: (open) => {
+    expanded.value = open;
+  },
+});
+watch(expanded, (open) => bindingDrawerApi.setState({ isOpen: open }), {
+  immediate: true,
+});
+const [PreviewDrawer, previewDrawerApi] = useVbenDrawer({
+  footer: false,
+  onOpenChange: (open) => {
+    if (!open) preview.value = undefined;
+  },
+});
+watch(
+  () => Boolean(preview.value),
+  (open) => previewDrawerApi.setState({ isOpen: open }),
+  { immediate: true },
+);
 </script>
 <template>
   <section class="database-binding-editor" aria-label="数据库引用">
@@ -514,10 +533,9 @@ onBeforeUnmount(() => {
       closable
       @close="error = ''"
     />
-    <ElDrawer
-      v-model="expanded"
+    <BindingDrawer
       :title="editing === null ? '添加数据引用' : '编辑数据引用'"
-      size="min(720px, 100vw)"
+      class="w-full max-w-[720px]"
       :close-on-click-modal="false"
     >
       <ElForm label-position="top" :disabled="readonly" class="reference-form">
@@ -875,13 +893,8 @@ onBeforeUnmount(() => {
           保存并插入提示词
         </ElButton>
       </template>
-    </ElDrawer>
-    <ElDrawer
-      :model-value="Boolean(preview)"
-      title="实际数据预览"
-      size="min(780px, 100vw)"
-      @close="preview = undefined"
-    >
+    </BindingDrawer>
+    <PreviewDrawer title="实际数据预览" class="w-full max-w-[780px]">
       <template v-if="preview">
         <p
           v-for="(notice, index) in preview.notices"
@@ -924,7 +937,7 @@ onBeforeUnmount(() => {
           description="本次没有可读取的数据"
         />
       </template>
-    </ElDrawer>
+    </PreviewDrawer>
   </section>
 </template>
 <style scoped>

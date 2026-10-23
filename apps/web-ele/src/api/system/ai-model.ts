@@ -1,7 +1,9 @@
+import type { AiRestLong } from './ai-application';
+
 import { requestClient } from '#/api/request';
 
 export interface AiModelConfig {
-  id: number;
+  id: AiRestLong;
   providerCode: string;
   modelCode: string;
   endpointUrl: string;
@@ -24,6 +26,8 @@ export interface AiModelPage {
 }
 
 export interface AiModelFilters {
+  orderBy?: string;
+  order?: 'asc' | 'desc';
   pageNum: number;
   pageSize: number;
   providerCode?: string;
@@ -43,19 +47,19 @@ export interface AiModelChange {
 export const listAiModels = (params: AiModelFilters) =>
   requestClient.get<AiModelPage>('/system/ai/models', { params });
 
-export const getAiModel = (id: number) =>
+export const getAiModel = (id: AiRestLong) =>
   requestClient.get<AiModelConfig>(`/system/ai/models/${id}`);
 
 export const createAiModel = (data: AiModelChange) =>
-  requestClient.post<number>('/system/ai/models', data);
+  requestClient.post<AiRestLong>('/system/ai/models', data);
 
 export const updateAiModel = (
-  id: number,
+  id: AiRestLong,
   data: AiModelChange & { revision: number },
 ) => requestClient.put<AiModelConfig>(`/system/ai/models/${id}`, data);
 
 export const setAiModelEnabled = (
-  id: number,
+  id: AiRestLong,
   data: { enabled: boolean; revision: number },
 ) =>
   requestClient.request<AiModelConfig>(`/system/ai/models/${id}/status`, {
@@ -63,7 +67,7 @@ export const setAiModelEnabled = (
     method: 'PATCH',
   });
 
-export const removeAiModel = (id: number, revision: number) =>
+export const removeAiModel = (id: AiRestLong, revision: number) =>
   requestClient.delete<undefined>(`/system/ai/models/${id}`, {
     params: { revision },
   });
@@ -79,7 +83,7 @@ export interface ModelTestResult {
   message: string;
 }
 export const saveAiModelCredential = (
-  id: number,
+  id: AiRestLong,
   data: {
     apiKey: string;
     clearKey: boolean;
@@ -88,5 +92,5 @@ export const saveAiModelCredential = (
   },
 ) =>
   requestClient.put<AiModelConfig>(`/system/ai/models/${id}/credential`, data);
-export const testAiModel = (id: number) =>
+export const testAiModel = (id: AiRestLong) =>
   requestClient.post<ModelTestResult>(`/system/ai/models/${id}/test`);

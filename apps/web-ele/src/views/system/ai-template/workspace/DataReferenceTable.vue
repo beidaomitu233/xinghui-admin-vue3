@@ -9,14 +9,9 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue';
 
 import { useAccessStore } from '@vben/stores';
 
-import {
-  ElAlert,
-  ElButton,
-  ElPopconfirm,
-  ElTable,
-  ElTableColumn,
-} from 'element-plus';
+import { ElAlert, ElButton, ElPopconfirm } from 'element-plus';
 
+import { useVbenVxeGrid } from '#/adapter/vxe-table';
 import { databaseFields, databaseTables } from '#/api/system/ai-database';
 import { getQuerySchema, validateQuery } from '#/api/system/ai-query';
 import { sceneDataFields } from '#/api/system/ai-scene-data';
@@ -329,6 +324,43 @@ onBeforeUnmount(() => {
   metadataCache.clear();
   queryMetadataCache.clear();
 });
+const [Grid, gridApi] = useVbenVxeGrid<ReferenceRow>({
+  gridOptions: {
+    proxyConfig: { enabled: false },
+    columns: [
+      {
+        title: '数据对象及说明',
+        minWidth: 190,
+        field: 'label',
+        sortable: true,
+        slots: { default: 'cell0' },
+      },
+      {
+        title: '注入标识',
+        minWidth: 190,
+        field: 'name',
+        sortable: true,
+        slots: { default: 'cell1' },
+      },
+      {
+        title: '查询来源与范围',
+        minWidth: 190,
+        field: 'source',
+        sortable: true,
+        slots: { default: 'cell2' },
+      },
+      { title: '操作', width: 140, slots: { default: 'cell3' } },
+    ],
+    pagerConfig: { enabled: false },
+    toolbarConfig: { custom: true },
+    rowConfig: { keyField: 'name' },
+  },
+});
+watch(
+  () => rows.value,
+  (data) => gridApi.setGridOptions({ data }),
+  { immediate: true, deep: true },
+);
 </script>
 <template>
   <section class="data-reference-table" aria-label="数据引用">
@@ -344,61 +376,47 @@ onBeforeUnmount(() => {
         添加引用
       </ElButton>
     </header>
-    <ElTable
-      :data="rows"
-      size="small"
-      class="reference-table"
-      height="100%"
-      empty-text="暂无数据引用"
-    >
-      <ElTableColumn label="数据对象及说明" min-width="190">
-        <template #default="{ row }">
-          <strong>{{ row.label }}</strong>
-          <p>{{ row.description }}</p>
-        </template>
-      </ElTableColumn>
-      <ElTableColumn label="注入标识" min-width="190">
-        <template #default="{ row }">
-          <code>{{ variableToken(row) }}</code>
-        </template>
-      </ElTableColumn>
-      <ElTableColumn label="查询来源与范围" min-width="190">
-        <template #default="{ row }">
-          <span :title="row.sourceDetail">{{ row.source }}</span>
-        </template>
-      </ElTableColumn>
-      <ElTableColumn label="操作" width="140">
-        <template #default="{ row }">
-          <ElButton
-            link
-            type="primary"
-            :disabled="readonly"
-            @mousedown.prevent
-            @click="emit('insert', row.name)"
-          >
-            插入
-          </ElButton>
-          <ElButton
-            v-if="row.editable && !readonly"
-            link
-            @click="emit('edit', row.name)"
-          >
-            编辑
-          </ElButton>
-          <ElPopconfirm
-            v-if="row.removable && !readonly"
-            title="移除此引用？请同步检查正文中的注入标识。"
-            confirm-button-text="移除"
-            cancel-button-text="保留"
-            @confirm="emit('remove', row.name)"
-          >
-            <template #reference>
-              <ElButton link type="danger">移除</ElButton>
-            </template>
-          </ElPopconfirm>
-        </template>
-      </ElTableColumn>
-    </ElTable>
+    <Grid>
+      <template #cell0="{ row }">
+        <strong>{{ row.label }}</strong>
+        <p>{{ row.description }}</p>
+      </template>
+      <template #cell1="{ row }">
+        <code>{{ variableToken(row) }}</code>
+      </template>
+      <template #cell2="{ row }">
+        <span :title="row.sourceDetail">{{ row.source }}</span>
+      </template>
+      <template #cell3="{ row }">
+        <ElButton
+          link
+          type="primary"
+          :disabled="readonly"
+          @mousedown.prevent
+          @click="emit('insert', row.name)"
+        >
+          插入
+        </ElButton>
+        <ElButton
+          v-if="row.editable && !readonly"
+          link
+          @click="emit('edit', row.name)"
+        >
+          编辑
+        </ElButton>
+        <ElPopconfirm
+          v-if="row.removable && !readonly"
+          title="移除此引用？请同步检查正文中的注入标识。"
+          confirm-button-text="移除"
+          cancel-button-text="保留"
+          @confirm="emit('remove', row.name)"
+        >
+          <template #reference>
+            <ElButton link type="danger">移除</ElButton>
+          </template>
+        </ElPopconfirm>
+      </template>
+    </Grid>
     <ElAlert
       v-if="error"
       :title="error"

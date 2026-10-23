@@ -2,20 +2,21 @@
 import type {
   PromptModelOption,
   PromptSceneDraft,
-  PromptScenePage,
   PromptSceneSummary,
   PromptSceneView,
   PromptVariable,
   PromptVariableType,
 } from '#/api/system/ai-prompt-scene';
 
-import { onMounted, reactive, ref } from 'vue';
+import { onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 
-import { Page } from '@vben/common-ui';
+import { Page, useVbenModal } from '@vben/common-ui';
 import { useAccessStore } from '@vben/stores';
 
 import { ElMessage, ElMessageBox } from 'element-plus';
 
+import { useVbenForm, z } from '#/adapter/form';
+import { useVbenVxeGrid } from '#/adapter/vxe-table';
 import {
   createPromptScene,
   getPromptScene,
@@ -31,14 +32,7 @@ import {
 const accessStore = useAccessStore();
 const can = (permission: string) =>
   accessStore.accessCodes.includes(permission);
-const page = ref<PromptScenePage>({
-  records: [],
-  total: 0,
-  pageNum: 1,
-  pageSize: 10,
-});
 const models = ref<PromptModelOption[]>([]);
-const loading = ref(false);
 const failed = ref(false);
 const saving = ref(false);
 const dialogVisible = ref(false);
@@ -49,47 +43,80 @@ const detail = ref<PromptSceneView>();
 const previewing = ref<PromptSceneView>();
 const renderedPreview = ref('');
 const previewLoading = ref(false);
-const statusChangingId = ref<number>();
+const statusChangingId = ref<PromptSceneSummary['id']>();
 const form = reactive({
   appKey: '',
   sceneKey: '',
-  modelId: 0,
+  modelId: '' as PromptModelOption['id'],
   prompt: '',
   variables: [] as PromptVariable[],
   revision: 0,
 });
 const previewValues = reactive<Record<string, string>>({});
-const query = reactive({
-  appKey: '',
-  sceneKey: '',
-  enabled: '' as '' | 'false' | 'true',
-  published: '' as '' | 'false' | 'true',
-  pageNum: 1,
-  pageSize: 10,
+const [EditForm, editFormApi] = useVbenForm({
+  showDefaultActions: false,
+  layout: 'vertical',
+  wrapperClass: 'grid-cols-1',
+  commonConfig: {
+    componentProps: () => ({ class: 'w-full', disabled: saving.value }),
+  },
+  schema: [
+    {
+      component: 'Input',
+      fieldName: 'appKey',
+      label: '应用标识',
+      rules: z.string().trim().min(1).max(64),
+      componentProps: () => ({
+        disabled: !!editing.value,
+        maxlength: 64,
+        placeholder: '例如 sample_alpha',
+      }),
+    },
+    {
+      component: 'Input',
+      fieldName: 'sceneKey',
+      label: '场景标识',
+      rules: z.string().trim().min(1).max(96),
+      componentProps: () => ({
+        disabled: !!editing.value,
+        maxlength: 96,
+        placeholder: '例如 summarize_record',
+      }),
+    },
+    {
+      component: 'Select',
+      fieldName: 'modelId',
+      label: '启用模型',
+      rules: 'selectRequired',
+      componentProps: () => ({
+        options: models.value.map((model) => ({
+          label: `${model.providerCode}/${model.modelCode}`,
+          value: model.id,
+        })),
+        placeholder: '选择当前已启用的模型',
+      }),
+    },
+    {
+      component: 'Input',
+      fieldName: 'prompt',
+      label: '提示词草稿',
+      rules: z.string().trim().min(1).max(12_000),
+      componentProps: {
+        type: 'textarea',
+        rows: 8,
+        maxlength: 12_000,
+        showWordLimit: true,
+        placeholder: '只写静态提示词与已声明变量占位符；不插入业务数据',
+      },
+    },
+  ],
 });
-
-async function load() {
-  if (!can('ai:prompt:list')) return;
-  loading.value = true;
-  failed.value = false;
-  try {
-    page.value = await listPromptScenes({
-      pageNum: query.pageNum,
-      pageSize: query.pageSize,
-      ...(query.appKey.trim() ? { appKey: query.appKey.trim() } : {}),
-      ...(query.sceneKey.trim() ? { sceneKey: query.sceneKey.trim() } : {}),
-      ...(query.enabled ? { enabled: query.enabled === 'true' } : {}),
-      ...(query.published ? { published: query.published === 'true' } : {}),
-    });
-  } catch {
-    page.value = { ...page.value, records: [], total: 0 };
-    failed.value = true;
-    ElMessage.error('加载场景失败');
-  } finally {
-    loading.value = false;
-  }
-}
-
+const [PreviewForm, previewFormApi] = useVbenForm({
+  showDefaultActions: false,
+  layout: 'vertical',
+  wrapperClass: 'grid-cols-1',
+  schema: [],
+});
 async function loadModels() {
   if (!can('ai:prompt:add') && !can('ai:prompt:edit')) return false;
   try {
@@ -99,30 +126,6 @@ async function loadModels() {
     models.value = [];
     return false;
   }
-}
-
-function search() {
-  query.pageNum = 1;
-  void load();
-}
-
-function resetSearch() {
-  query.appKey = '';
-  query.sceneKey = '';
-  query.enabled = '';
-  query.published = '';
-  search();
-}
-
-function onPageChange(pageNum: number) {
-  query.pageNum = pageNum;
-  void load();
-}
-
-function onPageSizeChange(pageSize: number) {
-  query.pageSize = pageSize;
-  query.pageNum = 1;
-  void load();
 }
 
 function newVariable(): PromptVariable {
@@ -154,6 +157,7 @@ async function openCreate() {
     revision: 0,
   });
   dialogVisible.value = true;
+  void editFormApi.setValues(form);
 }
 
 async function openEdit(row: PromptSceneSummary) {
@@ -173,6 +177,7 @@ async function openEdit(row: PromptSceneSummary) {
       revision: latest.revision,
     });
     dialogVisible.value = true;
+    void editFormApi.setValues(form);
   } catch {
     await load();
   }
@@ -188,7 +193,7 @@ function removeVariable(index: number) {
 
 function draftData(): PromptSceneDraft {
   return {
-    modelId: Number(form.modelId),
+    modelId: form.modelId,
     prompt: form.prompt,
     variables: form.variables.map((variable) => ({ ...variable })),
   };
@@ -207,6 +212,12 @@ function validForm() {
 }
 
 async function saveDraft() {
+  if (saving.value) return;
+  const validation = await editFormApi.validate();
+  if (!validation.valid) return;
+  const values = await editFormApi.getValues();
+  if (saving.value) return;
+  Object.assign(form, values);
   if (!validForm()) return;
   saving.value = true;
   try {
@@ -256,6 +267,22 @@ async function openPreview(row: PromptSceneSummary) {
       previewValues[variable.name] = variable.exampleValue;
     }
     previewVisible.value = true;
+    previewFormApi.setState({
+      schema: latest.draftVariables.map((variable) => ({
+        component: 'Input',
+        fieldName: variable.name,
+        label: variable.name,
+        description: variable.description,
+        componentProps: {
+          class: 'w-full',
+          type: variable.sensitive ? 'password' : 'text',
+          showPassword: variable.sensitive,
+          placeholder: variableTypeLabel(variable.type),
+        },
+      })),
+    });
+    await previewFormApi.resetForm();
+    await previewFormApi.setValues(previewValues);
   } catch {
     await load();
   }
@@ -263,6 +290,7 @@ async function openPreview(row: PromptSceneSummary) {
 
 async function runPreview() {
   if (!previewing.value) return;
+  Object.assign(previewValues, await previewFormApi.getValues());
   previewLoading.value = true;
   renderedPreview.value = '';
   try {
@@ -353,9 +381,246 @@ function variableTypeLabel(type: PromptVariableType) {
 }
 
 onMounted(() => {
-  void load();
   if (can('ai:prompt:add') || can('ai:prompt:edit')) void loadModels();
 });
+
+let listGeneration = 0;
+let refreshRevision = 0;
+let listResult = { items: [] as PromptSceneSummary[], total: 0 };
+const text = (value: unknown) =>
+  typeof value === 'string' ? value.trim() || undefined : undefined;
+const booleanFilter = (value: unknown) => {
+  if (value === true || value === 'true') return true;
+  if (value === false || value === 'false') return false;
+  return undefined;
+};
+const queryFilters = (values: Record<string, unknown>) => ({
+  appKey: text(values.appKey),
+  sceneKey: text(values.sceneKey),
+  enabled: booleanFilter(values.enabled),
+  published: booleanFilter(values.published),
+});
+const queryParameters = (
+  page: { currentPage: number; pageSize: number },
+  sort: { field?: string; order?: null | string },
+  values: Record<string, unknown>,
+) => ({
+  pageNum: page.currentPage,
+  pageSize: page.pageSize,
+  ...queryFilters(values),
+  ...(sort.order === 'asc' || sort.order === 'desc'
+    ? { orderBy: sort.field, order: sort.order as 'asc' | 'desc' }
+    : {}),
+});
+type GridQuery = {
+  page: { currentPage: number; pageSize: number };
+  sort: { field: string; order: 'asc' | 'desc' | null };
+};
+const [Grid, gridApi] = useVbenVxeGrid<PromptSceneSummary>({
+  formOptions: {
+    handleSubmit: async (values) => {
+      gridApi.formApi.setLatestSubmissionValues(values);
+      await gridApi.grid.setCurrentPage(1);
+      await gridApi.query();
+    },
+    showCollapseButton: true,
+    collapsedRows: 1,
+    handleReset: async () => {
+      await gridApi.formApi.resetForm();
+      await gridApi.grid.clearSort();
+      gridApi.formApi.setLatestSubmissionValues(
+        await gridApi.formApi.getValues(),
+      );
+      await gridApi.grid.setCurrentPage(1);
+      await gridApi.query();
+    },
+    schema: [
+      {
+        component: 'Input',
+        fieldName: 'appKey',
+        label: '应用标识',
+        componentProps: { clearable: true, maxlength: 64 },
+      },
+      {
+        component: 'Input',
+        fieldName: 'sceneKey',
+        label: '场景标识',
+        componentProps: { clearable: true, maxlength: 96 },
+      },
+      {
+        component: 'Select',
+        fieldName: 'enabled',
+        label: '场景状态',
+        componentProps: {
+          clearable: true,
+          options: [
+            { label: '启用', value: 'true' },
+            { label: '停用', value: 'false' },
+          ],
+        },
+      },
+      {
+        component: 'Select',
+        fieldName: 'published',
+        label: '发布状态',
+        componentProps: {
+          clearable: true,
+          options: [
+            { label: '已发布', value: 'true' },
+            { label: '未发布', value: 'false' },
+          ],
+        },
+      },
+    ],
+  },
+  gridOptions: {
+    columns: [
+      { title: '应用标识', minWidth: 140, field: 'appKey', sortable: true },
+      { title: '场景标识', minWidth: 150, field: 'sceneKey', sortable: true },
+      {
+        title: '草稿模型 / 修订',
+        minWidth: 190,
+        field: 'draftRevision',
+        sortable: true,
+        slots: { default: 'cell2' },
+      },
+      {
+        title: '已发布快照',
+        minWidth: 205,
+        field: 'publishedRevision',
+        sortable: true,
+        slots: { default: 'cell3' },
+      },
+      {
+        title: '启停状态',
+        width: 95,
+        field: 'enabled',
+        sortable: true,
+        slots: { default: 'cell4' },
+      },
+      {
+        title: '操作',
+        minWidth: 330,
+        fixed: 'right',
+        slots: { default: 'cell5' },
+      },
+    ],
+    rowConfig: { keyField: 'id' },
+    pagerConfig: { pageSize: 10, pageSizes: [10, 20, 50, 100] },
+    sortConfig: { remote: true },
+    toolbarConfig: {
+      refresh: true,
+      refreshOptions: { code: 'query' },
+      custom: true,
+      search: true,
+    },
+    proxyConfig: {
+      sort: true,
+      ajax: {
+        query: async (
+          { page, sort }: GridQuery,
+          values: Record<string, unknown>,
+        ) => {
+          const run = ++listGeneration;
+          failed.value = false;
+          if (!can('ai:prompt:list'))
+            return (listResult = { items: [], total: 0 });
+          try {
+            let observedRefresh = refreshRevision;
+            let parameters = queryParameters(page, sort, values);
+            let result:
+              | Awaited<ReturnType<typeof listPromptScenes>>
+              | undefined;
+            for (;;) {
+              let failure: unknown;
+              try {
+                result = await listPromptScenes(parameters);
+              } catch (error_) {
+                failure = error_;
+              }
+              if (run !== listGeneration) return listResult;
+              // 本仓 Vxe 在 loading 中忽略新的 query；返回前以原生页码、表头和最近提交值接续。
+              if (gridApi.grid.getCurrentPage) {
+                const submitted = gridApi.formApi.getLatestSubmissionValues();
+                if (
+                  JSON.stringify(queryFilters(submitted)) !==
+                  JSON.stringify(queryFilters(parameters))
+                )
+                  await gridApi.grid.setCurrentPage(1);
+                const current = queryParameters(
+                  {
+                    currentPage: gridApi.grid.getCurrentPage(),
+                    pageSize: gridApi.grid.getPageSize(),
+                  },
+                  gridApi.grid.getSortColumns()[0] ?? {},
+                  submitted,
+                );
+                if (
+                  JSON.stringify(current) !== JSON.stringify(parameters) ||
+                  observedRefresh !== refreshRevision
+                ) {
+                  parameters = current;
+                  observedRefresh = refreshRevision;
+                  continue;
+                }
+              }
+              if (failure) throw failure;
+              if (!result) throw new Error('列表未返回结果');
+              break;
+            }
+
+            if (run !== listGeneration || !can('ai:prompt:list'))
+              return listResult;
+            const total = Number(result.total);
+            if (!Number.isSafeInteger(total) || total < 0)
+              throw new Error('Invalid total');
+            return (listResult = { items: result.records, total });
+          } catch (error) {
+            if (run !== listGeneration) return listResult;
+            failed.value = true;
+            listResult = { items: [], total: 0 };
+            throw error;
+          }
+        },
+      },
+    },
+  },
+});
+const load = () => {
+  ++refreshRevision;
+  return gridApi.query();
+};
+watch(
+  () => can('ai:prompt:list'),
+  () => {
+    ++listGeneration;
+    listResult = { items: [], total: 0 };
+    gridApi.grid?.loadData?.([]);
+    void gridApi.grid?.setCurrentPage?.(1)?.then(() => gridApi.query());
+  },
+);
+onBeforeUnmount(() => {
+  ++listGeneration;
+});
+const [EditModal, editModalApi] = useVbenModal({
+  onBeforeClose: () => !saving.value,
+  onOpenChange: (open) => {
+    dialogVisible.value = open;
+  },
+});
+watch(dialogVisible, (open) => editModalApi.setState({ isOpen: open }));
+const [PreviewModal, previewModalApi] = useVbenModal({
+  onOpenChange: (open) => {
+    previewVisible.value = open;
+  },
+});
+watch(previewVisible, (open) => previewModalApi.setState({ isOpen: open }));
+const [DetailModal, detailModalApi] = useVbenModal({
+  onOpenChange: (open) => {
+    detailVisible.value = open;
+  },
+});
+watch(detailVisible, (open) => detailModalApi.setState({ isOpen: open }));
 </script>
 
 <template>
@@ -370,198 +635,114 @@ onMounted(() => {
         :closable="false"
         show-icon
       />
-      <el-card>
-        <template #header>
-          <div class="flex items-center justify-between">
-            <span>应用场景</span>
-            <el-button
-              v-if="can('ai:prompt:add')"
-              type="primary"
-              @click="openCreate"
-            >
-              新增场景
-            </el-button>
-          </div>
+      <el-alert
+        v-if="failed"
+        title="加载失败，请检查权限或服务状态后重试"
+        type="error"
+      />
+      <el-empty
+        v-if="!can('ai:prompt:list')"
+        description="无场景列表查看权限"
+      />
+      <Grid v-else>
+        <template #toolbar-actions>
+          <el-button
+            v-if="can('ai:prompt:add')"
+            type="primary"
+            @click="openCreate"
+          >
+            新增场景
+          </el-button>
         </template>
-        <el-form inline @submit.prevent="search">
-          <el-form-item label="应用标识">
-            <el-input
-              v-model="query.appKey"
-              clearable
-              maxlength="64"
-              @keyup.enter="search"
-            />
-          </el-form-item>
-          <el-form-item label="场景标识">
-            <el-input
-              v-model="query.sceneKey"
-              clearable
-              maxlength="96"
-              @keyup.enter="search"
-            />
-          </el-form-item>
-          <el-form-item label="场景状态">
-            <el-select
-              v-model="query.enabled"
-              clearable
-              placeholder="全部"
-              class="w-28"
-            >
-              <el-option label="启用" value="true" />
-              <el-option label="停用" value="false" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="发布状态">
-            <el-select
-              v-model="query.published"
-              clearable
-              placeholder="全部"
-              class="w-28"
-            >
-              <el-option label="已发布" value="true" />
-              <el-option label="未发布" value="false" />
-            </el-select>
-          </el-form-item>
-          <el-form-item>
-            <el-button type="primary" @click="search">查询</el-button>
-            <el-button @click="resetSearch">重置</el-button>
-            <el-button :loading="loading" @click="load">刷新</el-button>
-          </el-form-item>
-        </el-form>
-
-        <el-alert
-          v-if="failed"
-          class="mb-4"
-          title="加载失败，请检查权限或服务状态后重试"
-          type="error"
-        >
-          <template #default>
-            <el-button link type="primary" @click="load">重新加载</el-button>
-          </template>
-        </el-alert>
-        <el-empty
-          v-if="!can('ai:prompt:list')"
-          description="无场景列表查看权限"
-        />
-        <el-empty
-          v-else-if="!loading && !failed && Number(page.total) === 0"
-          description="暂无场景，可为不同应用分别登记场景"
-        />
-        <el-table v-else v-loading="loading" :data="page.records" row-key="id">
-          <el-table-column prop="appKey" label="应用标识" min-width="140" />
-          <el-table-column prop="sceneKey" label="场景标识" min-width="150" />
-          <el-table-column label="草稿模型 / 修订" min-width="190">
-            <template #default="{ row }">
-              <div>
-                {{ row.draftProviderCode }}/{{ row.draftModelCode }} · r{{
-                  row.draftRevision
-                }}
-              </div>
-              <el-tag v-if="!row.draftModelEnabled" type="danger" size="small">
-                草稿模型已停用
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column label="已发布快照" min-width="205">
-            <template #default="{ row }">
-              <div v-if="row.published">
-                {{ row.publishedProviderCode }}/{{ row.publishedModelCode }} ·
-                r{{ row.publishedRevision }}
-              </div>
-              <span v-else>未发布</span>
-              <el-tag
-                v-if="row.published && !row.publishedModelEnabled"
-                type="danger"
-                size="small"
-              >
-                已发布模型已停用
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column label="启停状态" width="95">
-            <template #default="{ row }">
-              <el-tag :type="row.enabled ? 'success' : 'info'">
-                {{ row.enabled ? '启用' : '停用' }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column label="操作" min-width="330" fixed="right">
-            <template #default="{ row }">
-              <el-button
-                v-if="can('ai:prompt:query')"
-                link
-                type="primary"
-                @click="showDetail(row)"
-              >
-                详情
-              </el-button>
-              <el-button
-                v-if="can('ai:prompt:query')"
-                link
-                type="primary"
-                @click="openPreview(row)"
-              >
-                预览
-              </el-button>
-              <el-button
-                v-if="can('ai:prompt:query') && can('ai:prompt:edit')"
-                link
-                type="primary"
-                @click="openEdit(row)"
-              >
-                编辑草稿
-              </el-button>
-              <el-button
-                v-if="can('ai:prompt:publish')"
-                link
-                type="primary"
-                :disabled="!row.draftModelEnabled"
-                @click="publish(row)"
-              >
-                发布
-              </el-button>
-              <el-button
-                v-if="can('ai:prompt:enable')"
-                link
-                :type="row.enabled ? 'warning' : 'success'"
-                :loading="statusChangingId === row.id"
-                @click="changeEnabled(row)"
-              >
-                {{ row.enabled ? '停用' : '启用' }}
-              </el-button>
-              <el-button
-                v-if="can('ai:prompt:remove') && !row.enabled"
-                link
-                type="danger"
-                @click="remove(row)"
-              >
-                删除
-              </el-button>
-            </template>
-          </el-table-column>
-        </el-table>
-        <div
-          v-if="can('ai:prompt:list') && Number(page.total) > 0"
-          class="mt-4 flex justify-end"
-        >
-          <el-pagination
-            :current-page="query.pageNum"
-            :page-size="query.pageSize"
-            :page-sizes="[10, 20, 50, 100]"
-            :total="Number(page.total)"
-            layout="total, sizes, prev, pager, next"
-            @current-change="onPageChange"
-            @size-change="onPageSizeChange"
-          />
-        </div>
-      </el-card>
+        <template #cell2="{ row }">
+          <div>
+            {{ row.draftProviderCode }}/{{ row.draftModelCode }} · r{{
+              row.draftRevision
+            }}
+          </div>
+          <el-tag v-if="!row.draftModelEnabled" type="danger" size="small">
+            草稿模型已停用
+          </el-tag>
+        </template>
+        <template #cell3="{ row }">
+          <div v-if="row.published">
+            {{ row.publishedProviderCode }}/{{ row.publishedModelCode }} · r{{
+              row.publishedRevision
+            }}
+          </div>
+          <span v-else>未发布</span>
+          <el-tag
+            v-if="row.published && !row.publishedModelEnabled"
+            type="danger"
+            size="small"
+          >
+            已发布模型已停用
+          </el-tag>
+        </template>
+        <template #cell4="{ row }">
+          <el-tag :type="row.enabled ? 'success' : 'info'">
+            {{ row.enabled ? '启用' : '停用' }}
+          </el-tag>
+        </template>
+        <template #cell5="{ row }">
+          <el-button
+            v-if="can('ai:prompt:query')"
+            link
+            type="primary"
+            @click="showDetail(row)"
+          >
+            详情
+          </el-button>
+          <el-button
+            v-if="can('ai:prompt:query')"
+            link
+            type="primary"
+            @click="openPreview(row)"
+          >
+            预览
+          </el-button>
+          <el-button
+            v-if="can('ai:prompt:query') && can('ai:prompt:edit')"
+            link
+            type="primary"
+            @click="openEdit(row)"
+          >
+            编辑草稿
+          </el-button>
+          <el-button
+            v-if="can('ai:prompt:publish')"
+            link
+            type="primary"
+            :disabled="!row.draftModelEnabled"
+            @click="publish(row)"
+          >
+            发布
+          </el-button>
+          <el-button
+            v-if="can('ai:prompt:enable')"
+            link
+            :type="row.enabled ? 'warning' : 'success'"
+            :loading="statusChangingId === row.id"
+            @click="changeEnabled(row)"
+          >
+            {{ row.enabled ? '停用' : '启用' }}
+          </el-button>
+          <el-button
+            v-if="can('ai:prompt:remove') && !row.enabled"
+            link
+            type="danger"
+            @click="remove(row)"
+          >
+            删除
+          </el-button>
+        </template>
+      </Grid>
     </div>
 
-    <el-dialog
-      v-model="dialogVisible"
+    <EditModal
       :title="editing ? '编辑场景草稿' : '新增场景草稿'"
-      width="860px"
-      destroy-on-close
+      class="w-full max-w-[860px]"
+      :destroy-on-close="true"
     >
       <el-alert
         class="mb-4"
@@ -569,133 +750,79 @@ onMounted(() => {
         type="info"
         :closable="false"
       />
-      <el-form label-width="130px">
-        <el-form-item label="应用标识" required>
-          <el-input
-            v-model="form.appKey"
-            :disabled="Boolean(editing)"
-            maxlength="64"
-            placeholder="例如 sample_alpha"
+      <EditForm />
+      <section aria-label="变量声明">
+        <h3 class="mb-3 font-semibold">变量声明</h3>
+
+        <div class="w-full space-y-3">
+          <el-empty
+            v-if="form.variables.length === 0"
+            description="当前场景无变量"
+            :image-size="48"
           />
-        </el-form-item>
-        <el-form-item label="场景标识" required>
-          <el-input
-            v-model="form.sceneKey"
-            :disabled="Boolean(editing)"
-            maxlength="96"
-            placeholder="例如 summarize_record"
-          />
-        </el-form-item>
-        <el-form-item label="启用模型" required>
-          <el-select
-            v-model="form.modelId"
-            class="w-full"
-            placeholder="选择当前已启用的模型"
+          <div
+            v-for="(variable, index) in form.variables"
+            :key="`${variable.name}-${index}`"
+            class="rounded border p-3"
           >
-            <el-option
-              v-for="model in models"
-              :key="model.id"
-              :label="`${model.providerCode}/${model.modelCode}`"
-              :value="model.id"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="提示词草稿" required>
-          <el-input
-            v-model="form.prompt"
-            type="textarea"
-            :rows="8"
-            maxlength="12000"
-            show-word-limit
-            placeholder="只写静态提示词与已声明变量占位符；不插入业务数据"
-          />
-        </el-form-item>
-        <el-form-item label="变量声明">
-          <div class="w-full space-y-3">
-            <el-empty
-              v-if="form.variables.length === 0"
-              description="当前场景无变量"
-              :image-size="48"
-            />
-            <div
-              v-for="(variable, index) in form.variables"
-              :key="`${variable.name}-${index}`"
-              class="rounded border p-3"
-            >
-              <div class="grid grid-cols-1 gap-2 md:grid-cols-2">
-                <el-input
-                  v-model="variable.name"
-                  maxlength="64"
-                  placeholder="变量名，例如 recordName"
-                />
-                <el-select v-model="variable.type" placeholder="变量类型">
-                  <el-option label="文本" value="STRING" />
-                  <el-option label="数字" value="NUMBER" />
-                  <el-option label="布尔值" value="BOOLEAN" />
-                </el-select>
-                <el-input
-                  v-model="variable.description"
-                  maxlength="160"
-                  placeholder="变量用途说明"
-                />
-                <el-input
-                  v-model="variable.exampleValue"
-                  :type="variable.sensitive ? 'password' : 'text'"
-                  maxlength="512"
-                  :show-password="variable.sensitive"
-                  placeholder="中性示例值；不要填入真实业务数据"
-                />
-              </div>
-              <div class="mt-2 flex items-center justify-between">
-                <el-switch
-                  v-model="variable.sensitive"
-                  active-text="敏感示例，输入时隐藏"
-                />
-                <el-button link type="danger" @click="removeVariable(index)">
-                  移除变量
-                </el-button>
-              </div>
+            <div class="grid grid-cols-1 gap-2 md:grid-cols-2">
+              <el-input
+                v-model="variable.name"
+                maxlength="64"
+                placeholder="变量名，例如 recordName"
+              />
+              <el-select v-model="variable.type" placeholder="变量类型">
+                <el-option label="文本" value="STRING" />
+                <el-option label="数字" value="NUMBER" />
+                <el-option label="布尔值" value="BOOLEAN" />
+              </el-select>
+              <el-input
+                v-model="variable.description"
+                maxlength="160"
+                placeholder="变量用途说明"
+              />
+              <el-input
+                v-model="variable.exampleValue"
+                :type="variable.sensitive ? 'password' : 'text'"
+                maxlength="512"
+                :show-password="variable.sensitive"
+                placeholder="中性示例值；不要填入真实业务数据"
+              />
             </div>
-            <el-button @click="addVariable">添加变量声明</el-button>
+            <div class="mt-2 flex items-center justify-between">
+              <el-switch
+                v-model="variable.sensitive"
+                active-text="敏感示例，输入时隐藏"
+              />
+              <el-button link type="danger" @click="removeVariable(index)">
+                移除变量
+              </el-button>
+            </div>
           </div>
-        </el-form-item>
-      </el-form>
+          <el-button @click="addVariable">添加变量声明</el-button>
+        </div>
+      </section>
       <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
+        <el-button :disabled="saving" @click="dialogVisible = false">
+          取消
+        </el-button>
         <el-button type="primary" :loading="saving" @click="saveDraft">
           保存草稿
         </el-button>
       </template>
-    </el-dialog>
+    </EditModal>
 
-    <el-dialog
-      v-model="previewVisible"
+    <PreviewModal
       title="场景中性预览"
-      width="760px"
-      destroy-on-close
+      class="w-full max-w-[760px]"
+      :destroy-on-close="true"
     >
       <el-alert
         title="预览只在本地配置值与中性示例值间做占位符替换，不调用 AI 模型、不读取业务数据；敏感变量在预览文本中会被掩码。"
         type="info"
         :closable="false"
       />
-      <el-form v-if="previewing" label-width="125px" class="mt-4">
-        <el-form-item
-          v-for="variable in previewing.draftVariables"
-          :key="variable.name"
-          :label="variable.name"
-        >
-          <el-input
-            v-model="previewValues[variable.name]"
-            :type="variable.sensitive ? 'password' : 'text'"
-            :show-password="variable.sensitive"
-            :placeholder="variableTypeLabel(variable.type)"
-          />
-          <div class="ml-2 text-xs text-gray-500">
-            {{ variable.description }}
-          </div>
-        </el-form-item>
-      </el-form>
+      <PreviewForm v-if="previewing" class="mt-4" />
       <div v-if="renderedPreview" class="mt-4 rounded border p-4">
         <div class="mb-2 font-medium">替换后的预览文本</div>
         <pre class="whitespace-pre-wrap break-words">{{ renderedPreview }}</pre>
@@ -706,9 +833,9 @@ onMounted(() => {
           生成中性预览
         </el-button>
       </template>
-    </el-dialog>
+    </PreviewModal>
 
-    <el-dialog v-model="detailVisible" title="场景草稿与发布快照" width="760px">
+    <DetailModal title="场景草稿与发布快照" class="w-full max-w-[760px]">
       <el-descriptions v-if="detail" :column="1" border>
         <el-descriptions-item label="应用 / 场景">
           {{ detail.appKey }} / {{ detail.sceneKey }}
@@ -755,6 +882,6 @@ onMounted(() => {
       <template #footer>
         <el-button @click="detailVisible = false">关闭</el-button>
       </template>
-    </el-dialog>
+    </DetailModal>
   </Page>
 </template>
