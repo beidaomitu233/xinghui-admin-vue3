@@ -23,6 +23,7 @@ import {
   testAiModel,
   updateAiModel,
 } from '#/api/system/ai-model';
+import AdminPageHeader from '#/components/admin-page-header.vue';
 
 const accessStore = useAccessStore();
 const can = (permission: string) =>
@@ -289,8 +290,22 @@ onMounted(load);
 </script>
 
 <template>
-  <Page title="AI模型配置" description="配置模型、凭据并测试 OpenRouter 连接。">
-    <div class="space-y-4 p-4">
+  <Page content-class="admin-page">
+    <AdminPageHeader
+      title="AI模型配置"
+      description="配置模型、凭据并测试 OpenRouter 连接。"
+    >
+      <template #actions>
+        <el-button
+          v-if="can('ai:model:add')"
+          type="primary"
+          @click="openCreate"
+        >
+          新增模型
+        </el-button>
+      </template>
+    </AdminPageHeader>
+    <div class="min-w-0 space-y-4">
       <el-alert
         title="密钥不会回显，模型测试会向 OpenRouter 发送一条简短请求。"
         type="info"
@@ -298,19 +313,6 @@ onMounted(load);
         show-icon
       />
       <el-card>
-        <template #header>
-          <div class="flex items-center justify-between">
-            <span>模型列表</span>
-            <el-button
-              v-if="can('ai:model:add')"
-              type="primary"
-              @click="openCreate"
-            >
-              新增模型
-            </el-button>
-          </div>
-        </template>
-
         <el-form inline @submit.prevent="search">
           <el-form-item label="供应方">
             <el-input
