@@ -16,6 +16,7 @@ export interface OperLogInfo {
   jsonResult: string;
   status: number;
   errorMsg: string;
+  costTime: number;
   operTime: string;
 }
 
@@ -23,7 +24,13 @@ export interface OperLogListParams {
   businessType?: number;
   operName?: string;
   order: 'asc' | 'desc';
-  orderBy: 'operTime';
+  orderBy:
+    | 'businessType'
+    | 'costTime'
+    | 'operName'
+    | 'operTime'
+    | 'status'
+    | 'title';
   pageNum: number;
   pageSize: number;
   status?: number;
