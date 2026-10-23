@@ -1,10 +1,107 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { transformMenusToRoutes } from './menu';
+import { normalizeNavigationMenus, transformMenusToRoutes } from './menu';
 
 vi.mock('#/api/request', () => ({ requestClient: { get: vi.fn() } }));
 
 describe('backend menu conversion', () => {
+  it('promotes only authorized existing home pages before directories without mutating grants', () => {
+    const authorized = [
+      {
+        menuId: 'ops',
+        menuType: 'M',
+        path: '/ops',
+        orderNum: 3,
+        children: [
+          {
+            menuId: 'home',
+            menuType: 'C',
+            component: 'dashboard/workspace/index',
+            path: '/workspace',
+            visible: '0',
+          },
+          {
+            menuId: 'board',
+            menuType: 'C',
+            component: 'dashboard/analytics/index',
+            path: '/analytics',
+            visible: '1',
+          },
+        ],
+      },
+    ];
+    const result = normalizeNavigationMenus(authorized);
+    expect(result.map((menu) => menu.menuId)).toEqual(['home', 'board']);
+    expect(result[1]?.visible).toBe('1');
+    expect(
+      transformMenusToRoutes(result).some(
+        (route) => route.component === '__missing_page__',
+      ),
+    ).toBe(false);
+    expect(authorized[0]?.children).toHaveLength(2);
+    expect(
+      normalizeNavigationMenus([
+        {
+          menuId: 'system',
+          menuType: 'M',
+          path: '/system',
+          children: [
+            {
+              menuId: 'user',
+              menuType: 'C',
+              path: 'user',
+              component: 'system/user/index',
+            },
+          ],
+        },
+      ]).map((menu) => menu.menuId),
+    ).toEqual(['system']);
+    expect(normalizeNavigationMenus([])).toEqual([]);
+  });
+  it('also drops empty directories in an already migrated server response', () => {
+    const result = normalizeNavigationMenus([
+      {
+        menuId: 'home',
+        menuType: 'C',
+        component: 'dashboard/workspace/index',
+        path: '/workspace',
+      },
+      { menuId: 'ops', menuType: 'M', path: '/ops', children: [] },
+      {
+        menuId: 'buttons-only',
+        menuType: 'M',
+        path: '/actions',
+        children: [{ menuId: 'action', menuType: 'F' }],
+      },
+    ]);
+    expect(result.map((menu) => menu.menuId)).toEqual(['home']);
+  });
+  it('retains the operations directory when the role has another real page', () => {
+    const result = normalizeNavigationMenus([
+      {
+        menuId: 'ops',
+        menuType: 'M',
+        path: '/ops',
+        children: [
+          {
+            menuId: 'home',
+            menuType: 'C',
+            component: 'dashboard/workspace/index',
+            path: '/workspace',
+          },
+          {
+            menuId: 'jobs',
+            menuType: 'C',
+            component: 'system/job/index',
+            path: 'jobs',
+          },
+        ],
+      },
+    ]);
+    expect(result.map((menu) => menu.menuId)).toEqual(['home', 'ops']);
+    expect(result[1]?.children?.map((menu) => menu.menuId)).toEqual(['jobs']);
+    expect(transformMenusToRoutes(result)[1]?.component).toBe('BasicLayout');
+  });
   it('keeps IDs stable and unique across identical labels and excludes buttons', () => {
     const menus = [
       {

@@ -13,6 +13,7 @@ import {
   DEMO_MANIFEST,
   staticDemoPlugins,
 } from './demo-build';
+import { localIconsPlugin } from './local-icons';
 
 export default defineConfig(async ({ mode }) => {
   const demo = loadEnv(mode, process.cwd()).VITE_APP_DEMO === 'true';
@@ -47,6 +48,7 @@ export default defineConfig(async ({ mode }) => {
           }
         : {}),
       plugins: [
+        localIconsPlugin(resolve(process.cwd(), '../..')),
         ...staticDemoPlugins(demo, resolve(process.cwd(), '../..')),
         ElementPlus({
           format: 'esm',

@@ -1,7 +1,11 @@
 <script lang="ts" setup>
+import type { ComputedRef } from 'vue';
+
 import type { MenuRecordRaw } from '@vben/types';
 
 import type { MenuProps } from '@vben-core/menu-ui';
+
+import { computed, inject } from 'vue';
 
 import { Menu } from '@vben-core/menu-ui';
 
@@ -13,11 +17,15 @@ const props = withDefaults(defineProps<Props>(), {
   accordion: true,
   menus: () => [],
 });
-
 const emit = defineEmits<{
   open: [string, string[]];
   select: [string, string?];
 }>();
+
+const expansionKey = inject<ComputedRef<string>>(
+  'navigation-expansion-key',
+  computed(() => ''),
+);
 
 function handleMenuSelect(key: string) {
   emit('select', key, props.mode);
@@ -30,6 +38,7 @@ function handleMenuOpen(key: string, path: string[]) {
 
 <template>
   <Menu
+    :expansion-key="expansionKey ? `${expansionKey}:main` : undefined"
     :accordion="accordion"
     :collapse="collapse"
     :collapse-show-title="collapseShowTitle"

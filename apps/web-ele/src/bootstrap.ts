@@ -35,6 +35,7 @@ async function bootstrap(namespace: string) {
   //   zIndex: 2000,
   // });
   const app = createApp(App);
+  app.provide('app-namespace', namespace);
 
   // 注册Element Plus提供的v-loading指令
   app.directive('loading', ElLoading.directive);
