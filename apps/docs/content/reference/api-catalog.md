@@ -1307,3 +1307,16 @@ public SseEmitter events(@PathVariable long id, HttpServletResponse response)
 ```
 
 :::
+
+## 2026-10-23：表单分享填写
+
+同源API路径，前端经`/api`代理，原forms/records管理接口保留。
+
+| 方法与路径 | 授权与内容 |
+| --- | --- |
+| GET `/lowcode/forms/{formId}/sharing` | 平台身份及`lowcode:form:publish`；enabled、accessMode、revision、token |
+| PUT `/lowcode/forms/{formId}/sharing` | 同上；enabled、accessMode（login/public）、revision，可选rotate，不接受客户端令牌 |
+| GET `/lowcode/fill/{token}` | 有效分享，login另检查账号/租户；仅title、schemaVersion、accessMode、fields |
+| POST `/lowcode/fill/{token}` | 同GET范围；仅schemaVersion、requestKey、data；返回submitted与不透明receipt，无内部ID/答案 |
+
+填写接口HTTP状态：400参数/字段错误，401需登录，403账号/租户拒绝，409版本或同键内容冲突，410链接失效。同键同内容重试不重复写记录；管理CRUD及revision规则不变。服务端每次重查令牌、版本、启用状态与归属。
