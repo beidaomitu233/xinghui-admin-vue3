@@ -134,7 +134,12 @@ const [Grid, gridApi] = useVbenVxeGrid<UserInfo>({
       multiple: false,
       defaultSort: { field: 'createTime', order: 'desc' },
     },
-    toolbarConfig: { custom: true, refresh: true, zoom: true, search: true },
+    toolbarConfig: {
+      custom: true,
+      refresh: { code: 'query' },
+      zoom: true,
+      search: true,
+    },
     proxyConfig: {
       sort: true,
       ajax: {
