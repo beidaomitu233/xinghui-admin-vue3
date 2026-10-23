@@ -34,7 +34,7 @@ formApi提供getValues、setValues、resetForm、validate、submitForm等方法�
 
 ## VXE表格
 
-从 `#/adapter/vxe-table`导入useVbenVxeGrid和类型，返回 `[Grid, gridApi]`。裸gridOptions类型为VxeTableGridOptions<Row>，外层VxeGridProps包含gridOptions/formOptions/gridEvents。适配默认proxy结果字段为items、total；本项目很多业务响应为records，必须显式映射，不能直接套用。全局关闭VXE自身formConfig，筛选使用formOptions。
+从 `#/adapter/vxe-table` 导入 `useVbenVxeGrid` 和类型，返回 `[Grid, gridApi]`。裸 `gridOptions` 类型为 `VxeTableGridOptions<Row>`，外层 `VxeGridProps` 包含 `gridOptions`、`formOptions` 和 `gridEvents`。适配默认 proxy 结果字段为 `items`、`total`；本项目很多业务响应为 `records`，必须显式映射，不能直接套用。全局关闭 VXE 自身 `formConfig`，筛选使用 `formOptions`。
 
 ```ts
 import { useVbenVxeGrid } from '#/adapter/vxe-table';
