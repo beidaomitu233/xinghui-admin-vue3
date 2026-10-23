@@ -48,6 +48,11 @@ export const usePersonalNotificationStore = defineStore(
       }
     }
 
-    return { clearUnreadCount, refreshUnreadCount, unreadCount };
+    return {
+      $reset: clearUnreadCount,
+      clearUnreadCount,
+      refreshUnreadCount,
+      unreadCount,
+    };
   },
 );
