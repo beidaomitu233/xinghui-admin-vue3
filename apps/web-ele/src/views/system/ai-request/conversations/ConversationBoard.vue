@@ -149,7 +149,7 @@ const labels: Record<ConversationItem['state'], string> = {
   <div class="conversation-board">
     <aside class="conversation-sidebar">
       <header class="sidebar-heading">
-        <h1>{{ scope === 'AUDIT' ? '审计对话' : '我的对话' }}</h1>
+        <h2>{{ scope === 'AUDIT' ? '审计对话' : '我的对话' }}</h2>
         <ElButton v-if="canCreate" type="primary" @click="emit('create')">
           新对话
         </ElButton>
@@ -336,7 +336,7 @@ const labels: Record<ConversationItem['state'], string> = {
   grid-template-columns: 280px minmax(0, 1fr);
   height: min(80vh, 1000px);
   min-height: 600px;
-  overflow: hidden;
+  overflow: auto;
   color: hsl(var(--foreground));
   background: hsl(var(--background));
   border-radius: 10px;
@@ -367,10 +367,10 @@ const labels: Record<ConversationItem['state'], string> = {
   padding: 0 8px;
 }
 
-h1,
 h2 {
-  font-size: 17px;
+  font-size: 16px;
   font-weight: 600;
+  line-height: 24px;
 }
 
 .conversation-search {

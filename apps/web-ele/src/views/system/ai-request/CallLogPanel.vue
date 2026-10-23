@@ -520,7 +520,7 @@ onBeforeUnmount(clear);
   height: 100%;
   min-height: 0;
   padding: 16px 20px;
-  overflow: hidden;
+  overflow: auto;
   color: hsl(var(--foreground));
   background: hsl(var(--background));
 }

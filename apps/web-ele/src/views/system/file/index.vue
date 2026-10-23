@@ -14,6 +14,7 @@ import {
   removeFiles,
   uploadFile,
 } from '#/api/system/file';
+import AdminPageHeader from '#/components/admin-page-header.vue';
 
 import { formatFileSize } from './file-size';
 
@@ -243,9 +244,32 @@ onMounted(() => {
 </script>
 
 <template>
-  <Page title="文件管理" description="管理系统上传的文件">
+  <Page content-class="admin-page">
+    <AdminPageHeader title="文件管理" description="管理系统上传的文件">
+      <template #actions>
+        <el-button
+          v-if="canRemove()"
+          type="danger"
+          :disabled="selectedIds.length === 0"
+          @click="handleBatchDelete"
+        >
+          批量删除
+        </el-button>
+        <el-upload
+          v-if="canUpload()"
+          :show-file-list="false"
+          :http-request="handleUpload"
+          :disabled="uploading"
+          class="ml-2 inline-block"
+        >
+          <el-button type="primary" :loading="uploading">
+            {{ uploading ? `上传中 ${uploadProgress}%` : '上传文件' }}
+          </el-button>
+        </el-upload>
+      </template>
+    </AdminPageHeader>
     <!-- 搜索区域 -->
-    <el-card class="mb-4" shadow="never">
+    <el-card shadow="never">
       <el-form :inline="true" :model="formInline">
         <el-form-item label="文件名">
           <el-input
@@ -279,33 +303,6 @@ onMounted(() => {
 
     <!-- 操作区域 -->
     <el-card shadow="never">
-      <template #header>
-        <div class="flex items-center justify-between">
-          <span>文件列表</span>
-          <div>
-            <el-button
-              v-if="canRemove()"
-              type="danger"
-              :disabled="selectedIds.length === 0"
-              @click="handleBatchDelete"
-            >
-              批量删除
-            </el-button>
-            <el-upload
-              v-if="canUpload()"
-              :show-file-list="false"
-              :http-request="handleUpload"
-              :disabled="uploading"
-              class="ml-2 inline-block"
-            >
-              <el-button type="primary" :loading="uploading">
-                {{ uploading ? `上传中 ${uploadProgress}%` : '上传文件' }}
-              </el-button>
-            </el-upload>
-          </div>
-        </div>
-      </template>
-
       <!-- 表格 -->
       <el-table
         v-loading="loading"

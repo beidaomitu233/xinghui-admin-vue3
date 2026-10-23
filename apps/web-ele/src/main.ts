@@ -1,12 +1,17 @@
-import { initPreferences } from '@vben/preferences';
+import { addCollection } from '@vben/icons';
+import { initPreferences, updatePreferences } from '@vben/preferences';
 import { unmountGlobalLoading } from '@vben/utils';
 
+import localIcons from 'virtual:xinghui-local-icons';
+
+import { migrateNavigationPreferences } from './navigation-preferences';
 import { overridesPreferences } from './preferences';
 
 /**
  * 应用初始化完成之后再进行页面加载渲染
  */
 async function initApplication() {
+  localIcons.forEach((collection) => addCollection(collection));
   // name用于指定项目唯一标识
   // 用于区分不同项目的偏好设置以及存储数据的key前缀以及其他一些需要隔离的数据
   const env = import.meta.env.PROD ? 'prod' : 'dev';
@@ -14,12 +19,15 @@ async function initApplication() {
   const demoSuffix =
     import.meta.env.VITE_APP_DEMO === 'true' ? '-static-demo' : '';
   const namespace = `${import.meta.env.VITE_APP_NAMESPACE}-${appVersion}-${env}${demoSuffix}`;
+  const upgradedNavigation = migrateNavigationPreferences(namespace);
 
   // app偏好设置初始化
   await initPreferences({
     namespace,
     overrides: overridesPreferences,
   });
+  if (upgradedNavigation)
+    updatePreferences({ navigation: { accordion: false } });
   if (import.meta.env.VITE_APP_DEMO === 'true') {
     const { setupDemo } = await import('./demo/setup');
     setupDemo();

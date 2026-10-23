@@ -3,7 +3,7 @@ import type { Component } from 'vue';
 
 import { computed } from 'vue';
 
-import { IconDefault, IconifyIcon } from '@vben-core/icons';
+import { IconDefault, IconifyIcon, iconLoaded } from '@vben-core/icons';
 import {
   isFunction,
   isHttpUrl,
@@ -30,6 +30,10 @@ const isComponent = computed(() => {
 <template>
   <component :is="icon as Component" v-if="isComponent" v-bind="$attrs" />
   <img v-else-if="isRemoteIcon" :src="icon as string" v-bind="$attrs" />
-  <IconifyIcon v-else-if="icon" v-bind="$attrs" :icon="icon as string" />
+  <IconifyIcon
+    v-else-if="icon && (!fallback || iconLoaded(icon as string))"
+    v-bind="$attrs"
+    :icon="icon as string"
+  />
   <IconDefault v-else-if="fallback" v-bind="$attrs" />
 </template>

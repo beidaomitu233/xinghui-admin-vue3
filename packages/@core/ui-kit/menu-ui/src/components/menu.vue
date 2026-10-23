@@ -13,6 +13,7 @@ import type {
 import {
   computed,
   nextTick,
+  onMounted,
   reactive,
   ref,
   toRef,
@@ -26,6 +27,7 @@ import { Ellipsis } from '@vben-core/icons';
 
 import { useResizeObserver } from '@vueuse/core';
 
+import { readExpandedMenus, saveExpandedMenus } from '../expanded-state';
 import {
   createMenuContext,
   createSubMenuContext,
@@ -66,6 +68,47 @@ const activePath = ref<MenuProvider['activePath']>(props.defaultActive);
 const items = ref<MenuProvider['items']>({});
 const subMenus = ref<MenuProvider['subMenus']>({});
 const mouseInChild = ref(false);
+let ready = false;
+let restored = false;
+let remembered: string[] = [];
+function restoreExpanded() {
+  const allowed = Object.keys(subMenus.value);
+  const saved = readExpandedMenus(props.expansionKey ?? '');
+  restored = saved !== null;
+  remembered = saved ?? [...openedMenus.value];
+  if (!isMenuPopup.value && restored)
+    openedMenus.value = remembered.filter((path) => allowed.includes(path));
+}
+onMounted(() => {
+  ready = true;
+  restoreExpanded();
+});
+watch(
+  () => props.expansionKey,
+  () => {
+    remembered = [];
+    openedMenus.value = [];
+    restored = false;
+    if (ready) {
+      restoreExpanded();
+      if (!restored) initMenu();
+    }
+  },
+);
+watch(
+  () => Object.keys(subMenus.value),
+  () => {
+    if (!ready) return;
+    const allowed = Object.keys(subMenus.value);
+    // Keep pending saved paths until asynchronous menu registration completes.
+    // Only registered (permission-filtered) paths can actually become open.
+    if (!isMenuPopup.value)
+      openedMenus.value = (restored ? remembered : openedMenus.value).filter(
+        (path) => allowed.includes(path),
+      );
+  },
+  { flush: 'post' },
+);
 
 const isMenuPopup = computed<MenuProvider['isMenuPopup']>(() => {
   return (
@@ -92,7 +135,14 @@ const getSlot = computed(() => {
 watch(
   () => props.collapse,
   (value) => {
-    if (value) openedMenus.value = [];
+    if (value) {
+      remembered = [...new Set([...openedMenus.value, ...remembered])];
+      openedMenus.value = [];
+    } else {
+      openedMenus.value = remembered.filter((path) =>
+        Object.hasOwn(subMenus.value, path),
+      );
+    }
   },
 );
 
@@ -224,6 +274,12 @@ watch(activePath, () => {
 
 // 默认展开菜单
 function initMenu() {
+  if (
+    restored ||
+    readExpandedMenus(props.expansionKey ?? '', Object.keys(subMenus.value)) !==
+      null
+  )
+    return;
   const parentPaths = getActivePaths();
 
   // 展开该菜单项的路径上所有子菜单
@@ -284,6 +340,7 @@ function closeMenu(path: string, parentPaths: string[]) {
   }
 
   close(path);
+  persistExpanded();
 
   emit('close', path, parentPaths);
 }
@@ -306,7 +363,15 @@ function openMenu(path: string, parentPaths: string[]) {
     );
   }
   openedMenus.value.push(path);
+  persistExpanded();
   emit('open', path, parentPaths);
+}
+
+function persistExpanded() {
+  if (!ready || isMenuPopup.value || !props.expansionKey) return;
+  remembered = [...openedMenus.value];
+  restored = true;
+  saveExpandedMenus(props.expansionKey, remembered);
 }
 
 function addMenuItem(item: MenuItemRegistered) {

@@ -589,13 +589,18 @@ onBeforeUnmount(() => {
   unsubscribe();
   autosave.dispose();
 });
+defineExpose({
+  refresh: loadList,
+  openCreate() {
+    if (can('add')) createOpen.value = true;
+  },
+});
 </script>
 
 <template>
   <div class="scene-workspace">
     <SceneSidebar
       :active-key="view?.sceneKey ?? null"
-      :can-create="can('add')"
       :scenes="scenes"
       :loading="loading"
       :search="search"
@@ -607,7 +612,6 @@ onBeforeUnmount(() => {
       "
       @update:search="search = $event"
       @select="selectScene"
-      @create="createOpen = true"
     />
     <main class="scene-main" :aria-busy="switching">
       <ElAlert
@@ -621,7 +625,7 @@ onBeforeUnmount(() => {
       <template v-if="view && selected">
         <header class="scene-heading">
           <div>
-            <h1>{{ view.value.name || '未命名场景' }}</h1>
+            <h2>{{ view.value.name || '未命名场景' }}</h2>
             <SceneSaveStatus
               :phase="view.phase"
               :error="view.error"
@@ -865,12 +869,12 @@ onBeforeUnmount(() => {
 <style scoped>
 .scene-workspace {
   display: flex;
-  height: calc(var(--vben-content-height, calc(100dvh - 112px)) - 32px);
-  min-height: 0;
-  margin: 16px;
-  overflow: hidden;
+  min-width: 0;
+  height: calc(var(--vben-content-height, calc(100dvh - 112px)) - 120px);
+  min-height: 480px;
   color: hsl(var(--foreground));
   background: hsl(var(--background));
+  border: 1px solid hsl(var(--border));
   border-radius: 10px;
 }
 
@@ -882,7 +886,7 @@ onBeforeUnmount(() => {
   min-width: 0;
   min-height: 0;
   padding: 16px;
-  overflow: hidden;
+  overflow: auto;
 }
 
 .scene-heading {
@@ -893,7 +897,7 @@ onBeforeUnmount(() => {
   justify-content: space-between;
 }
 
-h1 {
+h2 {
   margin-bottom: 2px;
   font-size: 18px;
   font-weight: 600;
@@ -951,7 +955,6 @@ h1 {
     flex-direction: column;
     height: auto;
     min-height: calc(100dvh - 130px);
-    margin: 8px;
   }
 
   .scene-main {

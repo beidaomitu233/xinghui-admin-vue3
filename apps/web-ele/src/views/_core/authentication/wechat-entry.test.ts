@@ -3,30 +3,36 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
-  getWechatCapability,
-  startWechatAuthorization,
+  getWechatLoginCapability,
+  startWechatLogin,
 } from '#/api/system/wechat';
 
 import Entry from './wechat-entry.vue';
 
 vi.mock('#/api/system/wechat', () => ({
-  getWechatCapability: vi.fn(),
-  startWechatAuthorization: vi.fn(),
-  isWechatAuthorizationUrl: () => false,
+  getWechatLoginCapability: vi.fn(),
+  startWechatLogin: vi.fn(),
+  isWechatLoginUrl: () => false,
+  safeWechatReturn: () => '/',
+  WECHAT_FLOW_KEY: 'test.wechat.flow',
+  cancelWechatFlow: vi.fn(),
 }));
-beforeEach(() => vi.resetAllMocks());
+vi.mock('vue-router', () => ({ useRoute: () => ({ query: {} }) }));
+beforeEach(() => {
+  vi.resetAllMocks();
+  sessionStorage.clear();
+});
 describe('微信授权入口', () => {
   it('关闭或能力失败时不提供可点击入口', async () => {
-    vi.mocked(getWechatCapability).mockResolvedValue({
-      enabled: false,
-      available: false,
-      reason: 'DISABLED',
+    vi.mocked(getWechatLoginCapability).mockResolvedValue({
+      mp: false,
+      website: false,
     });
     const wrapper = mount(Entry);
     await flushPromises();
     expect(wrapper.find('button').exists()).toBe(false);
     wrapper.unmount();
-    vi.mocked(getWechatCapability).mockRejectedValue(
+    vi.mocked(getWechatLoginCapability).mockRejectedValue(
       new Error('Test request failed'),
     );
     const failed = mount(Entry);
@@ -34,13 +40,12 @@ describe('微信授权入口', () => {
     expect(failed.find('button').exists()).toBe(false);
   });
   it('发起期间禁止重复点击并且失败可重试', async () => {
-    vi.mocked(getWechatCapability).mockResolvedValue({
-      enabled: true,
-      available: true,
-      reason: 'AVAILABLE',
+    vi.mocked(getWechatLoginCapability).mockResolvedValue({
+      mp: true,
+      website: true,
     });
     let reject!: (reason: Error) => void;
-    vi.mocked(startWechatAuthorization).mockReturnValue(
+    vi.mocked(startWechatLogin).mockReturnValue(
       new Promise((_, fail) => {
         reject = fail;
       }),
@@ -49,12 +54,12 @@ describe('微信授权入口', () => {
     await flushPromises();
     await wrapper.get('button').trigger('click');
     await wrapper.get('button').trigger('click');
-    expect(startWechatAuthorization).toHaveBeenCalledTimes(1);
+    expect(startWechatLogin).toHaveBeenCalledTimes(1);
     expect(wrapper.get('button').attributes('disabled')).toBeDefined();
     reject(new Error('Test request failed'));
     await flushPromises();
     expect(wrapper.get('[role="alert"]').text()).toContain('手机号登录');
     expect(wrapper.get('button').attributes('disabled')).toBeUndefined();
-    expect(wrapper.text()).toContain('尚不支持微信账号登录');
+    expect(wrapper.text()).toContain('微信扫码');
   });
 });

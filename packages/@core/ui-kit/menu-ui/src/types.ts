@@ -13,7 +13,6 @@ interface MenuProps {
    * @default false
    */
   collapse?: boolean;
-
   /**
    * @zh_CN 菜单折叠时是否显示菜单名称
    * @default false
@@ -29,6 +28,9 @@ interface MenuProps {
    * @zh_CN 默认展开的菜单
    */
   defaultOpeneds?: string[];
+
+  /** Optional app/account scoped key; only expanded vertical groups are stored. */
+  expansionKey?: string;
 
   /**
    * @zh_CN 菜单模式

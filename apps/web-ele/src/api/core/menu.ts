@@ -1,6 +1,7 @@
 import type { RouteRecordStringComponent } from '@vben/types';
 
 import { requestClient } from '#/api/request';
+import { navigationIcon } from '#/navigation-icons';
 
 interface BackendMenu {
   children?: BackendMenu[];
@@ -14,6 +15,45 @@ interface BackendMenu {
   orderNum?: number;
   path?: string;
   visible?: number | string;
+}
+
+/** Rearrange only pages already returned by the permission-filtered API. */
+export function normalizeNavigationMenus(menus: BackendMenu[]): BackendMenu[] {
+  const homes: BackendMenu[] = [];
+  const walk = (nodes: BackendMenu[]): BackendMenu[] =>
+    nodes.flatMap((menu) => {
+      const copy = {
+        ...menu,
+        ...(menu.children ? { children: walk(menu.children) } : {}),
+      };
+      if (
+        menu.menuType === 'C' &&
+        ['dashboard/analytics/index', 'dashboard/workspace/index'].includes(
+          menu.component ?? '',
+        )
+      ) {
+        const workspace = menu.component === 'dashboard/workspace/index';
+        homes.push({
+          ...copy,
+          path: workspace ? '/workspace' : '/analytics',
+          orderNum: workspace ? -20 : -10,
+        });
+        return [];
+      }
+      // This also covers an already migrated server tree whose role still has
+      // the former parent grant. An empty directory must not become a page.
+      if (
+        menu.menuType === 'M' &&
+        !copy.children?.some((child) => child.menuType !== 'F')
+      )
+        return [];
+      return [copy];
+    });
+  const remaining = walk(menus);
+  return [...homes, ...remaining].toSorted(
+    (a, b) =>
+      (a.orderNum ?? a.meta?.order ?? 0) - (b.orderNum ?? b.meta?.order ?? 0),
+  );
 }
 
 function resolveMenuPath(path: string, parentPath = '') {
@@ -49,7 +89,7 @@ export function transformMenusToRoutes(
         meta: {
           ...menu.meta,
           title: menu.menuName || menu.meta?.title || '',
-          icon: menu.icon || menu.meta?.icon || '',
+          icon: navigationIcon(menu.icon || menu.meta?.icon, directory),
           order: menu.orderNum ?? menu.meta?.order,
           hideInMenu:
             String(menu.visible) === '1' || menu.meta?.hideInMenu === true,
@@ -63,5 +103,5 @@ export async function getAllMenusApi() {
     BackendMenu[] | { data?: BackendMenu[]; routers?: BackendMenu[] }
   >('/user/router');
   const menus = Array.isArray(res) ? res : (res?.routers ?? res?.data ?? []);
-  return transformMenusToRoutes(menus);
+  return transformMenusToRoutes(normalizeNavigationMenus(menus));
 }

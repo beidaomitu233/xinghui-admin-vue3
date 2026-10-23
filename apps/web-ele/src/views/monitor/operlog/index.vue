@@ -15,6 +15,7 @@ import {
   getOperLogList,
   removeOperLog,
 } from '#/api/monitor/operlog';
+import AdminPageHeader from '#/components/admin-page-header.vue';
 import { useConfirmedAction } from '#/composables/use-confirmed-action';
 import { usePagedList } from '#/composables/use-paged-list';
 
@@ -167,9 +168,30 @@ onMounted(() => {
 </script>
 
 <template>
-  <Page title="操作日志" description="查看系统操作日志记录">
+  <Page content-class="admin-page">
+    <AdminPageHeader title="操作日志" description="查看系统操作日志记录">
+      <template #actions>
+        <el-button
+          v-if="canRemove()"
+          type="danger"
+          :loading="deleting"
+          :disabled="selectedIds.length === 0"
+          @click="handleDelete"
+        >
+          删除
+        </el-button>
+        <el-button
+          v-if="canClean()"
+          type="danger"
+          :loading="deleting"
+          @click="handleClean"
+        >
+          清空
+        </el-button>
+      </template>
+    </AdminPageHeader>
     <!-- 搜索区域 -->
-    <el-card class="mb-4" shadow="never">
+    <el-card shadow="never">
       <el-form :inline="true" :model="formInline">
         <el-form-item label="系统模块">
           <el-input
@@ -234,30 +256,6 @@ onMounted(() => {
       >
         <el-button type="primary" link @click="load">重试</el-button>
       </el-alert>
-      <template #header>
-        <div class="flex items-center justify-between">
-          <span>日志列表</span>
-          <div>
-            <el-button
-              v-if="canRemove()"
-              type="danger"
-              :loading="deleting"
-              :disabled="selectedIds.length === 0"
-              @click="handleDelete"
-            >
-              删除
-            </el-button>
-            <el-button
-              v-if="canClean()"
-              type="danger"
-              :loading="deleting"
-              @click="handleClean"
-            >
-              清空
-            </el-button>
-          </div>
-        </div>
-      </template>
 
       <!-- 表格 -->
       <el-table

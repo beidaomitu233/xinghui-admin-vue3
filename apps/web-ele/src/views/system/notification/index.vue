@@ -16,6 +16,7 @@ import {
   markMyNotificationRead,
   markMyNotificationsRead,
 } from '#/api/system/personal-notification';
+import AdminPageHeader from '#/components/admin-page-header.vue';
 import { usePersonalNotificationStore } from '#/store/personal-notification';
 
 import {
@@ -261,8 +262,12 @@ onMounted(() => {
 </script>
 
 <template>
-  <Page title="个人通知" description="只展示当前账号收到的站内通知">
-    <div class="space-y-4 p-4">
+  <Page content-class="admin-page">
+    <AdminPageHeader
+      title="个人通知"
+      description="只展示当前账号收到的站内通知"
+    />
+    <div class="min-w-0 space-y-4">
       <el-card>
         <template #header>
           <div class="flex flex-wrap items-center justify-between gap-3">

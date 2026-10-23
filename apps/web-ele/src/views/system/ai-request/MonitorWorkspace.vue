@@ -44,16 +44,17 @@ const logsVisited = ref(false);
   display: flex;
   flex-direction: column;
   min-width: 0;
-  height: calc(100dvh - 144px);
-  min-height: 0;
-  overflow: hidden;
+  height: calc(var(--vben-content-height, calc(100dvh - 112px)) - 120px);
+  min-height: 520px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 10px;
 }
 
 .monitor-pane {
   flex: 1;
   min-width: 0;
   min-height: 0;
-  overflow: hidden;
+  overflow: auto;
 }
 
 .monitor-conversations :deep(.conversation-workspace) {
@@ -73,7 +74,7 @@ const logsVisited = ref(false);
   display: flex;
   flex: none;
   gap: 8px;
-  padding: 12px 20px;
+  padding: 12px 16px;
   border-bottom: 1px solid hsl(var(--border));
 }
 
@@ -86,5 +87,12 @@ const logsVisited = ref(false);
 .monitor-tabs button[aria-pressed='true'] {
   color: hsl(var(--primary));
   background: hsl(var(--muted));
+}
+
+@media (max-width: 767px) {
+  .monitor-workspace {
+    height: auto;
+    min-height: 0;
+  }
 }
 </style>
