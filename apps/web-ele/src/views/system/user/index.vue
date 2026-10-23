@@ -23,6 +23,7 @@ import {
   resetUserPwd,
   updateUser,
 } from '#/api/system/user';
+import AdminPageHeader from '#/components/admin-page-header.vue';
 import { useEntityDialog } from '#/composables/use-entity-dialog';
 
 const accessStore = useAccessStore();
@@ -360,7 +361,68 @@ onMounted(load);
 </script>
 
 <template>
-  <Page title="用户管理">
+  <Page content-class="admin-page">
+    <AdminPageHeader title="用户管理">
+      <template #actions>
+        <el-button
+          v-if="canQuery"
+          :loading="templateLoading"
+          @click="downloadTemplate"
+        >
+          下载导入模板
+        </el-button>
+        <el-button
+          v-if="can('system:user:add')"
+          type="primary"
+          :loading="importLoading"
+          @click="chooseImportFile"
+        >
+          {{ importLoading ? '正在导入' : '导入用户' }}
+        </el-button>
+        <el-button
+          v-if="canQuery"
+          :loading="exportLoading"
+          @click="exportCurrentUsers"
+        >
+          导出当前筛选结果
+        </el-button>
+        <el-button
+          v-if="canOpenDialog('create')"
+          type="primary"
+          :loading="formLoading"
+          @click="add"
+        >
+          新增用户
+        </el-button>
+        <span
+          v-if="can('system:user:add')"
+          class="self-center text-sm text-muted-foreground"
+        >
+          .xlsx，最多1000行 / 5 MiB
+        </span>
+        <el-popover
+          v-if="can('system:user:add')"
+          placement="bottom"
+          :width="280"
+          trigger="click"
+        >
+          <template #reference>
+            <el-button link>导入字段说明</el-button>
+          </template>
+          <p>角色标识：多个值用逗号分隔。逐行处理，错误行会列出原因。</p>
+          <p class="mt-2">
+            导入不回显密码。新账号待激活，核对角色后再重置密码并启用。
+          </p>
+        </el-popover>
+        <input
+          ref="importInput"
+          type="file"
+          accept=".xlsx"
+          style="display: none"
+          @change="handleImportFile"
+        />
+      </template>
+    </AdminPageHeader>
     <el-form :inline="true" :model="filters">
       <el-form-item label="账号">
         <el-input v-model="filters.username" clearable @keyup.enter="search" />
@@ -379,63 +441,7 @@ onMounted(load);
         <el-button @click="reset">重置</el-button>
       </el-form-item>
     </el-form>
-    <div class="mb-4 flex flex-wrap gap-2">
-      <el-button
-        v-if="canQuery"
-        :loading="templateLoading"
-        @click="downloadTemplate"
-      >
-        下载导入模板
-      </el-button>
-      <el-button
-        v-if="can('system:user:add')"
-        type="primary"
-        :loading="importLoading"
-        @click="chooseImportFile"
-      >
-        {{ importLoading ? '正在导入' : '导入用户' }}
-      </el-button>
-      <el-button
-        v-if="canQuery"
-        :loading="exportLoading"
-        @click="exportCurrentUsers"
-      >
-        导出当前筛选结果
-      </el-button>
-      <el-button
-        v-if="canOpenDialog('create')"
-        type="primary"
-        :loading="formLoading"
-        @click="add"
-      >
-        新增用户
-      </el-button>
-      <span
-        v-if="can('system:user:add')"
-        class="self-center text-sm text-muted-foreground"
-      >
-        .xlsx，最多1000行 / 5 MiB
-      </span>
-      <el-popover
-        v-if="can('system:user:add')"
-        placement="bottom"
-        :width="280"
-        trigger="click"
-      >
-        <template #reference><el-button link>导入字段说明</el-button></template>
-        <p>角色标识：多个值用逗号分隔。逐行处理，错误行会列出原因。</p>
-        <p class="mt-2">
-          导入不回显密码。新账号待激活，核对角色后再重置密码并启用。
-        </p>
-      </el-popover>
-      <input
-        ref="importInput"
-        type="file"
-        accept=".xlsx"
-        style="display: none"
-        @change="handleImportFile"
-      />
-    </div>
+
     <el-alert v-if="error" :title="error" type="error" show-icon class="mb-4">
       <el-button link @click="load">重试</el-button>
     </el-alert>

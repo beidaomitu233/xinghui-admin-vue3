@@ -65,4 +65,30 @@ describe('personal notification unread count', () => {
 
     expect(store.unreadCount).toBeNull();
   });
+
+  it('supports the application logout reset contract', async () => {
+    const store = usePersonalNotificationStore();
+    mocks.getMyUnreadCount.mockResolvedValueOnce(5);
+    await store.refreshUnreadCount();
+
+    expect(() => store.$reset()).not.toThrow();
+    expect(store.unreadCount).toBeNull();
+  });
+
+  it('invalidates a pending count when reset before access-token cleanup', async () => {
+    const store = usePersonalNotificationStore();
+    let resolveCount!: (value: number) => void;
+    mocks.getMyUnreadCount.mockReturnValueOnce(
+      new Promise<number>((resolve) => {
+        resolveCount = resolve;
+      }),
+    );
+    const pending = store.refreshUnreadCount();
+
+    store.$reset();
+    resolveCount(12);
+    await pending;
+
+    expect(store.unreadCount).toBeNull();
+  });
 });

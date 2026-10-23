@@ -1,9 +1,17 @@
+import { fileURLToPath } from 'node:url';
+
 import Vue from '@vitejs/plugin-vue';
 import VueJsx from '@vitejs/plugin-vue-jsx';
 import { configDefaults, defineConfig } from 'vitest/config';
 
+import { localIconsPlugin } from './apps/web-ele/local-icons';
+
 export default defineConfig({
-  plugins: [Vue(), VueJsx()],
+  plugins: [
+    Vue(),
+    VueJsx(),
+    localIconsPlugin(fileURLToPath(new URL('.', import.meta.url))),
+  ],
   test: {
     environment: 'happy-dom',
     exclude: [

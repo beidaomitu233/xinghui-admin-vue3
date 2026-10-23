@@ -15,6 +15,7 @@ import {
   listConfigs,
   removeConfig,
 } from '#/api/system/config';
+import AdminPageHeader from '#/components/admin-page-header.vue';
 import PageHint from '#/components/page-hint.vue';
 
 const accessStore = useAccessStore();
@@ -107,26 +108,22 @@ onMounted(load);
 </script>
 
 <template>
-  <Page title="参数设置">
-    <el-card>
-      <template #header>
-        <div class="flex items-center justify-between">
-          <span>系统参数</span>
-          <div class="flex gap-2">
-            <el-button v-if="can('system:config:list')" @click="load">
-              刷新
-            </el-button>
-            <el-button
-              v-if="can('system:config:add')"
-              type="primary"
-              @click="openAdd"
-            >
-              新增页脚文案
-            </el-button>
-          </div>
-        </div>
+  <Page content-class="admin-page">
+    <AdminPageHeader title="参数设置">
+      <template #actions>
+        <el-button v-if="can('system:config:list')" @click="load">
+          刷新
+        </el-button>
+        <el-button
+          v-if="can('system:config:add')"
+          type="primary"
+          @click="openAdd"
+        >
+          新增页脚文案
+        </el-button>
       </template>
-
+    </AdminPageHeader>
+    <el-card>
       <PageHint
         title="敏感配置不回显"
         details="仅展示允许管理的参数；敏感配置不会在此页面回显。验证码首次保存前沿用部署配置。注册开关仅保留记录，当前没有自助注册入口。"

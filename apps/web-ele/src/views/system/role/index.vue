@@ -16,6 +16,7 @@ import {
   removeRole,
   updateRole,
 } from '#/api/system/role';
+import AdminPageHeader from '#/components/admin-page-header.vue';
 
 // 搜索表单
 const accessStore = useAccessStore();
@@ -257,9 +258,20 @@ onMounted(() => {
 </script>
 
 <template>
-  <Page title="角色管理" description="管理系统角色及其权限">
+  <Page content-class="admin-page">
+    <AdminPageHeader title="角色管理" description="管理系统角色及其权限">
+      <template #actions>
+        <el-button
+          v-if="can('system:role:add')"
+          type="primary"
+          @click="handleAdd"
+        >
+          新增角色
+        </el-button>
+      </template>
+    </AdminPageHeader>
     <!-- 搜索区域 -->
-    <el-card class="mb-4" shadow="never">
+    <el-card shadow="never">
       <el-form :inline="true" :model="formInline">
         <el-form-item label="角色名称">
           <el-input
@@ -297,19 +309,6 @@ onMounted(() => {
 
     <!-- 操作区域 -->
     <el-card shadow="never">
-      <template #header>
-        <div class="flex items-center justify-between">
-          <span>角色列表</span>
-          <el-button
-            v-if="can('system:role:add')"
-            type="primary"
-            @click="handleAdd"
-          >
-            新增角色
-          </el-button>
-        </div>
-      </template>
-
       <!-- 表格 -->
       <el-table v-loading="loading" :data="tableData" stripe>
         <el-table-column type="selection" width="50" />

@@ -14,6 +14,7 @@ import {
   removeNotice,
   updateNotice,
 } from '#/api/system/notice';
+import AdminPageHeader from '#/components/admin-page-header.vue';
 import { DICT_TYPE, useDictionary } from '#/composables/use-dictionary';
 
 const noticeTypeDict = useDictionary(DICT_TYPE.NOTICE_TYPE);
@@ -309,7 +310,29 @@ onMounted(() => {
 </script>
 
 <template>
-  <Page title="通知公告" description="管理系统通知和公告信息">
+  <Page content-class="admin-page">
+    <AdminPageHeader title="通知公告" description="管理系统通知和公告信息">
+      <template #actions>
+        <el-button
+          type="danger"
+          :disabled="selectedIds.length === 0"
+          @click="handleBatchDelete"
+        >
+          批量删除
+        </el-button>
+        <el-button
+          type="primary"
+          :disabled="
+            noticeTypeDict.loading.value ||
+            noticeTypeDict.error.value ||
+            noticeTypeOptions.length === 0
+          "
+          @click="handleAdd"
+        >
+          新增公告
+        </el-button>
+      </template>
+    </AdminPageHeader>
     <el-alert
       v-if="noticeTypeDict.error.value"
       title="公告类型加载失败，请重试后再选择类型"
@@ -324,7 +347,7 @@ onMounted(() => {
       </template>
     </el-alert>
     <!-- 搜索区域 -->
-    <el-card class="mb-4" shadow="never">
+    <el-card shadow="never">
       <el-form :inline="true" :model="formInline">
         <el-form-item label="公告标题">
           <el-input
@@ -371,32 +394,6 @@ onMounted(() => {
 
     <!-- 操作区域 -->
     <el-card shadow="never">
-      <template #header>
-        <div class="flex items-center justify-between">
-          <span>公告列表</span>
-          <div>
-            <el-button
-              type="danger"
-              :disabled="selectedIds.length === 0"
-              @click="handleBatchDelete"
-            >
-              批量删除
-            </el-button>
-            <el-button
-              type="primary"
-              :disabled="
-                noticeTypeDict.loading.value ||
-                noticeTypeDict.error.value ||
-                noticeTypeOptions.length === 0
-              "
-              @click="handleAdd"
-            >
-              新增公告
-            </el-button>
-          </div>
-        </div>
-      </template>
-
       <!-- 表格 -->
       <el-table
         v-loading="loading"

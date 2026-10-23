@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { computed, watch } from 'vue';
+import { computed, inject, provide, watch } from 'vue';
 import { useRouter } from 'vue-router';
 
 import { AuthenticationLoginExpiredModal } from '@vben/common-ui';
@@ -11,6 +11,7 @@ import { useAccessStore, useUserStore } from '@vben/stores';
 import { openWindow } from '@vben/utils';
 
 import PersonalNotificationEntry from '#/layouts/personal-notification-entry.vue';
+import { localDefaultAsset } from '#/local-assets';
 import { $t } from '#/locales';
 import { useAuthStore } from '#/store';
 import LoginForm from '#/views/_core/authentication/login.vue';
@@ -19,6 +20,16 @@ import { documentationLinks } from './documentation';
 
 const router = useRouter();
 const userStore = useUserStore();
+const namespace = inject<string>('app-namespace', 'xinghui');
+provide(
+  'navigation-expansion-key',
+  computed(() => {
+    const user = userStore.userInfo;
+    return user?.userId
+      ? `${namespace}-menu-groups:${encodeURIComponent(user.userId)}:${encodeURIComponent(String(user.tenantId ?? 'platform'))}`
+      : '';
+  }),
+);
 const authStore = useAuthStore();
 const accessStore = useAccessStore();
 const { destroyWatermark, updateWatermark } = useWatermark();
@@ -61,7 +72,10 @@ const menus = computed(() => [
 ]);
 
 const avatar = computed(() => {
-  return userStore.userInfo?.avatar ?? preferences.app.defaultAvatar;
+  return localDefaultAsset(
+    userStore.userInfo?.avatar || preferences.app.defaultAvatar,
+    'avatar',
+  );
 });
 
 async function handleLogout() {

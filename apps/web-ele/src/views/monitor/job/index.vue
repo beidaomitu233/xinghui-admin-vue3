@@ -19,6 +19,7 @@ import {
   runJob,
   updateJob,
 } from '#/api/monitor/job';
+import AdminPageHeader from '#/components/admin-page-header.vue';
 import { DICT_TYPE, useDictionary } from '#/composables/use-dictionary';
 
 const jobStatusDict = useDictionary(DICT_TYPE.JOB_STATUS);
@@ -241,7 +242,29 @@ onMounted(() => {
 </script>
 
 <template>
-  <Page title="定时任务" description="配置受控处理器并查看调度执行结果">
+  <Page content-class="admin-page">
+    <AdminPageHeader
+      title="定时任务"
+      description="配置受控处理器并查看调度执行结果"
+    >
+      <template #actions>
+        <el-button
+          v-if="can('monitor:job:remove')"
+          type="danger"
+          :disabled="selectedIds.length === 0"
+          @click="deleteSelected"
+        >
+          批量删除
+        </el-button>
+        <el-button
+          v-if="can('monitor:job:add')"
+          type="primary"
+          @click="openForm()"
+        >
+          新增任务
+        </el-button>
+      </template>
+    </AdminPageHeader>
     <el-alert
       v-if="jobStatusDict.error.value"
       class="mb-4"
@@ -256,7 +279,7 @@ onMounted(() => {
       </template>
     </el-alert>
 
-    <el-card class="mb-4" shadow="never">
+    <el-card shadow="never">
       <el-form :inline="true" :model="filters">
         <el-form-item label="任务名称">
           <el-input v-model="filters.jobName" clearable @keyup.enter="search" />
@@ -295,29 +318,6 @@ onMounted(() => {
     </el-card>
 
     <el-card shadow="never">
-      <template #header>
-        <div class="flex items-center justify-between">
-          <span>任务列表</span>
-          <div>
-            <el-button
-              v-if="can('monitor:job:remove')"
-              type="danger"
-              :disabled="selectedIds.length === 0"
-              @click="deleteSelected"
-            >
-              批量删除
-            </el-button>
-            <el-button
-              v-if="can('monitor:job:add')"
-              type="primary"
-              @click="openForm()"
-            >
-              新增任务
-            </el-button>
-          </div>
-        </div>
-      </template>
-
       <el-table
         v-loading="loading"
         :data="jobs"

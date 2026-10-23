@@ -11,7 +11,7 @@
 ## 管理人员：先完成一条操作链
 
 1. 阅读[账号与用户](../features/accounts.md)，确认当前账号角色和操作权限。
-2. 在[四个菜单组](../features/menus.md)中找到功能：系统管理、通用能力、运行维护、AI管理；按需要阅读[字典管理](../features/dictionary.md)、[系统参数](../features/parameters.md)、[资讯](../features/news.md)或[AI一期](../features/ai.md)。实际菜单由当前身份授权决定。
+2. 在[菜单与页面入口](../features/menus.md)中找到功能：工作台、看板位于前两位，其后是系统管理、通用能力、运行维护、AI管理；按需要阅读[字典管理](../features/dictionary.md)、[系统参数](../features/parameters.md)、[资讯](../features/news.md)或[AI一期](../features/ai.md)。实际菜单由当前身份授权决定。
 3. 管理业务配置前，核对[业务配置](../features/business-config.md)的平台身份及敏感值不回显规则。
 4. 阅读[导入导出](../features/bulk.md)再上传用户表格；角色字段和新账号激活步骤不能跳过。
 

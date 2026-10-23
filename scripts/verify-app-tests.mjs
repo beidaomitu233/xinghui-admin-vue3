@@ -3,11 +3,19 @@ import { readFileSync } from 'node:fs';
 import process from 'node:process';
 
 const required = [
+  '/src/navigation-preferences.test.ts',
+  '/src/navigation-state.test.ts',
+  '/src/navigation-menu.test.ts',
+  '/src/navigation-assets.test.ts',
+  '/src/api/core/menu.test.ts',
   '/src/api/system/content-quality.test.ts',
   '/src/router/routes-helper.test.ts',
   '/src/router/routes-recovery.test.ts',
   '/src/router/routes/legacy-wechat.test.ts',
   '/src/views/system/business-config/index.test.ts',
+  '/src/api/system/wechat.test.ts',
+  '/src/views/_core/authentication/wechat-entry.test.ts',
+  '/src/views/_core/authentication/wechat-result.test.ts',
   '/src/views/system/ai-model/index.test.ts',
   '/src/views/system/ai-config/form.test.ts',
   '/src/views/system/ai-config/ModelHubWorkspace.test.ts',

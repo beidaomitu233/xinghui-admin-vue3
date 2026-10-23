@@ -1,5 +1,23 @@
 # API 目录
 
+## 2026-10-23：业务配置与微信登录增量
+
+本节记录本轮变化；下方按旧配对保存的接口快照不代表所有当前接口。表中是后端路径，实际同源客户端需加`/api`前缀。
+
+| 方法 | 后端路径 | 身份与行为 |
+| --- | --- | --- |
+| GET/PUT | `/system/businessConfig/{section}` | 沿用平台查询/编辑权限；section新增`wechatMp`和`mail`，与原有wechat/sms/oss独立revision |
+| GET | `/auth/wechat/login-capability` | 匿名读取网站/H5入口可用性，不返回密钥 |
+| POST | `/auth/wechat/flow` | 匿名发起，校验场景、Origin、站内returnPath，设置HttpOnly浏览器绑定cookie；返回流程标识与固定微信授权地址 |
+| GET | `/auth/wechat/flow/status` | 流程标识与发起浏览器共同限定，不以此授予产品身份 |
+| POST | `/auth/wechat/flow/cancel` | 同浏览器与Origin校验后取消 |
+| POST | `/auth/wechat/flow/complete` | 微信身份已确认且已有绑定时，一次性检查产品账号并建立会话 |
+| POST | `/auth/wechat/flow/bind` | 必须先登录已有产品账号，显式关联当前流程，不接受客户端自报user/tenant |
+| GET | `/auth/wechat/callback` | 网站应用回调；校验一次性state后交换身份，再303到固定站内结果页 |
+| GET | `/auth/wechat/mp-callback` | 微信内H5回调；使用服务号独立AppID、scope与密钥 |
+
+`flow`写请求体为`{channel,returnPath}`，后续写请求为`{flow}`。微信流程表与绑定摘要见V310；回调code仅用于服务端一次性交换，不持久化或写入日志。产品会话token由完成接口返回，不塞入结果页URL。供应商真实验证边界见[业务配置](/features/business-config)。
+
 本页供集成开发者按路径定位 Controller、调用权限和请求 DTO。保留的旧目录对应 v1.2.0 静态旧快照的教程基线：32 个 Controller，其中30个有HTTP映射，共147条方法/路径（含资讯列表别名）。工作区改造前的一期[源码配对](../releases/versions.md)另新增6个AI Controller、59条映射，形成38个Controller、36个有映射、206条方法/路径的历史盘点，逐条见[旧版一期兼容接口](#当前源码一期新增-ai-接口)。本次新增的4个工作区Controller及20条映射另列在[场景工作区接口](#场景工作区与直接保存接口)，不把206当作改造后的总数。
 
 对话、设置与数据库引用见[实用改造接口](#实用改造接口)。本轮配置、数据预览、引用保存和对话阅读已原生验证；真实供应商限制见[版本组合](../releases/versions.md)，历史接口数量不作为新增能力通过证明。
