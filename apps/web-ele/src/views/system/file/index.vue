@@ -178,8 +178,10 @@ const gridOptions: VxeTableGridOptions<OssFile> = {
 const [Grid, gridApi] = useVbenVxeGrid<OssFile>({
   gridOptions,
   gridEvents: {
-    checkboxChange: ({ records }) => handleSelectionChange(records),
-    checkboxAll: ({ records }) => handleSelectionChange(records),
+    checkboxChange: ({ records }: { records: OssFile[] }) =>
+      handleSelectionChange(records),
+    checkboxAll: ({ records }: { records: OssFile[] }) =>
+      handleSelectionChange(records),
   },
   formOptions: {
     showCollapseButton: true,

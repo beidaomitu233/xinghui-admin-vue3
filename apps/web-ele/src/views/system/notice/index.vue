@@ -174,10 +174,10 @@ const gridOptions: VxeTableGridOptions<NoticeInfo> = {
 const [Grid, gridApi] = useVbenVxeGrid<NoticeInfo>({
   gridOptions,
   gridEvents: {
-    checkboxChange: ({ records }) => {
+    checkboxChange: ({ records }: { records: NoticeInfo[] }) => {
       selected.value = records;
     },
-    checkboxAll: ({ records }) => {
+    checkboxAll: ({ records }: { records: NoticeInfo[] }) => {
       selected.value = records;
     },
   },

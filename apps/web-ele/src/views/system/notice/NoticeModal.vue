@@ -24,7 +24,12 @@ const loaded = ref(false);
 const saving = ref(false);
 let generation = 0;
 function schema(currentType = ''): VbenFormSchema[] {
-  const options = [...dictionary.options.value];
+  const options: {
+    disabled?: boolean;
+    label: string;
+    sortOrder: number;
+    value: string;
+  }[] = [...dictionary.options.value];
   if (currentType && !options.some((item) => item.value === currentType))
     options.push({
       label: dictionary.label(currentType),

@@ -177,8 +177,10 @@ const gridOptions: VxeTableGridOptions<PersonalNotification> = {
 const [Grid, gridApi] = useVbenVxeGrid<PersonalNotification>({
   gridOptions,
   gridEvents: {
-    checkboxChange: ({ records }) => updateSelection(records),
-    checkboxAll: ({ records }) => updateSelection(records),
+    checkboxChange: ({ records }: { records: PersonalNotification[] }) =>
+      updateSelection(records),
+    checkboxAll: ({ records }: { records: PersonalNotification[] }) =>
+      updateSelection(records),
   },
   formOptions: {
     showCollapseButton: false,
