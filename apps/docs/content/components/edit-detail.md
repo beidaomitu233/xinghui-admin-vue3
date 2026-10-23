@@ -1,51 +1,27 @@
-# useEntityDialog：编辑与只读详情
+# 原生表单、编辑弹窗与详情
 
-该工具统一新增、编辑和查看的状态，并保留失败输入。适用于有明确prepare/save边界的实体页面；调用方负责真实API、字段校验、权限和ElDialog/ElDrawer模板绑定。
+实体新增/编辑/只读详情默认采用`useVbenForm`和`useVbenModal`/`useVbenDrawer`。直接使用现有容器和状态API，保留字段与业务校验，不再制作通用弹窗壳。
 
-## options契约
+## 打开与取数
 
-| 参数                        | 要求                                          |
-| --------------------------- | --------------------------------------------- |
-| `empty()`                   | 返回新的普通Form对象，不共享可变默认值        |
-| `allowed(mode)`             | 检查create/edit/view对应动作                  |
-| `prepare(mode,id?)`         | 返回 `Promise<Form>`，编辑/详情必须读真实记录 |
-| `save(mode,value)`          | 只接收create/edit，返回Promise                |
-| `validate()`                | `Promise<boolean>`，由实际表单校验决定        |
-| `onSaved()`                 | 保存后刷新列表，可异步                        |
-| `parseError(message,error)` | 可选，返回message及fieldErrors                |
+父页使用connectedComponent获得同一组件/API，`modalApi.setData({mode,id}).open()`；子组件在onOpenChange内getData，按操作权限加载真实详情。详情加载使用setState({loading:true})，准备成功才允许保存。关闭后迟到回包不能覆盖下次打开。
 
-```ts
-import type { EntityDialogMode } from '#/composables/use-entity-dialog';
-import { useEntityDialog } from '#/composables/use-entity-dialog';
+权限是逐动作检查。可选下拉项的查询权限不能变成整个实体详情/编辑的新前提：例如没有角色列表权，仍可查看/编辑获授权的用户普通字段；角色选择不可用时必须保留原角色，不能在payload中误清空。
 
-type TitleForm = { title: string };
-type Dependencies = {
-  allowed: (mode: EntityDialogMode) => boolean;
-  prepare: (mode: EntityDialogMode, id?: string) => Promise<TitleForm>;
-  save: (mode: 'create' | 'edit', form: TitleForm) => Promise<unknown>;
-  validate: () => Promise<boolean>;
-  onSaved: () => Promise<unknown>;
-};
-export function createTitleDialog(deps: Dependencies) {
-  return useEntityDialog<TitleForm>({
-    ...deps,
-    empty: () => ({ title: '' }),
-  });
-}
-```
+## 校验与保存
 
-示例把业务行为显式交给调用者，没有假造一个已成功保存的API。
+字段Schema经`#/adapter/form`注册的组件映射；规则使用z或已注册规则，不直接套Element FormRules。`formApi.validate()`返回包含valid的对象。校验通过后getValues，组合明确的业务payload，server-owned字段由服务端决定。
 
-## 返回与模板绑定
+保存期间使用modalApi.lock()/unlock()或Drawer对应API。成功后关闭并通知父页query；失败保留输入、显示短且可关闭的错误和字段提示，finally解锁，不无条件关闭。详情态隐藏确认按钮并禁用编辑；未保存关闭通过onBeforeClose与成熟确认组件处理，不另建关闭状态机。
 
-返回form（reactive）、visible/mode/loading/saving/submitError（refs）、fieldErrors（reactive）、dirty（computed），以及open、submit、reset、requestClose、beforeClose、clearFieldError。必须绑定 **同一个form对象**；工具会原地替换属性以保留DOM绑定，不另造一个脱离状态的表单副本。
+resetForm清理状态，setValues恢复打开基线；这与重新读取服务器不同。重复提交、资源不存在、revision冲突、刷新失败、可选依赖失败及无权限必须区分处理。
 
-`open('view',id)`只读；submit在view态、未打开、saving或无权限时返回false。prepare成功才显示弹窗。beforeClose可接到Element Plus关闭回调；dirty时确认放弃，loading/saving时拒绝关闭。reset恢复打开时基线，不是重新读取服务器。
+## 当前接口
 
-## 正常结果与失败恢复
+- useVbenModal/useVbenDrawer：来自`@vben/common-ui`，返回组件与api；setData/getData/open/close/setState、onOpenChange/onConfirm/onBeforeClose。
+- useVbenForm/z：来自`#/adapter/form`；setValues/getValues/resetForm/updateSchema/validate等。
+- 原生用户示例：`apps/web-ele/src/views/system/user/user-modal.vue`，包括角色权限和失败输入保留；采用当前分支实际版本。
 
-保存成功关闭弹窗、更新基线并调用onSaved；列表刷新失败单独提示“保存成功，列表刷新失败”。保存失败保持visible与输入，显示submitError/fieldErrors；重复提交被saving拦截。加载失败不开弹窗，允许重新open。不要在finally无条件关闭弹窗，也不要把刷新失败当作可以重做新增。
+## 旧useEntityDialog
 
-## 源码依据
-
-`apps/web-ele/src/composables/use-entity-dialog.ts`及 `use-entity-dialog.test.ts`。其内部使用 `structuredClone`、`toRaw`和Element Plus消息/确认；这是本地工具，不是上游Modal API。
+旧`apps/web-ele/src/composables/use-entity-dialog.ts`是历史业务状态工具，并非Vben API。已有调用可在迁移时参考其失败/未保存语义，但新页不要继续用它拼装ElDialog/ElDrawer模板，也不要再建同类通用工具。涉及历史对外类型时按真实引用清理，不能删文件后靠放宽测试掩盖引用错误。

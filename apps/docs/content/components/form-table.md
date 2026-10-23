@@ -1,6 +1,6 @@
 # Vben Form、VXE、Modal与Drawer适配
 
-这些封装供开发者构建复杂页面，须使用本项目本地版本。当前业务页同时存在Element Plus表单/表格；静态示例不是现有业务API成功证明，也不要求把所有页面重写为统一封装。
+Vben原生Form、Grid、Modal和Drawer是新增及改造管理页的默认选型。当前正分范围迁移旧页面；使用本地实际版本，组件优先级和页面结构见[选型总览](/components/overview)。不要再以“高级封装”为理由让普通业务页重新手写通用表格/弹层。
 
 ## Schema Form
 
@@ -34,7 +34,7 @@ formApi提供getValues、setValues、resetForm、validate、submitForm等方法�
 
 ## VXE表格
 
-从 `#/adapter/vxe-table`导入useVbenVxeGrid和类型，返回 `[Grid, gridApi]`。适配默认proxy结果字段为items、total；本项目很多业务响应为records，必须显式映射，不能直接套用。全局关闭VXE自身formConfig，筛选使用formOptions。
+从 `#/adapter/vxe-table`导入useVbenVxeGrid和类型，返回 `[Grid, gridApi]`。裸gridOptions类型为VxeTableGridOptions<Row>，外层VxeGridProps包含gridOptions/formOptions/gridEvents。适配默认proxy结果字段为items、total；本项目很多业务响应为records，必须显式映射，不能直接套用。全局关闭VXE自身formConfig，筛选使用formOptions。
 
 ```ts
 import { useVbenVxeGrid } from '#/adapter/vxe-table';
@@ -66,7 +66,7 @@ drawerApi.setData({ mode: 'edit' });
 void [Modal, Drawer];
 ```
 
-读详情成功再open；保存失败保持容器打开，明确解锁loading/submitting。容器API本身不执行权限校验、不自动保存，也不自动提供业务未保存确认；使用本地编辑状态工具补齐这些行为。
+打开后在onOpenChange取真实详情，用原生loading呈现准备状态；保存失败保持容器打开并解锁。容器不执行后端鉴权或自动保存，未保存确认放onBeforeClose与成熟确认组件；业务代码处理这些边界，不再另造通用编辑状态壳。
 
 ## 源码依据
 
