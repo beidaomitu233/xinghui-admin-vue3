@@ -123,7 +123,7 @@ onMounted(() => void load());
 <template>
   <!-- Prettier formats adjacent inline controls; avoid conflicting whitespace rules. -->
   <!-- eslint-disable vue/multiline-html-element-content-newline, vue/html-closing-bracket-newline -->
-  <Page class="admin-page">
+  <Page content-class="admin-page">
     <AdminPageHeader title="表单管理">
       <template #actions>
         <el-button v-if="can('add')" type="primary" @click="open()">
