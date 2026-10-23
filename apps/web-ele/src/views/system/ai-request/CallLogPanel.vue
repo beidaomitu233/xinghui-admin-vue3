@@ -606,17 +606,20 @@ small {
   margin-top: 5px;
   color: hsl(var(--muted-foreground));
 }
+
 .call-stats {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 12px;
 }
+
 .call-stats div {
   min-width: 0;
   padding: 14px;
   border: 1px solid hsl(var(--border));
   border-radius: 8px;
 }
+
 .call-stats dd {
   margin-top: 8px;
   font-size: 20px;

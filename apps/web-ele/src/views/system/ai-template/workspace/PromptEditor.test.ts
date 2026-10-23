@@ -1,10 +1,12 @@
 import type { HubModel } from '#/api/system/ai-model-hub';
 import type { SceneDefinition, SceneModelOption } from '#/api/system/ai-scene';
 
-import { mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 
+import { initComponentAdapter } from '#/adapter/component';
+import { initSetupVbenForm } from '#/adapter/form';
 import { selectValue } from '#/test-utils/element-controls';
 
 import PromptEditor from './PromptEditor.vue';
@@ -26,6 +28,11 @@ const value = {
     maxTokens: 1024,
   },
 };
+beforeAll(async () => {
+  await initComponentAdapter();
+  await initSetupVbenForm();
+});
+
 describe('one editable prompt document', () => {
   it('selects a stable business model identity for a new scene without creating a provider/key route', async () => {
     const model: HubModel = {
@@ -126,10 +133,11 @@ describe('one editable prompt document', () => {
     expect(changed.modelPolicy).toEqual(value.modelPolicy);
     wrapper.unmount();
   });
-  it('shows historical instructions losslessly without saving on first read', () => {
+  it('shows historical instructions losslessly without saving on first read', async () => {
     const wrapper = mount(PromptEditor, {
       props: { value, models: [], fields: {}, readonly: false },
     });
+    await flushPromises();
     expect((wrapper.get('textarea').element as HTMLTextAreaElement).value).toBe(
       `${value.promptText}\n\n输出要求：\n${value.outputRequirement}`,
     );
@@ -142,7 +150,9 @@ describe('one editable prompt document', () => {
     const wrapper = mount(PromptEditor, {
       props: { value, models: [], fields: {}, readonly: false },
     });
-    await wrapper.get('input').setValue('新名称');
+    await flushPromises();
+    await wrapper.get('input[aria-label="场景名称"]').setValue('新名称');
+    await flushPromises();
     expect(wrapper.emitted('change')?.[0]?.[0]).toMatchObject({
       name: '新名称',
       promptText: `${value.promptText}\n\n输出要求：\n${value.outputRequirement}`,

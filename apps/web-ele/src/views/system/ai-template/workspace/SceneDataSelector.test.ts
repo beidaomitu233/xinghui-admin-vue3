@@ -1,6 +1,10 @@
 import { flushPromises, mount } from '@vue/test-utils';
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ElOption, ElSelect } from 'element-plus';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { initComponentAdapter } from '#/adapter/component';
+import { initSetupVbenForm } from '#/adapter/form';
 
 import SceneDataSelector from './SceneDataSelector.vue';
 
@@ -12,6 +16,10 @@ const api = vi.hoisted(() => ({
 const access = vi.hoisted(() => ({ accessCodes: [] as string[] }));
 vi.mock('#/api/system/ai-scene-data', () => api);
 vi.mock('@vben/stores', () => ({ useAccessStore: () => access }));
+beforeAll(async () => {
+  await initComponentAdapter();
+  await initSetupVbenForm();
+});
 beforeEach(() => {
   vi.clearAllMocks();
   access.accessCodes = ['lowcode:record:query'];
@@ -45,8 +53,12 @@ describe('authorized scene data selector', () => {
       props: { fixedFormId: null, readonly: false, value: [] },
     });
     await flushPromises();
-    expect(wrapper.get('select').text()).toContain('售后记录');
-    await wrapper.get('select').setValue('42');
+    const select = wrapper.findComponent(ElSelect);
+    expect(
+      select.findAllComponents(ElOption).map((option) => option.props('label')),
+    ).toContain('售后记录');
+    select.vm.$emit('change', '42');
+    await flushPromises();
     expect(wrapper.emitted('change')?.[0]).toEqual([
       [{ objectKey: 'lowcode.record', formId: '42', fields: [] }],
     ]);
@@ -115,7 +127,7 @@ describe('authorized scene data selector', () => {
     });
     await flushPromises();
     expect(wrapper.text()).not.toContain('旧表单字段');
-    expect(wrapper.get('select').attributes('disabled')).toBeDefined();
+    expect(wrapper.findComponent(ElSelect).props('disabled')).toBe(true);
     wrapper.unmount();
   });
 });
