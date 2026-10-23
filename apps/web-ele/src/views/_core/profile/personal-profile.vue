@@ -7,6 +7,13 @@ import { useRoute, useRouter } from 'vue-router';
 import { Page } from '@vben/common-ui';
 import { useAccessStore, useUserStore } from '@vben/stores';
 
+import {
+  ElAlert,
+  ElButton,
+  ElDescriptions,
+  ElDescriptionsItem,
+} from 'element-plus';
+
 import { useAuthStore } from '#/store';
 
 const access = useAccessStore();
@@ -73,33 +80,38 @@ onUnmounted(() => {
 });
 </script>
 <template>
-  <Page title="个人信息">
-    <section class="max-w-3xl rounded bg-background p-6">
-      <p class="mb-4 text-sm text-muted-foreground">当前登录账号的只读资料</p>
+  <Page title="个人信息" description="当前登录账号的只读资料">
+    <div v-loading="loading" class="relative min-h-40 max-w-3xl">
       <p v-if="loading" role="status">正在获取个人信息…</p>
       <div v-else-if="failed" role="alert">
-        <p>个人信息加载失败，请重试。</p>
-        <button class="mt-3 underline" type="button" @click="load">重试</button>
+        <ElAlert
+          title="个人信息加载失败，请重试。"
+          type="error"
+          show-icon
+          :closable="false"
+        />
+        <ElButton class="mt-3" @click="load">重试</ElButton>
       </div>
       <template v-else-if="info">
-        <dl class="grid grid-cols-[5rem_1fr] gap-x-4 gap-y-5 break-words">
-          <dt>账号</dt>
-          <dd>{{ display(info.username) }}</dd>
-          <dt>昵称</dt>
-          <dd>{{ display(info.nickname) }}</dd>
-          <dt>手机</dt>
-          <dd>{{ display(info.mobile) }}</dd>
-          <dt>邮箱</dt>
-          <dd>{{ display(info.email) }}</dd>
-          <dt>角色</dt>
-          <dd>
+        <ElDescriptions :column="1" border label-width="100px">
+          <ElDescriptionsItem label="账号">
+            {{ display(info.username) }}
+          </ElDescriptionsItem>
+          <ElDescriptionsItem label="昵称">
+            {{ display(info.nickname) }}
+          </ElDescriptionsItem>
+          <ElDescriptionsItem label="手机">
+            {{ display(info.mobile) }}
+          </ElDescriptionsItem>
+          <ElDescriptionsItem label="邮箱">
+            {{ display(info.email) }}
+          </ElDescriptionsItem>
+          <ElDescriptionsItem label="角色">
             {{ info.roles?.length ? info.roles.join('、') : '未分配角色' }}
-          </dd>
-        </dl>
-        <button class="mt-6 underline" type="button" @click="load">
-          刷新个人信息
-        </button>
+          </ElDescriptionsItem>
+        </ElDescriptions>
+        <ElButton class="mt-6" @click="load">刷新个人信息</ElButton>
       </template>
-    </section>
+    </div>
   </Page>
 </template>

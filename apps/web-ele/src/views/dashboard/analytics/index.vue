@@ -6,6 +6,7 @@ import {
   AnalysisChartCard,
   AnalysisChartsTabs,
   AnalysisOverview,
+  Page,
 } from '@vben/common-ui';
 import {
   SvgBellIcon,
@@ -64,7 +65,7 @@ const chartTabs: TabOption[] = [
 </script>
 
 <template>
-  <div class="p-5">
+  <Page title="数据分析" description="图表与统计组件演示">
     <AnalysisOverview :items="overviewItems" />
     <AnalysisChartsTabs :tabs="chartTabs" class="mt-5">
       <template #trends>
@@ -86,5 +87,5 @@ const chartTabs: TabOption[] = [
         <AnalyticsVisitsSales />
       </AnalysisChartCard>
     </div>
-  </div>
+  </Page>
 </template>
