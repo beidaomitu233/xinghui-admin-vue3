@@ -8,7 +8,7 @@ export interface MenuInfo {
   orderNum: number;
   path: string;
   component: string;
-  isFrame: string;
+  isFrame: number | string;
   isCache: string;
   menuType: string;
   visible: string;
@@ -28,17 +28,32 @@ export function getMenuList(params: any) {
 }
 
 export function getMenu(menuId: number | string) {
-  return requestClient.get(`/system/menu/${menuId}`);
+  return requestClient.get<MenuInfo>(`/system/menu/${menuId}`);
 }
 
 export function getMenuTree(params: any = {}) {
   return requestClient.get<MenuInfo[]>('/system/menu/tree', { params });
 }
-export function addMenu(data: any) {
+export interface MenuForm {
+  menuId?: string;
+  parentId: number | string;
+  menuName: string;
+  menuType: string;
+  orderNum: number;
+  icon: string;
+  path: string;
+  component: string;
+  perms: string;
+  visible: string;
+  status: string;
+  isFrame: number;
+}
+
+export function addMenu(data: MenuForm) {
   return requestClient.post('/system/menu/add', data);
 }
 
-export function updateMenu(data: any) {
+export function updateMenu(data: MenuForm) {
   return requestClient.post('/system/menu/edit', data);
 }
 

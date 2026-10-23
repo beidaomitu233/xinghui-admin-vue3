@@ -1,15 +1,17 @@
 <script lang="ts" setup>
+import type { VxeTableGridOptions } from '#/adapter/vxe-table';
 import type { UserImportSummary, UserInfo } from '#/api/system/user';
 import type { EntityDialogMode } from '#/composables/use-entity-dialog';
 
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 
 import { Page, useVbenModal } from '@vben/common-ui';
+import { usePreferences } from '@vben/preferences';
 import { useAccessStore } from '@vben/stores';
 
 import { ElMessage, ElMessageBox } from 'element-plus';
 
-import { useVbenVxeGrid } from '#/adapter/vxe-table';
+import { createVbenGridQuery, useVbenVxeGrid } from '#/adapter/vxe-table';
 import {
   downloadUserImportTemplate,
   exportUsers,
@@ -22,6 +24,7 @@ import {
 import UserModal from './user-modal.vue';
 
 const accessStore = useAccessStore();
+const { isMobile } = usePreferences();
 const can = (code: string) => accessStore.accessCodes.includes(code);
 const canQuery = computed(() => can('system:user:list'));
 const error = ref('');
@@ -31,6 +34,7 @@ const templateLoading = ref(false);
 const exportLoading = ref(false);
 const importSummary = ref<UserImportSummary>();
 const importError = ref('');
+let queryRevision = 0;
 const [EditModal, modalApi] = useVbenModal({ connectedComponent: UserModal });
 function canOpenDialog(mode: EntityDialogMode) {
   if (mode === 'create') return can('system:user:add');
@@ -51,11 +55,57 @@ const sortableFields = new Set([
   'status',
   'username',
 ]);
-let ordering: { order: 'asc' | 'desc'; orderBy: string } = {
-  orderBy: 'createTime',
-  order: 'desc',
-};
-let latestQuery: Promise<{ items: UserInfo[]; total: number }> | undefined;
+function userOrdering(sort: { field?: unknown; order?: unknown }): {
+  order: 'asc' | 'desc';
+  orderBy: string;
+} {
+  if (
+    typeof sort.field === 'string' &&
+    sortableFields.has(sort.field) &&
+    (sort.order === 'asc' || sort.order === 'desc')
+  ) {
+    return { orderBy: sort.field, order: sort.order };
+  }
+  return { orderBy: 'createTime', order: 'desc' };
+}
+const queryUsers: () => Promise<{ items: UserInfo[]; total: number }> =
+  createVbenGridQuery(
+    () => gridApi,
+    async ({ page, sort, form }) => {
+      if (!canQuery.value) return { items: [], total: 0 };
+      const result = await getUserList({
+        pageNum: page.currentPage,
+        pageSize: page.pageSize,
+        ...filterValues(form),
+        ...userOrdering(sort),
+      });
+      return { items: result.records ?? [], total: result.total };
+    },
+    () =>
+      JSON.stringify([accessStore.accessToken, canQuery.value, queryRevision]),
+  );
+const columns = computed<NonNullable<VxeTableGridOptions<UserInfo>['columns']>>(
+  () => [
+    { field: 'username', title: '账号', minWidth: 140, sortable: true },
+    { field: 'nickname', title: '昵称', minWidth: 120, sortable: true },
+    { field: 'mobile', title: '手机号', minWidth: 140, sortable: true },
+    { field: 'email', title: '邮箱', minWidth: 180, sortable: true },
+    {
+      field: 'status',
+      title: '状态',
+      width: 100,
+      sortable: true,
+      slots: { default: 'status' },
+    },
+    { field: 'createTime', title: '创建时间', width: 180, sortable: true },
+    {
+      title: '操作',
+      width: 280,
+      fixed: isMobile.value ? undefined : 'right',
+      slots: { default: 'actions' },
+    },
+  ],
+);
 const [Grid, gridApi] = useVbenVxeGrid<UserInfo>({
   tableTitle: '用户列表',
   formOptions: {
@@ -100,7 +150,6 @@ const [Grid, gridApi] = useVbenVxeGrid<UserInfo>({
       await gridApi.grid.clearSort();
       // eslint-disable-next-line unicorn/no-array-sort -- VxeGrid.sort 是原生表头排序 API，非数组排序。
       await gridApi.grid.sort({ field: 'createTime', order: 'desc' });
-      ordering = { orderBy: 'createTime', order: 'desc' };
       await gridApi.grid.setCurrentPage(1);
       await gridApi.query(values);
     },
@@ -108,26 +157,7 @@ const [Grid, gridApi] = useVbenVxeGrid<UserInfo>({
   gridOptions: {
     height: 'auto',
     rowConfig: { keyField: 'userId' },
-    columns: [
-      { field: 'username', title: '账号', minWidth: 140, sortable: true },
-      { field: 'nickname', title: '昵称', minWidth: 120, sortable: true },
-      { field: 'mobile', title: '手机号', minWidth: 140, sortable: true },
-      { field: 'email', title: '邮箱', minWidth: 180, sortable: true },
-      {
-        field: 'status',
-        title: '状态',
-        width: 100,
-        sortable: true,
-        slots: { default: 'status' },
-      },
-      { field: 'createTime', title: '创建时间', width: 180, sortable: true },
-      {
-        title: '操作',
-        width: 280,
-        fixed: 'right',
-        slots: { default: 'actions' },
-      },
-    ],
+    columns: columns.value,
     pagerConfig: { pageSize: 10, pageSizes: [10, 20, 50, 100] },
     sortConfig: {
       remote: true,
@@ -136,106 +166,28 @@ const [Grid, gridApi] = useVbenVxeGrid<UserInfo>({
     },
     toolbarConfig: {
       custom: true,
-      refresh: { code: 'query' },
+      refresh: true,
+      refreshOptions: { code: 'query' },
       zoom: true,
       search: true,
     },
     proxyConfig: {
       sort: true,
       ajax: {
-        query: async (
-          {
-            page,
-            sort,
-          }: {
-            page: { currentPage: number; pageSize: number };
-            sort: { field: string; order: 'asc' | 'desc' | null };
-          },
-          values: Record<string, unknown>,
-        ) => {
-          ordering =
-            sort?.order && sortableFields.has(sort.field)
-              ? { orderBy: sort.field, order: sort.order }
-              : { orderBy: 'createTime', order: 'desc' };
-          const pending = (async () => {
-            if (!canQuery.value) return { items: [], total: 0 };
-            let parameters = {
-              pageNum: page.currentPage,
-              pageSize: page.pageSize,
-              ...filterValues(values),
-              ...ordering,
-            };
-            for (;;) {
-              let response: Awaited<ReturnType<typeof getUserList>> | undefined;
-              let failure: unknown;
-              try {
-                response = await getUserList(parameters);
-              } catch (error_) {
-                failure = error_;
-              }
-              // 本仓 Vxe 忙碌时忽略 commitProxy。读取原生当前页/排序和最近提交表单，
-              // 在返回结果前接续处理期间的新操作，避免旧页覆盖新筛选。
-              if (gridApi.grid.getCurrentPage) {
-                const submitted = filterValues(
-                  gridApi.formApi.getLatestSubmissionValues(),
-                );
-                if (
-                  JSON.stringify(submitted) !==
-                  JSON.stringify(filterValues(parameters))
-                ) {
-                  await gridApi.grid.setCurrentPage(1);
-                }
-                const currentSort = gridApi.grid.getSortColumns()[0];
-                const currentOrder: typeof ordering =
-                  currentSort?.order && sortableFields.has(currentSort.field)
-                    ? {
-                        orderBy: currentSort.field,
-                        order: currentSort.order === 'asc' ? 'asc' : 'desc',
-                      }
-                    : { orderBy: 'createTime', order: 'desc' };
-                const current = {
-                  pageNum: gridApi.grid.getCurrentPage(),
-                  pageSize: gridApi.grid.getPageSize(),
-                  ...submitted,
-                  ...currentOrder,
-                };
-                if (JSON.stringify(current) !== JSON.stringify(parameters)) {
-                  parameters = current;
-                  ordering = currentOrder;
-                  continue;
-                }
-              }
-              if (failure) throw failure;
-              if (!response) throw new Error('用户列表未返回结果');
-              return { items: response.records ?? [], total: response.total };
-            }
-          })();
-          latestQuery = pending;
-          // 旧请求完成时等待最新查询，使迟到结果无法覆盖新筛选/排序。
-          let active = pending;
-          for (;;) {
-            try {
-              const result = await active;
-              if (active !== latestQuery && latestQuery) {
-                active = latestQuery;
-                continue;
-              }
-              error.value = '';
-              return result;
-            } catch (error_) {
-              if (active !== latestQuery && latestQuery) {
-                active = latestQuery;
-                continue;
-              }
-              error.value = '用户列表加载失败，请重试';
-              throw error_;
-            }
-          }
+        query: queryUsers,
+        querySuccess: () => {
+          error.value = '';
+        },
+        queryError: () => {
+          error.value = '用户列表加载失败，请重试';
         },
       },
     },
   },
 });
+watch(columns, (nextColumns) =>
+  gridApi.setGridOptions({ columns: nextColumns }),
+);
 const [ImportGrid] = useVbenVxeGrid({
   gridOptions: {
     height: 320,
@@ -270,10 +222,11 @@ function filterValues(values: Record<string, unknown>) {
 function currentFilters() {
   return {
     ...filterValues(gridApi.formApi.getLatestSubmissionValues()),
-    ...ordering,
+    ...userOrdering(gridApi.grid.getSortColumns()[0] ?? {}),
   };
 }
 async function load() {
+  queryRevision += 1;
   await gridApi.query();
 }
 async function showPendingUsers() {
@@ -500,12 +453,6 @@ function downloadImportErrors() {
         <el-button v-if="canOpenDialog('create')" type="primary" @click="add">
           新增用户
         </el-button>
-        <span
-          v-if="can('system:user:add')"
-          class="self-center text-sm text-muted-foreground"
-        >
-          .xlsx，最多1000行 / 5 MiB
-        </span>
         <el-popover
           v-if="can('system:user:add')"
           placement="bottom"
@@ -515,6 +462,7 @@ function downloadImportErrors() {
           <template #reference>
             <el-button link>导入字段说明</el-button>
           </template>
+          <p>.xlsx，最多1000行 / 5 MiB。</p>
           <p>角色标识：多个值用逗号分隔。逐行处理，错误行会列出原因。</p>
           <p class="mt-2">
             导入不回显密码。新账号待激活，核对角色后再重置密码并启用。

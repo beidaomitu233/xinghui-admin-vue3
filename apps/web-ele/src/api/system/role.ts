@@ -4,35 +4,45 @@ export interface RoleInfo {
   roleId: string;
   roleName: string;
   roleKey: string;
-  roleSort: number;
   dataScope: string;
-  menuCheckStrictly: boolean;
-  deptCheckStrictly: boolean;
   status: number;
-  delFlag: string;
   createBy: string;
   createTime: string;
   updateBy: string;
   updateTime: string;
-  remark: string;
 }
 
-export function getRoleList(params: any) {
-  return requestClient.get<{ records: RoleInfo[]; total: number }>(
-    '/system/role/list',
-    { params },
-  );
+export async function getRoleList(
+  params: Record<string, number | string | undefined>,
+) {
+  const result = await requestClient.get<{
+    records: RoleInfo[];
+    total: number | string;
+  }>('/system/role/list', { params });
+  const total = Number(result.total);
+  if (!Number.isSafeInteger(total) || total < 0 || result.total === '')
+    throw new Error('角色总数超出可显示范围');
+  return { ...result, total };
 }
 
 export function getRole(roleId: string | undefined) {
   return requestClient.get<RoleInfo>(`/system/role/${roleId}`);
 }
 
-export function addRole(data: any) {
+export interface RoleForm {
+  roleId?: string;
+  roleName: string;
+  roleKey: string;
+  status: number;
+  dataScope?: string;
+  menuIds: string[];
+}
+
+export function addRole(data: RoleForm) {
   return requestClient.post('/system/role/add', data);
 }
 
-export function updateRole(data: any) {
+export function updateRole(data: RoleForm) {
   return requestClient.post('/system/role/edit', data);
 }
 

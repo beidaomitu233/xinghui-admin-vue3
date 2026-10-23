@@ -112,7 +112,13 @@ afterEach(() => {
 describe('aI prompt scene page', () => {
   beforeEach(() => {
     vi.resetAllMocks();
-    vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue('confirm');
+    vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue(
+      Object.assign('confirm' as const, {
+        action: 'confirm' as const,
+        value: '',
+        token: null,
+      }),
+    );
     accessState.codes = [
       'ai:prompt:list',
       'ai:prompt:query',

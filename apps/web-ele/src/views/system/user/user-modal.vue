@@ -3,7 +3,7 @@ import type { RoleInfo } from '#/api/system/role';
 import type { UserForm } from '#/api/system/user';
 import type { EntityDialogMode } from '#/composables/use-entity-dialog';
 
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
 
 import { useVbenModal } from '@vben/common-ui';
 import { useAccessStore } from '@vben/stores';
@@ -20,6 +20,8 @@ const mode = ref<EntityDialogMode>('create');
 const submitError = ref('');
 const rolesEditable = ref(false);
 const roleWarning = ref('');
+const detail = ref<UserForm>();
+const roleLabels = ref<Record<string, string>>({});
 let baseline: UserForm;
 const busy = ref(false);
 let prepared = false;
@@ -62,6 +64,7 @@ const [Form, formApi] = useVbenForm({
     },
     {
       fieldName: 'password',
+      defaultValue: '',
       label: '密码',
       component: 'Input',
       componentProps: {
@@ -74,7 +77,8 @@ const [Form, formApi] = useVbenForm({
       fieldName: 'nickname',
       label: '昵称',
       component: 'Input',
-      rules: z.string().max(30, '昵称不能超过30个字符'),
+      defaultValue: '',
+      rules: z.string().max(30, '昵称不能超过30个字符').optional(),
     },
     {
       fieldName: 'mobile',
@@ -86,7 +90,10 @@ const [Form, formApi] = useVbenForm({
       fieldName: 'email',
       label: '邮箱',
       component: 'Input',
-      rules: z.union([z.literal(''), z.string().email('邮箱格式不正确')]),
+      defaultValue: '',
+      rules: z
+        .union([z.literal(''), z.string().email('邮箱格式不正确')])
+        .optional(),
     },
     {
       fieldName: 'status',
@@ -102,6 +109,7 @@ const [Form, formApi] = useVbenForm({
     },
     {
       fieldName: 'roleIds',
+      defaultValue: [],
       label: '角色',
       component: 'Select',
       componentProps: { multiple: true, clearable: true, options: [] },
@@ -109,6 +117,7 @@ const [Form, formApi] = useVbenForm({
   ],
 });
 
+watch(busy, (value) => formApi.setState({ commonConfig: { disabled: value } }), { flush: 'sync' });
 const [Modal, modalApi] = useVbenModal({
   confirmText: '保存',
   onBeforeClose: async () => {
@@ -193,10 +202,13 @@ const [Modal, modalApi] = useVbenModal({
   onOpenChange: async (isOpen) => {
     const current = ++request;
     if (!isOpen) return;
+    const token = access.accessToken;
     const data = modalApi.getData<{ id?: string; mode: EntityDialogMode }>();
     mode.value = data.mode;
     saved = false;
     prepared = false;
+    detail.value = undefined;
+    roleLabels.value = {};
     rolesEditable.value = false;
     roleWarning.value = '';
     submitError.value = '';
@@ -215,7 +227,7 @@ const [Modal, modalApi] = useVbenModal({
       cancelText: mode.value === 'view' ? '关闭' : '取消',
     });
     try {
-      await formApi.resetForm();
+      if (mode.value !== 'view') await formApi.resetForm();
       let value = emptyForm();
       if (mode.value !== 'create') {
         if (!data.id) throw new Error('缺少用户 ID');
@@ -248,24 +260,29 @@ const [Modal, modalApi] = useVbenModal({
             '角色列表加载失败，可继续修改普通资料；原角色保持不变。';
         }
       }
-      if (current !== request) return;
+      if (current !== request || token !== access.accessToken) return;
       baseline = structuredClone(value);
-      formApi.setState({ commonConfig: { disabled: mode.value === 'view' } });
+      detail.value = structuredClone(value);
+      roleLabels.value = Object.fromEntries(
+        roles.map((role) => [role.roleId, role.roleName]),
+      );
+      if (mode.value === 'view') {
+        prepared = true;
+        return;
+      }
       formApi.updateSchema([
         {
           fieldName: 'password',
-          dependencies: { if: () => mode.value !== 'view', triggerFields: [] },
           componentProps: {
             placeholder: mode.value === 'edit' ? '留空则不修改' : '6至20位密码',
           },
-          rules: z
-            .string()
-            .refine(
-              (password) =>
-                (mode.value === 'edit' && password === '') ||
-                (password.length >= 6 && password.length <= 20),
-              '密码需为6至20位',
-            ),
+          rules:
+            mode.value === 'edit'
+              ? z
+                  .string()
+                  .regex(/^(?:[\s\S]{6,20})?$/, '密码需为6至20位')
+                  .optional()
+              : z.string().min(6, '密码需为6至20位').max(20, '密码需为6至20位'),
         },
         {
           fieldName: 'roleIds',
@@ -306,6 +323,10 @@ const [Modal, modalApi] = useVbenModal({
   },
 });
 
+watch(() => JSON.stringify([access.accessToken, ...['system:user:query', 'system:user:add', 'system:user:edit', 'system:role:list'].map((code) => access.accessCodes.includes(code))]), () => {
+  request += 1; prepared = false; saved = true; busy.value = false; detail.value = undefined; roleLabels.value = {}; void modalApi.close();
+});
+
 async function reset() {
   if (busy.value || mode.value === 'view' || !prepared) return;
   await formApi.resetForm();
@@ -330,7 +351,35 @@ async function reset() {
       show-icon
       class="mb-4"
     />
-    <Form />
+    <el-descriptions
+      v-if="mode === 'view' && detail"
+      :column="1"
+      border
+      label-width="90px"
+    >
+      <el-descriptions-item label="账号">
+        {{ detail.username }}
+      </el-descriptions-item>
+      <el-descriptions-item label="昵称">
+        {{ detail.nickname || '未设置' }}
+      </el-descriptions-item>
+      <el-descriptions-item label="手机号">
+        {{ detail.mobile }}
+      </el-descriptions-item>
+      <el-descriptions-item label="邮箱">
+        {{ detail.email || '未设置' }}
+      </el-descriptions-item>
+      <el-descriptions-item label="状态">
+        {{ detail.status === 1 ? '启用' : '禁用' }}
+      </el-descriptions-item>
+      <el-descriptions-item label="角色">
+        {{
+          detail.roleIds.map((id) => roleLabels[id] || id).join('、') ||
+          '未分配角色'
+        }}
+      </el-descriptions-item>
+    </el-descriptions>
+    <Form v-else-if="mode !== 'view'" />
     <template #prepend-footer>
       <el-button v-if="mode !== 'view'" :disabled="busy" @click="reset">
         重置
