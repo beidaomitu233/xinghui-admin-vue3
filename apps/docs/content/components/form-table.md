@@ -32,6 +32,8 @@ async function reset() {
 
 formApi提供getValues、setValues、resetForm、validate、submitForm等方法；validate结果包含valid，不当作boolean本身。适配中Upload使用fileList模型属性、CheckboxGroup使用model-value；required/selectRequired的空值规则不同。
 
+当前版本的字段联动需要非空 `dependencies.triggerFields`；空数组会直接跳过 `if`、`disabled` 等联动判断。仅按详情/编辑模式隐藏字段时，可用已有 Schema 的 `hide` 属性并通过 `updateSchema` 更新，不必新增联动机制。详情不展示密码输入框；可选字段的规则和必填标记也应一致，不能仅因为有格式校验就展示红星。
+
 ## VXE表格
 
 从 `#/adapter/vxe-table` 导入 `useVbenVxeGrid` 和类型，返回 `[Grid, gridApi]`。裸 `gridOptions` 类型为 `VxeTableGridOptions<Row>`，外层 `VxeGridProps` 包含 `gridOptions`、`formOptions` 和 `gridEvents`。适配默认 proxy 结果字段为 `items`、`total`；本项目很多业务响应为 `records`，必须显式映射，不能直接套用。全局关闭 VXE 自身 `formConfig`，筛选使用 `formOptions`。
