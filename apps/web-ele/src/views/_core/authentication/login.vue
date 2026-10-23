@@ -6,10 +6,16 @@ import type { CaptchaState } from './captcha-state';
 import type { AuthApi } from '#/api/core/auth';
 
 import { computed, defineAsyncComponent, onMounted, ref } from 'vue';
+import { useRouter } from 'vue-router';
 
 import { AuthenticationLogin, z } from '@vben/common-ui';
 
 import { getCaptchaApi } from '#/api/core/auth';
+import {
+  getWechatFlow,
+  safeWechatReturn,
+  WECHAT_FLOW_KEY,
+} from '#/api/system/wechat';
 import { useAuthStore } from '#/store';
 
 import {
@@ -21,6 +27,7 @@ import WechatEntry from './wechat-entry.vue';
 defineOptions({ name: 'Login' });
 
 const authStore = useAuthStore();
+const router = useRouter();
 const DemoLogin =
   import.meta.env.VITE_APP_DEMO === 'true'
     ? defineAsyncComponent(() => import('../../../demo/login-entry.vue'))
@@ -48,11 +55,30 @@ async function submit(values: Record<string, unknown>) {
   );
   if (captchaFields === null) return;
   try {
-    await authStore.authLogin({
-      phone: String(values.phone ?? ''),
-      password: String(values.password ?? ''),
-      ...captchaFields,
-    } satisfies AuthApi.LoginParams);
+    await authStore.authLogin(
+      {
+        phone: String(values.phone ?? ''),
+        password: String(values.password ?? ''),
+        ...captchaFields,
+      } satisfies AuthApi.LoginParams,
+      sessionStorage.getItem(WECHAT_FLOW_KEY)
+        ? async () => {
+            const flow = sessionStorage.getItem(WECHAT_FLOW_KEY) ?? '';
+            try {
+              const result = await getWechatFlow(flow);
+              if (result.status === 'READY_BIND') {
+                await router.replace('/auth/wechat-result');
+                return;
+              }
+              sessionStorage.removeItem(WECHAT_FLOW_KEY);
+              await router.replace(safeWechatReturn(result.returnPath));
+            } catch {
+              sessionStorage.removeItem(WECHAT_FLOW_KEY);
+              await router.replace('/');
+            }
+          }
+        : undefined,
+    );
   } catch {
     if (captcha.status === 'ready' && captcha.enabled) await refreshCaptcha();
   }
