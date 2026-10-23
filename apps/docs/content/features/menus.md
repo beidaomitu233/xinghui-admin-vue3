@@ -38,3 +38,4 @@ AI管理的日常入口为独立AI配置（`/ai/configurations`）、提示词�
 - 旧三组层级：`system-admin/src/main/resources/db/migration/V20261013_170__menu_consolidation.sql`；当前独立AI组与动作：`V20261016_180__ai_config_v04.sql`、`V20261016_210__ai_access_actions.sql`（同目录）。
 - 独立AI配置二级页：`V20261018_244__restore_standalone_ai_configuration.sql`复用原菜单与动作授权，恢复`system/ai-config/index`，不新增角色数据权限；迁移后重新登录核对真实导航和API动作。
 - 工作台与看板独立入口：`V20261023_300__independent_home_navigation.sql`保留原页面ID和授权，调整层级与排序并修正历史无效图标名；前端只整理后端已经授权的页面。
+- 排序兼容修正：`V20261023_301__nonnegative_home_navigation_order.sql`将工作台、看板设为0、1，其余根菜单保留相对顺序，从2开始连续排列，符合菜单编辑接口的非负值要求。已应用的V300保持原校验和，升级使用新增迁移。
