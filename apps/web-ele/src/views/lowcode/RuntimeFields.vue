@@ -1,5 +1,11 @@
 <script setup lang="ts">
-import type { FieldValue, FormField, FormSchema } from '#/api/lowcode/forms';
+import type { FieldValue, FormSchema } from '#/api/lowcode/forms';
+
+import { nextTick, onBeforeUnmount, watch } from 'vue';
+
+import { useVbenForm } from '#/adapter/form';
+
+import { recordFormSchema } from './record-form';
 
 const props = defineProps<{
   disabled?: boolean;
@@ -10,91 +16,84 @@ const emit = defineEmits<{
   submit: [];
   'update:modelValue': [value: Record<string, FieldValue>];
 }>();
-function setValue(field: FormField, value: FieldValue | undefined) {
-  emit('update:modelValue', {
-    ...props.modelValue,
-    [field.fieldKey]:
-      value === '' && ['date', 'select'].includes(field.type)
-        ? null
-        : (value ?? null),
-  });
+let generation = 0;
+let loadedSchema = '';
+let lastEmitted = '';
+let syncing = false;
+onBeforeUnmount(() => {
+  generation++;
+});
+function values(
+  input: Record<string, FieldValue | undefined>,
+): Record<string, FieldValue> {
+  return Object.fromEntries(
+    props.schema.fields.map((field) => {
+      let fallback: FieldValue = null;
+      if (field.type === 'switch') fallback = false;
+      if (field.type === 'multiselect') fallback = [];
+      return [field.fieldKey, input[field.fieldKey] ?? fallback];
+    }),
+  );
 }
-const stringValue = (field: FormField) =>
-  typeof props.modelValue[field.fieldKey] === 'string'
-    ? String(props.modelValue[field.fieldKey])
-    : '';
-const numberValue = (field: FormField) =>
-  typeof props.modelValue[field.fieldKey] === 'number'
-    ? (props.modelValue[field.fieldKey] as number)
-    : undefined;
-function choiceValue(field: FormField): string | string[] {
-  if (field.type !== 'multiselect') return stringValue(field);
-  const value = props.modelValue[field.fieldKey];
-  return Array.isArray(value) ? value : [];
+const [Form, formApi] = useVbenForm({
+  schema: [],
+  showDefaultActions: false,
+  wrapperClass: 'grid-cols-1',
+  commonConfig: { componentProps: { class: 'w-full' } },
+  handleSubmit: submitValues,
+  handleValuesChange: (input) => {
+    if (syncing) return;
+    const next = values(input);
+    if (JSON.stringify(next) !== JSON.stringify(values(props.modelValue))) {
+      lastEmitted = JSON.stringify(next);
+      emit('update:modelValue', next);
+    }
+  },
+});
+async function submitValues(input: Record<string, FieldValue | undefined>) {
+  emit('update:modelValue', values(input));
+  await nextTick();
+  emit('submit');
 }
+watch(
+  () => props.disabled,
+  (disabled) =>
+    formApi.setState({ commonConfig: { disabled: disabled === true } }),
+  { immediate: true },
+);
+watch(
+  () => [props.schema, props.modelValue] as const,
+  async () => {
+    const run = ++generation;
+    const signature = JSON.stringify(props.schema);
+    const changed = signature !== loadedSchema;
+    const next = values(props.modelValue);
+    if (!changed && JSON.stringify(next) === lastEmitted) return;
+    syncing = true;
+    try {
+      formApi.setState({
+        ...(changed ? { schema: recordFormSchema(props.schema) } : {}),
+      });
+      await nextTick();
+      if (run !== generation) return;
+      if (signature === loadedSchema) {
+        const current = await formApi.getValues();
+        if (
+          run === generation &&
+          JSON.stringify(values(current)) !== JSON.stringify(next)
+        )
+          await formApi.setValues(next);
+      } else {
+        await formApi.resetForm({ values: next });
+        if (run === generation) loadedSchema = signature;
+      }
+    } finally {
+      if (run === generation) syncing = false;
+    }
+  },
+  { immediate: true, deep: true },
+);
 </script>
 <template>
-  <!-- Prettier formats adjacent inline controls; avoid conflicting whitespace rules. -->
-  <!-- eslint-disable vue/multiline-html-element-content-newline, vue/html-closing-bracket-newline -->
-  <el-form
-    label-position="top"
-    :disabled="disabled"
-    @submit.prevent="emit('submit')"
-  >
-    <el-form-item
-      v-for="field in schema.fields"
-      :key="field.fieldKey"
-      :label="field.label"
-      :required="field.required"
-    >
-      <el-input
-        v-if="field.type === 'text' || field.type === 'textarea'"
-        :model-value="stringValue(field)"
-        :type="field.type === 'textarea' ? 'textarea' : 'text'"
-        :rows="4"
-        :maxlength="field.maxLength"
-        show-word-limit
-        @update:model-value="setValue(field, $event)"
-      />
-      <el-input-number
-        v-else-if="field.type === 'number'"
-        :model-value="numberValue(field)"
-        :min="field.min ?? -1e12"
-        :max="field.max ?? 1e12"
-        :precision="6"
-        @update:model-value="setValue(field, $event)"
-      />
-      <el-date-picker
-        v-else-if="field.type === 'date'"
-        :model-value="stringValue(field)"
-        type="date"
-        value-format="YYYY-MM-DD"
-        placeholder="选择日期"
-        @update:model-value="setValue(field, $event)"
-      />
-      <el-select
-        v-else-if="field.type === 'select' || field.type === 'multiselect'"
-        :model-value="choiceValue(field)"
-        :multiple="field.type === 'multiselect'"
-        clearable
-        @update:model-value="setValue(field, $event)"
-      >
-        <el-option
-          v-for="option in field.options"
-          :key="option.value"
-          :label="option.label"
-          :value="option.value"
-        />
-      </el-select>
-      <el-switch
-        v-else-if="field.type === 'switch'"
-        :model-value="modelValue[field.fieldKey] === true"
-        @update:model-value="setValue(field, $event as boolean)"
-      />
-      <p v-if="field.help" class="mt-1 w-full text-sm text-muted-foreground">
-        {{ field.help }}
-      </p>
-    </el-form-item>
-    <slot name="actions"></slot>
-  </el-form>
+  <Form @submit="submitValues"><slot name="actions"></slot></Form>
 </template>

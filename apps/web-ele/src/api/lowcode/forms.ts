@@ -74,6 +74,8 @@ export interface Submission {
 const base = '/lowcode/forms';
 export const listForms = (params: {
   name?: string;
+  order?: 'asc' | 'desc';
+  orderBy?: string;
   pageNum: number;
   pageSize: number;
 }) => requestClient.get<Page<FormDefinition>>(base, { params });
@@ -94,6 +96,8 @@ export const listRecords = (
   params: {
     filterField?: string;
     filterValue?: string;
+    order?: 'asc' | 'desc';
+    orderBy?: string;
     pageNum: number;
     pageSize: number;
   },

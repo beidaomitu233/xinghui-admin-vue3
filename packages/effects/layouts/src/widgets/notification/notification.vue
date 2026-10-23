@@ -13,8 +13,6 @@ import {
   VbenScrollbar,
 } from '@vben-core/shadcn-ui';
 
-import { useToggle } from '@vueuse/core';
-
 interface Props {
   /**
    * 显示圆点
@@ -24,17 +22,30 @@ interface Props {
    * 消息列表
    */
   notifications?: NotificationItem[];
+  showClear?: boolean;
+  showRemove?: boolean;
+  navigateOnClick?: boolean;
+  markAllText?: string;
+  markAllDisabled?: boolean;
+  triggerLabel?: string;
 }
 
 defineOptions({ name: 'NotificationPopup' });
 
-withDefaults(defineProps<Props>(), {
+const props = withDefaults(defineProps<Props>(), {
   dot: false,
   notifications: () => [],
+  showClear: true,
+  showRemove: true,
+  navigateOnClick: true,
+  markAllText: undefined,
+  markAllDisabled: false,
+  triggerLabel: undefined,
 });
 
 const emit = defineEmits<{
   clear: [];
+  itemClick: [NotificationItem];
   makeAll: [];
   read: [NotificationItem];
   remove: [NotificationItem];
@@ -42,7 +53,7 @@ const emit = defineEmits<{
 }>();
 
 const router = useRouter();
-const [open, toggle] = useToggle();
+const open = defineModel<boolean>('open', { default: false });
 
 function close() {
   open.value = false;
@@ -62,8 +73,9 @@ function handleClear() {
 }
 
 function handleClick(item: NotificationItem) {
+  emit('itemClick', item);
   // 如果通知项有链接，点击时跳转
-  if (item.link) {
+  if (props.navigateOnClick && item.link) {
     navigateTo(item.link, item.query, item.state);
   }
 }
@@ -92,8 +104,12 @@ function navigateTo(
     content-class="relative right-2 w-[360px] p-0"
   >
     <template #trigger>
-      <div class="flex-center mr-2 h-full" @click.stop="toggle()">
-        <VbenIconButton class="bell-button text-foreground relative">
+      <div class="flex-center mr-2 h-full" @click.stop="open = !open">
+        <VbenIconButton
+          class="bell-button text-foreground relative"
+          :title="triggerLabel || $t('ui.widgets.notifications')"
+          :aria-label="triggerLabel || $t('ui.widgets.notifications')"
+        >
           <span
             v-if="dot"
             class="bg-primary absolute right-0.5 top-0.5 h-2 w-2 rounded"
@@ -107,8 +123,8 @@ function navigateTo(
       <div class="flex items-center justify-between p-4 py-3">
         <div class="text-foreground">{{ $t('ui.widgets.notifications') }}</div>
         <VbenIconButton
-          :disabled="notifications.length <= 0"
-          :tooltip="$t('ui.widgets.markAllAsRead')"
+          :disabled="markAllDisabled || notifications.length <= 0"
+          :tooltip="markAllText || $t('ui.widgets.markAllAsRead')"
           @click="handleMakeAll"
         >
           <MailCheck class="size-4" />
@@ -130,9 +146,11 @@ function navigateTo(
                 class="relative flex h-10 w-10 shrink-0 overflow-hidden rounded-full"
               >
                 <img
+                  v-if="item.avatar"
                   :src="item.avatar"
                   class="aspect-square h-full w-full object-cover"
                 />
+                <Bell v-else class="bg-muted m-auto size-5" />
               </span>
               <div class="flex flex-col gap-1 leading-none">
                 <p class="font-semibold">{{ item.title }}</p>
@@ -157,7 +175,7 @@ function navigateTo(
                   <CircleCheckBig class="size-4" />
                 </VbenIconButton>
                 <VbenIconButton
-                  v-if="item.isRead"
+                  v-if="item.isRead && showRemove"
                   size="xs"
                   variant="ghost"
                   class="text-destructive h-6 px-2"
@@ -173,15 +191,18 @@ function navigateTo(
       </VbenScrollbar>
 
       <template v-else>
-        <div class="flex-center text-muted-foreground min-h-[150px] w-full">
-          {{ $t('common.noData') }}
-        </div>
+        <slot name="empty">
+          <div class="flex-center text-muted-foreground min-h-[150px] w-full">
+            {{ $t('common.noData') }}
+          </div>
+        </slot>
       </template>
 
       <div
         class="border-border flex items-center justify-between border-t px-4 py-3"
       >
         <VbenButton
+          v-if="showClear"
           :disabled="notifications.length <= 0"
           size="sm"
           variant="ghost"

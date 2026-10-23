@@ -25,15 +25,124 @@ import Records from './index.vue';
 const context = vi.hoisted(() => ({
   route: { params: { formId: '1' } },
   access: { accessCodes: [] as string[] },
+  form: {
+    values: {} as Record<string, unknown>,
+    schema: [] as {
+      component: string;
+      componentProps?: Record<string, unknown>;
+      fieldName: string;
+    }[],
+  },
 }));
 vi.mock('vue-router', () => ({
   useRoute: () => context.route,
   useRouter: () => ({ push: vi.fn() }),
 }));
 vi.mock('@vben/stores', () => ({ useAccessStore: () => context.access }));
-vi.mock('@vben/common-ui', () => ({
-  Page: { template: '<main><slot /></main>' },
+vi.mock('@vben/common-ui', async (importOriginal) => {
+  const actual = await importOriginal<object>();
+  const { defineComponent, h, reactive, ref } = await import('vue');
+  return {
+    ...actual,
+    Page: { template: '<main><slot /></main>' },
+    useVbenModal(options: Record<string, any>) {
+      const opened = ref(false);
+      const settings = reactive({ ...options });
+      const api = {
+        setState: (state: Record<string, unknown>) =>
+          Object.assign(settings, state),
+        lock: vi.fn(),
+        unlock: vi.fn(),
+        open() {
+          opened.value = true;
+          options.onOpenChange?.(true);
+        },
+        close() {
+          if (options.onBeforeClose?.() === false) return;
+          opened.value = false;
+          options.onOpenChange?.(false);
+        },
+      };
+      return [
+        defineComponent({
+          setup(_, { slots }) {
+            return () =>
+              opened.value
+                ? h('aside', [
+                    slots.default?.(),
+                    slots.footer?.(),
+                    settings.showConfirmButton === false
+                      ? null
+                      : h(
+                          'button',
+                          { onClick: () => options.onConfirm?.() },
+                          String(settings.confirmText || '确认'),
+                        ),
+                  ])
+                : null;
+          },
+        }),
+        api,
+      ];
+    },
+  };
+});
+vi.mock('#/adapter/form', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  useVbenForm() {
+    return [
+      { name: 'NativeRecordFormPort', render: () => null },
+      {
+        setState(state: { schema?: typeof context.form.schema }) {
+          if (state.schema) context.form.schema = state.schema;
+        },
+        async resetForm({ values }: { values: Record<string, unknown> }) {
+          context.form.values = structuredClone(values);
+        },
+        async getValues() {
+          return context.form.values;
+        },
+        async setFieldValue(key: string, value: unknown) {
+          context.form.values[key] = value;
+        },
+        validate: async () => ({ valid: true }),
+      },
+    ];
+  },
 }));
+vi.mock('#/adapter/vxe-table', async () => {
+  const { defineComponent, h, onMounted, ref } = await import('vue');
+  return {
+    useVbenVxeGrid(options: Record<string, any>) {
+      const rows = ref<FormRecordRow[]>([]);
+      const api = {
+        formApi: { updateSchema: vi.fn(), setFieldValue: vi.fn() },
+        grid: { setCurrentPage: async () => {} },
+        setGridOptions: vi.fn(),
+        async query() {
+          const result = await options.gridOptions.proxyConfig.ajax.query(
+            { page: { currentPage: 1, pageSize: 10 }, sort: {} },
+            {},
+          );
+          rows.value = result.items;
+        },
+      };
+      return [
+        defineComponent({
+          setup(_, { slots }) {
+            onMounted(() => api.query());
+            return () =>
+              h('section', [
+                slots['toolbar-actions']?.(),
+                ...rows.value.map((row) => slots.actions?.({ row })),
+              ]);
+          },
+        }),
+        api,
+      ];
+    },
+  };
+});
 vi.mock('#/api/lowcode/forms', () =>
   Object.fromEntries(
     [
@@ -377,7 +486,9 @@ it.each(['route', 'query', 'edit'] as const)(
     }
     detail.resolve(original);
     await flushPromises();
-    expect(view.findComponent({ name: 'RuntimeFields' }).exists()).toBe(false);
+    expect(view.findComponent({ name: 'NativeRecordFormPort' }).exists()).toBe(
+      false,
+    );
     expect(view.find('aside').exists()).toBe(false);
     expect(addRecord).not.toHaveBeenCalled();
     expect(updateRecord).not.toHaveBeenCalled();
@@ -410,7 +521,9 @@ it('does not let a pending summary adoption overwrite a newer detail opening', a
   await flushPromises();
   detail.resolve(original);
   await flushPromises();
-  expect(view.findComponent({ name: 'RuntimeFields' }).exists()).toBe(false);
+  expect(view.findComponent({ name: 'NativeRecordFormPort' }).exists()).toBe(
+    false,
+  );
   expect(view.text()).toContain('Fresh detail');
   expect(view.text()).not.toContain('Stale adopted text');
   expect(updateRecord).not.toHaveBeenCalled();
@@ -426,14 +539,80 @@ it('adopts into the validated current editor draft using historical fields witho
     .getComponent({ name: 'AiSummaryDialog' })
     .vm.$emit('adopt', 'old_summary', 'Current adopted text');
   await flushPromises();
-  const editor = view.getComponent({ name: 'RuntimeFields' });
-  expect(editor.props('modelValue')).toEqual({
+  expect(view.findComponent({ name: 'NativeRecordFormPort' }).exists()).toBe(
+    true,
+  );
+  expect(context.form.values).toEqual({
     old_summary: 'Current adopted text',
   });
-  expect(editor.props('schema')).toEqual(original.schema);
-  expect(editor.props('schema')).not.toEqual(current.schema);
+  expect(context.form.schema.map((field) => field.fieldName)).toEqual(
+    original.schema.fields.map((field) => field.fieldKey),
+  );
+  expect(context.form.schema.map((field) => field.fieldName)).not.toEqual(
+    current.schema.fields.map((field) => field.fieldKey),
+  );
+  expect(context.form.schema[0]).toMatchObject({
+    component: 'Input',
+    componentProps: { type: 'textarea', maxlength: 1500 },
+  });
   expect(addRecord).not.toHaveBeenCalled();
   expect(updateRecord).not.toHaveBeenCalled();
+  view.unmount();
+});
+
+it('saves an edited historical record once and closes after unlocking the native modal', async () => {
+  const pending = deferred<FormRecord>();
+  vi.mocked(updateRecord).mockReturnValueOnce(pending.promise);
+  const view = render();
+  await flushPromises();
+  const edit = view
+    .findAll('button')
+    .find((button) => button.text() === '编辑');
+  if (!edit) throw new Error('Missing edit');
+  await edit.trigger('click');
+  await flushPromises();
+  const save = view
+    .findAll('button')
+    .find((button) => button.text() === '保存记录');
+  if (!save) throw new Error('Missing native confirm');
+  await Promise.all([save.trigger('click'), save.trigger('click')]);
+  await flushPromises();
+  expect(updateRecord).toHaveBeenCalledTimes(1);
+  expect(updateRecord).toHaveBeenCalledWith('1', '7', {
+    schemaVersion: 1,
+    revision: 0,
+    data: original.data,
+  });
+  pending.resolve(original);
+  await flushPromises();
+  expect(view.find('aside').exists()).toBe(false);
+  view.unmount();
+});
+
+it('closes a saving editor on route invalidation and ignores the late result', async () => {
+  const pending = deferred<FormRecord>();
+  vi.mocked(updateRecord).mockReturnValueOnce(pending.promise);
+  const view = render();
+  await flushPromises();
+  const edit = view
+    .findAll('button')
+    .find((button) => button.text() === '编辑');
+  if (!edit) throw new Error('Missing edit');
+  await edit.trigger('click');
+  await flushPromises();
+  const save = view
+    .findAll('button')
+    .find((button) => button.text() === '保存记录');
+  if (!save) throw new Error('Missing native confirm');
+  await save.trigger('click');
+  await flushPromises();
+  context.route.params.formId = '2';
+  await flushPromises();
+  expect(view.find('aside').exists()).toBe(false);
+  pending.resolve(original);
+  await flushPromises();
+  expect(view.find('aside').exists()).toBe(false);
+  expect(updateRecord).toHaveBeenCalledTimes(1);
   view.unmount();
 });
 
@@ -456,7 +635,9 @@ it('rejects invalid adoption details without opening an editor with fallback sch
       .getComponent({ name: 'AiSummaryDialog' })
       .vm.$emit('adopt', 'old_summary', 'Should not adopt');
     await flushPromises();
-    expect(view.findComponent({ name: 'RuntimeFields' }).exists()).toBe(false);
+    expect(view.findComponent({ name: 'NativeRecordFormPort' }).exists()).toBe(
+      false,
+    );
     expect(view.text()).toContain('记录读取失败，请重试。');
   }
   expect(addRecord).not.toHaveBeenCalled();

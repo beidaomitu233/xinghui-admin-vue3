@@ -3,15 +3,39 @@ import type { FormDefinition } from '#/api/lowcode/forms';
 import { flushPromises, mount } from '@vue/test-utils';
 
 import ElementPlus, { ElMessageBox } from 'element-plus';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
+
+import { initComponentAdapter } from '#/adapter/component';
+import { initSetupVbenForm } from '#/adapter/form';
 
 import FormSharing from './FormSharing.vue';
+
+beforeAll(async () => {
+  await initComponentAdapter();
+  await initSetupVbenForm();
+});
+vi.mock('@vben/stores', () => ({
+  useAccessStore: () => ({ accessCodes: ['lowcode:form:publish'] }),
+}));
 
 const api = vi.hoisted(() => ({ readSharing: vi.fn(), saveSharing: vi.fn() }));
 const resolve = vi.hoisted(() =>
   vi.fn(({ params }) => ({ href: `/base/#/forms/fill/${params.token}` })),
 );
 vi.mock('#/api/lowcode/forms', () => api);
+vi.mock('@vben/common-ui', async (importOriginal) => {
+  const actual = await importOriginal<object>();
+  const { useModalPort } = await import('#/test-utils/popup-port');
+  return { ...actual, useVbenModal: useModalPort };
+});
 vi.mock('vue-router', () => ({ useRouter: () => ({ resolve }) }));
 const wrappers: ReturnType<typeof mount>[] = [];
 function form(id: string): FormDefinition {
@@ -33,6 +57,7 @@ async function render() {
     global: {
       plugins: [ElementPlus],
       stubs: {
+        Teleport: true,
         ElDialog: {
           props: ['modelValue'],
           template:
@@ -44,6 +69,9 @@ async function render() {
   wrappers.push(wrapper);
   await wrapper.setProps({ modelValue: true });
   await flushPromises();
+  await vi.waitFor(() =>
+    expect(wrapper.find('[role=switch]').exists()).toBe(true),
+  );
   return wrapper;
 }
 function button(wrapper: ReturnType<typeof mount>, text: string) {

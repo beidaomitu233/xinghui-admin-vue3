@@ -5,10 +5,11 @@ import type { FieldValue, FormSchema } from '#/api/lowcode/forms';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 
+import { Page } from '@vben/common-ui';
+
 import { ElMessageBox } from 'element-plus';
 
 import { FillError, readFillForm, submitFillForm } from '#/api/lowcode/fill';
-import AdminPageHeader from '#/components/admin-page-header.vue';
 import { useAuthStore } from '#/store/auth';
 
 import { dataError, initialData } from '../form-schema';
@@ -127,9 +128,11 @@ function login() {
 watch(token, () => void load(), { immediate: true });
 </script>
 <template>
-  <main class="fill-page">
-    <section v-loading="loading" class="fill-card" aria-label="填写表单">
-      <AdminPageHeader :title="definition?.title || '填写表单'" />
+  <Page
+    :title="definition?.title || '填写表单'"
+    class="mx-auto w-full max-w-[800px]"
+  >
+    <section v-loading="loading" aria-label="填写表单">
       <el-alert
         v-if="error"
         :title="error"
@@ -186,48 +189,13 @@ watch(token, () => void load(), { immediate: true });
         <el-button @click="load()">重新读取</el-button>
       </div>
     </section>
-  </main>
+  </Page>
 </template>
 <style scoped>
-.fill-page {
-  min-height: 100dvh;
-  padding: 32px 16px;
-  background: hsl(var(--muted) / 40%);
-}
-
-.fill-card {
-  width: 100%;
-  max-width: 760px;
-  padding: 24px;
-  margin: 0 auto;
-  background: hsl(var(--card));
-  border: 1px solid hsl(var(--border));
-  border-radius: 12px;
-}
-
-.fill-card :deep(.admin-page-header) {
-  margin-bottom: 24px;
-}
-
-.fill-card :deep(.el-select),
-.fill-card :deep(.el-date-editor.el-input) {
-  width: 100%;
-}
-
 .fill-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
   margin-top: 24px;
-}
-
-@media (max-width: 600px) {
-  .fill-page {
-    padding: 16px 8px;
-  }
-
-  .fill-card {
-    padding: 20px 16px;
-  }
 }
 </style>

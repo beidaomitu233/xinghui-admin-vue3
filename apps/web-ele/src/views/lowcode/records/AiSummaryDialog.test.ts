@@ -16,6 +16,11 @@ import {
 
 import AiSummaryDialog from './AiSummaryDialog.vue';
 
+vi.mock('@vben/common-ui', async (importOriginal) => {
+  const actual = await importOriginal<object>();
+  const { useModalPort } = await import('#/test-utils/popup-port');
+  return { ...actual, useVbenModal: useModalPort };
+});
 vi.mock('#/api/system/ai-scene', () => ({
   cancelSceneRequest: vi.fn(),
   getSceneRequest: vi.fn(),

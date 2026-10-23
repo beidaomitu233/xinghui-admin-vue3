@@ -1,22 +1,23 @@
 <script setup lang="ts">
+import type { VxeTableGridOptions } from '#/adapter/vxe-table';
 import type {
   FieldValue,
-  FormField,
-  Page as FormPage,
   FormRecord,
   FormRecordRow,
   RuntimeDefinition,
 } from '#/api/lowcode/forms';
 import type { SceneEntry } from '#/api/system/ai-scene';
 
-import { computed, onBeforeUnmount, ref, toRaw, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, toRaw, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 
-import { Page } from '@vben/common-ui';
+import { Page, useVbenModal } from '@vben/common-ui';
 import { useAccessStore } from '@vben/stores';
 
 import { ElMessage, ElMessageBox } from 'element-plus';
 
+import { useVbenForm } from '#/adapter/form';
+import { useVbenVxeGrid } from '#/adapter/vxe-table';
 import {
   addRecord,
   getRecord,
@@ -26,7 +27,6 @@ import {
   updateRecord,
 } from '#/api/lowcode/forms';
 import { recordSummaryScene } from '#/api/system/ai-scene';
-import AdminPageHeader from '#/components/admin-page-header.vue';
 
 import {
   dataError,
@@ -34,7 +34,7 @@ import {
   initialData,
   schemaError,
 } from '../form-schema';
-import RuntimeFields from '../RuntimeFields.vue';
+import { fieldControl, recordFormSchema, safeGridTotal } from '../record-form';
 import AiSummaryDialog from './AiSummaryDialog.vue';
 
 const access = useAccessStore();
@@ -42,22 +42,12 @@ const route = useRoute();
 const router = useRouter();
 const can = (action: string) =>
   access.accessCodes.includes(`lowcode:record:${action}`);
-const result = ref<FormPage<FormRecordRow>>({
-  records: [],
-  total: '0',
-  pageNum: 1,
-  pageSize: 10,
-});
 const runtime = ref<RuntimeDefinition>();
 const data = ref<Record<string, FieldValue>>({});
 const detail = ref(false);
 const dialog = ref(false);
 const failed = ref(false);
 const filterField = ref('');
-const filterValue = ref('');
-const loading = ref(false);
-const pageNum = ref(1);
-const pageSize = ref(10);
 const saveFailed = ref(false);
 const saving = ref(false);
 const selected = ref<FormRecord>();
@@ -66,15 +56,6 @@ const summaryOpen = ref(false);
 const summaryLoading = ref(false);
 const summaryError = ref('');
 const summaryScene = ref<null | SceneEntry>(null);
-const columns = computed(
-  () => runtime.value?.schema.fields.filter((field) => field.listVisible) ?? [],
-);
-const queryFields = computed(
-  () => runtime.value?.schema.fields.filter((field) => field.searchable) ?? [],
-);
-const queryField = computed(() =>
-  queryFields.value.find((field) => field.fieldKey === filterField.value),
-);
 const editorSchema = computed(
   () => selected.value?.schema ?? runtime.value?.schema ?? { fields: [] },
 );
@@ -83,52 +64,247 @@ let summarySerial = 0;
 let editorSerial = 0;
 onBeforeUnmount(() => {
   serial++;
+  latestQuery = Promise.resolve({ items: [], total: 0 });
   summarySerial++;
   editorSerial++;
 });
-async function load() {
-  if (!can('list')) return;
-  const run = ++serial;
-  loading.value = true;
-  failed.value = false;
+let refreshVersion = 0;
+type GridResult = { items: FormRecordRow[]; total: number };
+let latestQuery: Promise<GridResult> = Promise.resolve({ items: [], total: 0 });
+function listParameters(
+  pageNum: number,
+  pageSize: number,
+  sort: undefined | { field: string; order?: null | string },
+  values: Record<string, unknown> = {},
+) {
+  return {
+    pageNum,
+    pageSize,
+    filterField: String(values.filterField || '') || undefined,
+    filterValue:
+      values.filterValue === null || values.filterValue === undefined
+        ? undefined
+        : String(values.filterValue),
+    orderBy: sort?.order ? sort.field : 'id',
+    order: sort?.order === 'asc' ? ('asc' as const) : ('desc' as const),
+  };
+}
+const gridOptions: VxeTableGridOptions<FormRecordRow> = {
+  columns: [],
+  height: 'auto',
+  rowConfig: { keyField: 'id' },
+  pagerConfig: { pageSize: 10, pageSizes: [10, 20, 50, 100] },
+  proxyConfig: {
+    sort: true,
+    ajax: {
+      query: ({ page, sort }, values) => {
+        const run = ++serial;
+        const id = String(route.params.formId);
+        failed.value = false;
+        latestQuery = (async (): Promise<GridResult> => {
+          if (!can('list')) return { items: [], total: 0 };
+          try {
+            const definition = await getRuntime(id);
+            let parameters = listParameters(
+              page.currentPage,
+              page.pageSize,
+              sort,
+              values,
+            );
+            let records: Awaited<ReturnType<typeof listRecords>> | undefined;
+            for (;;) {
+              const requestRefresh = refreshVersion;
+
+              let failure: unknown;
+              try {
+                records = await listRecords(id, parameters);
+              } catch (error) {
+                failure = error;
+              }
+              if (run !== serial) return latestQuery;
+              if (String(route.params.formId) !== id || !can('list'))
+                return { items: [], total: 0 };
+              if (gridApi.grid.getCurrentPage) {
+                const current = listParameters(
+                  gridApi.grid.getCurrentPage(),
+                  gridApi.grid.getPageSize(),
+                  gridApi.grid.getSortColumns()[0],
+                  gridApi.formApi.getLatestSubmissionValues(),
+                );
+                if (JSON.stringify(current) !== JSON.stringify(parameters)) {
+                  parameters = current;
+                  continue;
+                }
+              }
+              if (requestRefresh !== refreshVersion) continue;
+              if (failure) throw failure;
+              break;
+            }
+            if (!records) throw new Error('记录列表未返回结果');
+            const schemaChanged =
+              runtime.value?.id !== definition.id ||
+              JSON.stringify(runtime.value.schema) !==
+                JSON.stringify(definition.schema);
+            runtime.value = definition;
+            if (schemaChanged) configureGrid(definition);
+            void loadSummaryScene(id, run);
+            return {
+              items: records.records,
+              total: safeGridTotal(records.total),
+            };
+          } catch (error) {
+            if (run !== serial) return latestQuery;
+            failed.value = true;
+            throw error;
+          }
+        })();
+        return latestQuery;
+      },
+    },
+  },
+  sortConfig: {
+    remote: true,
+    multiple: false,
+    defaultSort: { field: 'id', order: 'desc' },
+  },
+  toolbarConfig: {
+    custom: true,
+    refresh: true,
+    refreshOptions: { code: 'query' },
+    zoom: true,
+    search: true,
+  },
+};
+const [Grid, gridApi] = useVbenVxeGrid<FormRecordRow>({
+  gridOptions,
+  formOptions: {
+    showCollapseButton: true,
+    submitOnEnter: true,
+    schema: [
+      {
+        fieldName: 'filterField',
+        component: 'Select',
+        label: '查询字段',
+        componentProps: { options: [], clearable: true },
+      },
+      {
+        fieldName: 'filterValue',
+        component: 'Input',
+        label: '查询内容',
+        hide: true,
+      },
+    ],
+    handleValuesChange: async (values) => {
+      const key = String(values.filterField || '');
+      if (key === filterField.value) return;
+      filterField.value = key;
+      const field = runtime.value?.schema.fields.find(
+        (entry) => entry.fieldKey === key && entry.searchable,
+      );
+      await gridApi.formApi.updateSchema([
+        {
+          fieldName: 'filterValue',
+          ...(field ? fieldControl(field) : { component: 'Input' as const }),
+          label: field?.label || '查询内容',
+          hide: !field,
+        },
+      ]);
+      await gridApi.formApi.setFieldValue('filterValue', undefined);
+    },
+    handleSubmit: async () => {
+      const values = await gridApi.formApi.getValues();
+      gridApi.formApi.setLatestSubmissionValues(values);
+      await gridApi.grid.setCurrentPage(1);
+      await gridApi.query(values);
+    },
+    handleReset: async () => {
+      await gridApi.formApi.resetForm();
+      const values = await gridApi.formApi.getValues();
+      gridApi.formApi.setLatestSubmissionValues(values);
+      await gridApi.grid.clearSort();
+      // eslint-disable-next-line unicorn/no-array-sort -- Native Vxe header API.
+      await gridApi.grid.sort({ field: 'id', order: 'desc' });
+      await gridApi.grid.setCurrentPage(1);
+      await gridApi.query(values);
+    },
+  },
+});
+function configureGrid(definition: RuntimeDefinition) {
+  gridApi.setGridOptions({
+    columns: [
+      { field: 'id', title: '编号', minWidth: 100, sortable: true },
+      ...definition.schema.fields
+        .filter((field) => field.listVisible)
+        .map((field) => ({
+          field: `data.${field.fieldKey}`,
+          title: field.label,
+          minWidth: 160,
+          sortable: field.type !== 'multiselect',
+          formatter: ({ row }: { row: FormRecordRow }) =>
+            displayValue(field, row.data[field.fieldKey]),
+        })),
+      { field: 'schemaVersion', title: '填写版本', width: 110, sortable: true },
+      { field: 'updateTime', title: '更新时间', minWidth: 180, sortable: true },
+      {
+        title: '操作',
+        field: 'actions',
+        fixed: 'right',
+        width: 250,
+        slots: { default: 'actions' },
+      },
+    ],
+  });
+  void gridApi.formApi.updateSchema([
+    {
+      fieldName: 'filterField',
+      componentProps: {
+        options: definition.schema.fields
+          .filter((field) => field.searchable)
+          .map((field) => ({ label: field.label, value: field.fieldKey })),
+        clearable: true,
+      },
+    },
+  ]);
+}
+async function loadSummaryScene(id: string, run: number) {
+  summaryScene.value = null;
+  if (
+    !can('query') ||
+    !access.accessCodes.includes('ai:scene:invoke') ||
+    import.meta.env.VITE_APP_DEMO === 'true'
+  )
+    return;
   try {
-    const id = String(route.params.formId);
-    const value = await getRuntime(id);
-    const records = await listRecords(id, {
-      pageNum: pageNum.value,
-      pageSize: pageSize.value,
-      filterField: filterField.value,
-      filterValue: filterValue.value,
-    });
-    if (run !== serial) return;
-    runtime.value = value;
-    result.value = records;
-    summaryScene.value = null;
-    if (
-      can('query') &&
-      access.accessCodes.includes('ai:scene:invoke') &&
-      import.meta.env.VITE_APP_DEMO !== 'true'
-    ) {
-      try {
-        const application = await recordSummaryScene(id);
-        if (run === serial) summaryScene.value = application;
-      } catch {
-        if (run === serial) summaryScene.value = null;
-      }
-    }
+    const scene = await recordSummaryScene(id);
+    if (run === serial && String(route.params.formId) === id)
+      summaryScene.value = scene;
   } catch {
-    if (run === serial) {
-      failed.value = true;
-      result.value.records = [];
-    }
-  } finally {
-    if (run === serial) loading.value = false;
+    /* Optional AI capability is independent of record browsing. */
   }
 }
-function search() {
-  pageNum.value = 1;
-  void load();
+async function load() {
+  refreshVersion++;
+  await gridApi.query();
 }
+const [RecordForm, recordFormApi] = useVbenForm({
+  schema: [],
+  showDefaultActions: false,
+  wrapperClass: 'grid-cols-1',
+  handleValuesChange: (values) => {
+    data.value = values;
+  },
+});
+const [RecordModal, recordModalApi] = useVbenModal({
+  title: '记录',
+  class: 'w-[min(760px,94vw)]',
+  closeOnClickModal: false,
+  destroyOnClose: false,
+  onOpenChange: (opened) => {
+    dialog.value = opened;
+  },
+  onBeforeClose: () => !saving.value,
+  onConfirm: () => save(),
+});
 async function summarize(row: FormRecordRow) {
   if (
     !can('query') ||
@@ -209,7 +385,7 @@ async function adoptSummary(fieldKey: string, text: string) {
     text.length > field.maxLength
   )
     return;
-  data.value[fieldKey] = text;
+  await recordFormApi.setFieldValue(fieldKey, text);
   ElMessage.success('摘要已填入编辑草稿，请检查后保存');
 }
 async function open(row?: FormRecordRow, readOnly = false) {
@@ -257,7 +433,24 @@ async function open(row?: FormRecordRow, readOnly = false) {
     data.value = values;
     detail.value = readOnly;
     saveFailed.value = false;
+    recordFormApi.setState({
+      schema: recordFormSchema(record?.schema ?? form.schema),
+      commonConfig: { disabled: readOnly },
+    });
+    const title = record ? '编辑记录' : '新增记录';
+    recordModalApi.setState({
+      title: readOnly ? '记录详情' : title,
+      showConfirmButton: !readOnly,
+      confirmText: '保存记录',
+    });
     dialog.value = true;
+    recordModalApi.open();
+    await nextTick();
+    if (!readOnly) await recordFormApi.resetForm({ values });
+    if (!current()) {
+      recordModalApi.close();
+      return;
+    }
     return operation;
   } catch {
     if (current()) summaryError.value = '记录读取失败，请重试。';
@@ -286,36 +479,57 @@ function validRecordDetail(
   );
 }
 async function save() {
+  const run = editorSerial;
+  const form = runtime.value;
+  const record = selected.value;
+  const allowed = () =>
+    run === editorSerial &&
+    dialog.value &&
+    !detail.value &&
+    runtime.value === form &&
+    (record ? can('query') && can('edit') : can('add'));
   if (
-    !runtime.value ||
+    !form ||
+    !allowed() ||
     saving.value ||
     (selected.value ? !can('edit') : !can('add'))
   )
     return;
+  const validation = await recordFormApi.validate();
+  if (!validation.valid || !allowed()) return;
+  const values = await recordFormApi.getValues<Record<string, FieldValue>>();
+  if (!allowed() || saving.value) return;
+  data.value = values;
   const error = dataError(editorSchema.value, data.value);
   if (error) {
     ElMessage.warning(error);
     return;
   }
   saving.value = true;
+  recordModalApi.lock();
   saveFailed.value = false;
   try {
     const input = {
-      schemaVersion:
-        selected.value?.schemaVersion ?? runtime.value.schemaVersion,
-      revision: selected.value?.revision,
-      data: data.value,
+      schemaVersion: record?.schemaVersion ?? form.schemaVersion,
+      revision: record?.revision,
+      data: structuredClone(toRaw(values)),
     };
-    await (selected.value
-      ? updateRecord(runtime.value.id, selected.value.id, input)
-      : addRecord(runtime.value.id, input));
-    dialog.value = false;
+    await (record
+      ? updateRecord(form.id, record.id, input)
+      : addRecord(form.id, input));
+    if (!allowed()) return;
+    saving.value = false;
+    recordModalApi.unlock();
+    recordModalApi.close();
     ElMessage.success('记录已保存');
     await load();
   } catch {
-    saveFailed.value = true;
+    if (allowed()) saveFailed.value = true;
   } finally {
-    saving.value = false;
+    if (run === editorSerial) {
+      saving.value = false;
+      recordModalApi.unlock();
+    }
   }
 }
 async function reload() {
@@ -345,9 +559,6 @@ async function remove(row: FormRecordRow) {
     /* Shared interceptor reports the error. */
   }
 }
-function formatted(field: FormField, row: FormRecordRow) {
-  return displayValue(field, row.data[field.fieldKey]);
-}
 watch(
   () => [can('query'), can('edit'), can('add')] as const,
   ([query, edit, add], previous) => {
@@ -361,7 +572,9 @@ watch(
       dialog.value &&
       (selected.value ? !query || (!detail.value && !edit) : !add)
     ) {
-      dialog.value = false;
+      saving.value = false;
+      recordModalApi.unlock();
+      recordModalApi.close();
       selected.value = undefined;
       data.value = {};
     }
@@ -377,10 +590,10 @@ watch(
 );
 watch(
   () => route.params.formId,
-  () => {
-    pageNum.value = 1;
+  (_value, previous) => {
+    serial++;
+    latestQuery = Promise.resolve({ items: [], total: 0 });
     filterField.value = '';
-    filterValue.value = '';
     runtime.value = undefined;
     summaryScene.value = null;
     summaryOpen.value = false;
@@ -392,193 +605,100 @@ watch(
     dialog.value = false;
     selected.value = undefined;
     data.value = {};
-    void load();
+    saving.value = false;
+    recordModalApi.unlock();
+    recordModalApi.close();
+    if (previous !== undefined) {
+      void gridApi.grid.setCurrentPage(1).then(() => gridApi.query());
+    }
   },
   { immediate: true },
 );
 </script>
 <template>
-  <!-- Prettier formats adjacent inline controls; avoid conflicting whitespace rules. -->
-  <!-- eslint-disable vue/multiline-html-element-content-newline, vue/html-closing-bracket-newline -->
-  <Page content-class="admin-page">
-    <AdminPageHeader :title="runtime ? `${runtime.name} · 数据` : '表单数据'" />
-    <el-card>
+  <Page
+    :title="runtime ? `${runtime.name} · 数据` : '表单数据'"
+    auto-content-height
+  >
+    <el-alert
+      v-if="!can('list')"
+      title="没有数据列表权限"
+      type="warning"
+      closable
+    />
+    <template v-else>
       <el-alert
-        v-if="!can('list')"
-        title="没有数据列表权限"
-        type="warning"
+        v-if="failed"
+        title="数据加载失败"
+        type="error"
         closable
+        class="mb-3"
+      >
+        <el-button @click="load">重试</el-button>
+      </el-alert>
+      <el-alert
+        v-if="summaryError"
+        :title="summaryError"
+        type="error"
+        closable
+        class="mb-3"
+        @close="summaryError = ''"
       />
-      <template v-else>
-        <el-form inline @submit.prevent="search">
-          <el-form-item v-if="queryFields.length > 0" label="查询字段">
-            <el-select
-              v-model="filterField"
-              clearable
-              placeholder="选择字段"
-              class="w-44"
-              @change="filterValue = ''"
-            >
-              <el-option
-                v-for="field in queryFields"
-                :key="field.fieldKey"
-                :label="field.label"
-                :value="field.fieldKey"
-              />
-            </el-select>
-          </el-form-item>
-          <el-form-item v-if="queryField" :label="queryField.label">
-            <el-select
-              v-if="queryField.type === 'select'"
-              v-model="filterValue"
-              clearable
-            >
-              <el-option
-                v-for="option in queryField.options"
-                :key="option.value"
-                :label="option.label"
-                :value="option.value"
-              />
-            </el-select>
-            <el-select
-              v-else-if="queryField.type === 'switch'"
-              v-model="filterValue"
-              clearable
-            >
-              <el-option label="是" value="true" />
-              <el-option label="否" value="false" />
-            </el-select>
-            <el-date-picker
-              v-else-if="queryField.type === 'date'"
-              v-model="filterValue"
-              value-format="YYYY-MM-DD"
-              type="date"
-            />
-            <el-input
-              v-else
-              v-model="filterValue"
-              maxlength="5000"
-              placeholder="输入查询内容"
-              @keyup.enter="search"
-            />
-          </el-form-item>
-          <el-form-item>
-            <el-button type="primary" :loading="loading" @click="search">
-              查询
-            </el-button>
-            <el-button
-              @click="
-                filterField = '';
-                filterValue = '';
-                search();
-              "
-            >
-              重置
-            </el-button>
-            <el-button
-              v-if="can('add') && runtime?.status === 'enabled'"
-              @click="open()"
-            >
-              新增记录
-            </el-button>
-            <el-button
-              v-if="can('add') && runtime?.status === 'enabled'"
-              @click="router.push(`/lowcode/runtime/${runtime.id}`)"
-            >
-              打开填写页
-            </el-button>
-          </el-form-item>
-        </el-form>
-        <el-alert v-if="failed" title="数据加载失败" type="error" closable>
-          <el-button @click="load">重试</el-button>
-        </el-alert>
-        <el-alert
-          v-if="summaryError"
-          :title="summaryError"
-          type="error"
-          closable
-          class="mb-3"
-          @close="summaryError = ''"
-        />
-        <el-table
-          v-loading="loading"
-          :data="result.records"
-          row-key="id"
-          border
-          empty-text="暂无记录"
-        >
-          <el-table-column prop="id" label="编号" min-width="90" />
-          <el-table-column
-            v-for="field in columns"
-            :key="field.fieldKey"
-            :label="field.label"
-            min-width="160"
-            show-overflow-tooltip
+      <Grid table-title="表单记录">
+        <template #toolbar-actions>
+          <el-button
+            v-if="can('add') && runtime?.status === 'enabled'"
+            type="primary"
+            @click="open()"
           >
-            <template #default="{ row }">
-              {{ formatted(field, row) }}
-            </template>
-          </el-table-column>
-          <el-table-column prop="schemaVersion" label="填写版本" width="100" />
-          <el-table-column prop="updateTime" label="更新时间" min-width="170" />
-          <el-table-column label="操作" width="250">
-            <template #default="{ row }">
-              <el-button v-if="can('query')" link @click="open(row, true)">
-                详情
-              </el-button>
-              <el-button
-                v-if="can('query') && summaryScene"
-                link
-                type="primary"
-                :loading="summaryLoading"
-                @click="summarize(row)"
-              >
-                AI 摘要
-              </el-button>
-              <el-button
-                v-if="can('query') && can('edit')"
-                link
-                type="primary"
-                @click="open(row)"
-              >
-                编辑
-              </el-button>
-              <el-button
-                v-if="can('remove')"
-                link
-                type="danger"
-                @click="remove(row)"
-              >
-                删除
-              </el-button>
-            </template>
-          </el-table-column>
-        </el-table>
-        <el-pagination
-          class="mt-4"
-          v-model:current-page="pageNum"
-          v-model:page-size="pageSize"
-          :total="Number(result.total)"
-          :page-sizes="[10, 20, 50, 100]"
-          layout="total,sizes,prev,pager,next"
-          @current-change="load"
-          @size-change="search"
-        />
-      </template>
-    </el-card>
-    <el-dialog
-      v-model="dialog"
-      :title="detail ? '记录详情' : selected ? '编辑记录' : '新增记录'"
-      width="min(760px,92vw)"
-      :close-on-click-modal="false"
-      :show-close="!saving"
-      :close-on-press-escape="!saving"
-    >
+            新增记录
+          </el-button>
+          <el-button
+            v-if="can('add') && runtime?.status === 'enabled'"
+            @click="router.push(`/lowcode/runtime/${runtime.id}`)"
+          >
+            打开填写页
+          </el-button>
+        </template>
+        <template #actions="{ row }">
+          <el-button v-if="can('query')" link @click="open(row, true)">
+            详情
+          </el-button>
+          <el-button
+            v-if="can('query') && summaryScene"
+            link
+            type="primary"
+            :loading="summaryLoading"
+            @click="summarize(row)"
+          >
+            AI 摘要
+          </el-button>
+          <el-button
+            v-if="can('query') && can('edit')"
+            link
+            type="primary"
+            @click="open(row)"
+          >
+            编辑
+          </el-button>
+          <el-button
+            v-if="can('remove')"
+            link
+            type="danger"
+            @click="remove(row)"
+          >
+            删除
+          </el-button>
+        </template>
+      </Grid>
+    </template>
+    <RecordModal>
       <el-alert
         v-if="saveFailed"
         title="保存未成功，输入已保留。版本冲突时请重新读取。"
         type="error"
         closable
+        class="mb-3"
       >
         <el-button v-if="selected" :disabled="saving" @click="reload">
           重新读取
@@ -595,24 +715,8 @@ watch(
           }}</pre>
         </el-descriptions-item>
       </el-descriptions>
-      <RuntimeFields
-        v-else
-        v-model="data"
-        :schema="editorSchema"
-        :disabled="saving"
-      />
-      <template #footer>
-        <el-button :disabled="saving" @click="dialog = false">关闭</el-button>
-        <el-button
-          v-if="!detail && (selected ? can('edit') : can('add'))"
-          type="primary"
-          :loading="saving"
-          @click="save"
-        >
-          保存记录
-        </el-button>
-      </template>
-    </el-dialog>
+      <RecordForm v-if="!detail" />
+    </RecordModal>
     <AiSummaryDialog
       v-if="summaryRecord && summaryScene && runtime"
       v-model="summaryOpen"
