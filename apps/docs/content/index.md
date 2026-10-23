@@ -14,7 +14,7 @@ hero:
       link: /overview/capabilities
 features:
   - title: 使用已有能力
-    details: 用户、角色、字典、通知、文件、AI配置、表单与资讯，按身份和授权操作。
+    details: 用户、角色、字典、通知、文件、AI配置、表单，按身份和授权操作。
     link: /features/accounts
   - title: 从源码扩展
     details: 对照页面、接口、服务、迁移与测试，理解现有组件的参数和失败状态。

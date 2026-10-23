@@ -107,7 +107,7 @@ SQL引用以QueryBinding保存variable、label、description、datasetKeys和que
 
 低代码BusinessRef仍为 `lowcode.record / formId:recordId`；通用行候选返回 `database.record / db1.<base64url>`，解码为sourceKey及主键映射。引用只是类型化选择，不是授权令牌。执行服务须保持完整引用直到后续尝试、持久化与SSE重连；最长2048字符，不可被旧短列截断。没有当前行绑定的普通场景可沿用ai.scene关联。
 
-HTTP不接受actor/tenant/authorities。真实身份进入有界只读事务工作线程，当前账户与tenant重新校验，并在finally恢复原SecurityContext。通用数据库目录、编译、预览与实际读取都要求平台身份和独立ai:data:database:read；无法推导权限的普通表也受此限制。低代码仍要求实际record query，集合候选另需list；已知资讯/字典表叠加原动作，租户与软删除条件不可由过滤覆盖。
+HTTP不接受actor/tenant/authorities。真实身份进入有界只读事务工作线程，当前账户与tenant重新校验，并在finally恢复原SecurityContext。通用数据库目录、编译、预览与实际读取都要求平台身份和独立ai:data:database:read；无法推导权限的普通表也受此限制。低代码仍要求实际record query，集合候选另需list；字典表叠加原动作；已退役资讯表sys_news显式禁止，租户与软删除条件不可由过滤覆盖。
 
 认证、配置、权限、会话与系统日志等基础设施表不作为普通业务来源。密码/密钥/令牌等秘密字段按名称和备注排除；JSON及\_json结构化列递归剔除秘密键，二进制或不可安全解释的对象列不输出。普通授权业务值实际预览，不能统一掩码。
 

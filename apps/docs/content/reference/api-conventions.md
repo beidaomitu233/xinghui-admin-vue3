@@ -112,4 +112,4 @@ curl --fail-with-body -H "Authorization: ${TOKEN}" \
 
 ## 源码依据
 
-后端 `common/common-core/src/main/java/com/xinghuiTec/utils/Result.java`、`system-framework/src/main/java/com/xinghuiTec/config/JacksonConfig.java`、`filter/LoginFilter.java`；`system-admin/src/main/java/com/xinghuiTec/` 下的 `controller/SysOssController.java`、`NotificationInboxController.java`、`BusinessConfigController.java`、`ai/prompt/AiSceneReadBoundaryFilter.java`、`AiSceneReadService.java`、`lowcode/LowcodeService.java`。前端 `apps/web-ele/src/api/request.ts`、`src/api/system/news.ts`、`src/views/system/notification/target-navigation.ts`。
+后端 `common/common-core/src/main/java/com/xinghuiTec/utils/Result.java`、`system-framework/src/main/java/com/xinghuiTec/config/JacksonConfig.java`、`filter/LoginFilter.java`；`system-admin/src/main/java/com/xinghuiTec/` 下的 `controller/SysOssController.java`、`NotificationInboxController.java`、`BusinessConfigController.java`、`ai/prompt/AiSceneReadBoundaryFilter.java`、`AiSceneReadService.java`、`lowcode/LowcodeService.java`。前端 `apps/web-ele/src/api/request.ts`、`src/api/system/dict.ts`、`src/views/system/notification/target-navigation.ts`。

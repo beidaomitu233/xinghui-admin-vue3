@@ -14,16 +14,18 @@ hasAccessByCodes对数组执行交集判断，**命中任意一项即true**，�
 
 ```ts
 import { useAccess } from '@vben/access';
-import { removeNews } from '#/api/system/news';
 import { useConfirmedAction } from '#/composables/use-confirmed-action';
 
 const { hasAccessByCodes } = useAccess();
 const confirmation = useConfirmedAction();
-export function confirmRemove(id: string, reload: () => Promise<unknown>) {
+export function confirmRemove(
+  remove: () => Promise<unknown>,
+  reload: () => Promise<unknown>,
+) {
   return confirmation.run({
-    allowed: hasAccessByCodes(['system:news:remove']),
-    message: '确认删除这条资讯？',
-    action: () => removeNews(id),
+    allowed: hasAccessByCodes(['business:item:remove']),
+    message: '确认删除这条业务记录？',
+    action: remove,
     successMessage: '删除成功',
     onSuccess: reload,
   });

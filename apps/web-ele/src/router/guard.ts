@@ -9,6 +9,7 @@ import { accessRoutes, coreRouteNames } from '#/router/routes';
 import { useAuthStore } from '#/store';
 
 import { generateAccess } from './access';
+import { pruneRetiredTabs } from './retired-tabs';
 
 function findFirstAccessiblePath(routes: RouteRecordRaw[]): string | undefined {
   for (const route of routes) {
@@ -144,6 +145,8 @@ function setupAccessGuard(router: Router) {
       routes: accessRoutes,
     });
 
+    await pruneRetiredTabs();
+
     // 保存菜单信息和路由信息
     accessStore.setAccessMenus(accessibleMenus);
     accessStore.setAccessRoutes(accessibleRoutes);
@@ -160,7 +163,7 @@ function setupAccessGuard(router: Router) {
       targetPath === homePath &&
       router.resolve(targetPath).name === 'FallbackNotFound';
     const roleVisibleFallback = invalidHomeRoute
-      ? findFirstAccessiblePath(accessibleRoutes)
+      ? findFirstAccessiblePath(accessibleRoutes) || '/notifications'
       : undefined;
 
     return {

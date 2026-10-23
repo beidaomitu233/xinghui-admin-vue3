@@ -339,8 +339,6 @@ describe('public static demo contracts', () => {
       '/system/ai/models',
       '/system/ai/prompts',
       '/system/notice/list',
-      '/system/notification/templates',
-      '/system/news',
       '/monitor/job/list',
       '/monitor/jobLog/list',
       '/monitor/operlog/list',
@@ -348,7 +346,7 @@ describe('public static demo contracts', () => {
     ];
     for (const url of reads) expect(await f.call(url)).toBeTruthy();
     const pages = DEMO_MENUS.flatMap((m) => m.children ?? []);
-    expect(pages).toHaveLength(19);
+    expect(pages).toHaveLength(17);
     expect(pages.map((m) => m.path)).toEqual(
       expect.arrayContaining([
         '/workspace',
@@ -360,11 +358,9 @@ describe('public static demo contracts', () => {
     expect(JSON.stringify(DEMO_MENUS)).not.toMatch(
       /site\/|download\/|example\/|system\/page/,
     );
-    const newsPage = await f.call('/system/news');
     const notificationsPage = await f.call('/notifications');
     const formsPage = await f.call('/lowcode/forms');
     const modelsPage = await f.call('/system/ai/models');
-    expect(newsPage.records[0].id).toBe('9007199254740993991');
     expect(notificationsPage.items).toHaveLength(1);
     expect(formsPage.total).toBe('1');
     expect(modelsPage.records[0].enabled).toBe(false);
@@ -504,7 +500,7 @@ describe('public static demo contracts', () => {
       response: { status: 404 },
     });
   });
-  it('returns a real local Blob and persists notification read state and news CRUD', async () => {
+  it('returns a real local Blob and persists notification read state', async () => {
     const f = fixture();
     await f.login();
     const blob = await f.call('/system/oss/download/9007199254740993881');
@@ -513,22 +509,11 @@ describe('public static demo contracts', () => {
     expect(await f.call('/notifications/unread-count')).toBe('1');
     await f.call('/notifications/1/read', 'PUT');
     expect(await f.call('/notifications/unread-count')).toBe('0');
-    const id = await f.call('/system/news', 'POST', {
-      title: '新资讯',
-      content: '本地内容',
-      status: '1',
-    });
-    await f.call(`/system/news/${id}`, 'PUT', {
-      title: '修改标题',
-      content: '本地修改',
-      status: '0',
-    });
-    const news = await f.call(`/system/news/${id}`);
-    expect(news.title).toBe('修改标题');
-    await f.call(`/system/news/${id}`, 'DELETE');
-    await expect(f.call(`/system/news/${id}`)).rejects.toMatchObject({
-      response: { status: 404 },
-    });
+    for (const path of ['/system/news', '/system/notification/templates']) {
+      await expect(f.call(path)).rejects.toMatchObject({
+        response: { status: 501 },
+      });
+    }
   });
   it('fails closed on unknown/external/vendor/credential/bulk writes without saving credentials or issuing network calls', async () => {
     const f = fixture();

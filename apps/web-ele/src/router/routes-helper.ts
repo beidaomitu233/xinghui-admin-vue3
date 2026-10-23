@@ -79,33 +79,6 @@ async function generateAccessibleLocal(options: GenerateMenuAndRoutesOptions) {
 
   // 生成菜单
   const accessibleMenus = generateMenus(accessibleRoutes, options.router);
-  if (router.hasRoute('PersonalNotificationInbox')) {
-    let capabilities = accessibleMenus.find((menu) => menu.path === '/infra');
-    if (!capabilities) {
-      // Personal inbox is already authenticated and does not require a business C/F grant.
-      capabilities = {
-        name: '通用能力',
-        path: '/infra',
-        icon: 'carbon:apps',
-        order: 2,
-        children: [],
-      };
-      accessibleMenus.push(capabilities);
-      accessibleMenus.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-    }
-    capabilities.children ??= [];
-    if (!capabilities.children.some((menu) => menu.path === '/notifications')) {
-      capabilities.children.push({
-        name: '个人收件箱',
-        path: '/notifications',
-        icon: 'carbon:notification',
-        parent: capabilities.path,
-        parents: [capabilities.path],
-        order: 7,
-      });
-      capabilities.children.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-    }
-  }
 
   return { accessibleMenus, accessibleRoutes };
 }
