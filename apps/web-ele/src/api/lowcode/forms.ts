@@ -109,3 +109,17 @@ export const removeRecord = (id: string, recordId: string, revision: number) =>
   requestClient.delete<null>(`${base}/${id}/records/${recordId}`, {
     params: { revision },
   });
+export interface SharingSettings {
+  enabled: boolean;
+  accessMode: 'login' | 'public';
+  revision: number;
+  token: null | string;
+}
+export const readSharing = (id: string) =>
+  requestClient.get<SharingSettings>(`${base}/${id}/sharing`);
+export const saveSharing = (
+  id: string,
+  data: Pick<SharingSettings, 'accessMode' | 'enabled' | 'revision'> & {
+    rotate?: boolean;
+  },
+) => requestClient.put<SharingSettings>(`${base}/${id}/sharing`, data);

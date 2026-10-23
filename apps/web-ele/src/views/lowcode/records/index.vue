@@ -26,6 +26,7 @@ import {
   updateRecord,
 } from '#/api/lowcode/forms';
 import { recordSummaryScene } from '#/api/system/ai-scene';
+import AdminPageHeader from '#/components/admin-page-header.vue';
 
 import {
   dataError,
@@ -399,8 +400,9 @@ watch(
 <template>
   <!-- Prettier formats adjacent inline controls; avoid conflicting whitespace rules. -->
   <!-- eslint-disable vue/multiline-html-element-content-newline, vue/html-closing-bracket-newline -->
-  <Page :title="runtime ? `${runtime.name} · 数据` : '表单数据'">
-    <el-card class="m-4">
+  <Page class="admin-page">
+    <AdminPageHeader :title="runtime ? `${runtime.name} · 数据` : '表单数据'" />
+    <el-card>
       <el-alert
         v-if="!can('list')"
         title="没有数据列表权限"
