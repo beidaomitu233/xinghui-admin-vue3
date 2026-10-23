@@ -148,24 +148,6 @@ export const DEMO_MENUS: DemoMenu[] = [
         5,
         '3',
       ),
-      leaf(
-        '105',
-        '通知模板',
-        '/system/notification-template',
-        'system/notification-template/index',
-        'carbon:notification',
-        6,
-        '3',
-      ),
-      leaf(
-        '308',
-        '资讯管理',
-        '/system/news',
-        'system/news/index',
-        'carbon:document',
-        8,
-        '3',
-      ),
     ],
   },
   {
@@ -310,13 +292,6 @@ export const DEMO_PERMISSIONS = [
   'ai:prompt:query',
   'system:notice:list',
   'system:notice:query',
-  'system:notificationTemplate:list',
-  'system:notificationTemplate:query',
-  'system:news:list',
-  'system:news:query',
-  'system:news:add',
-  'system:news:edit',
-  'system:news:remove',
   'monitor:job:list',
   'monitor:job:query',
   'monitor:jobLog:list',
@@ -338,7 +313,6 @@ export interface DemoState {
   forms: FormDefinition[];
   records: FormRecord[];
   published: Record<string, Record<string, FormDefinition['schema']>>;
-  news: Row[];
   notices: Row[];
   notifications: Row[];
 }
@@ -493,20 +467,6 @@ export function createDemoState(): DemoState {
           tags: ['try'],
           confirmed: true,
         },
-      },
-    ],
-    news: [
-      {
-        id: '9007199254740993991',
-        title: '欢迎体验静态后台',
-        summary: '这是一条纯虚构本地资讯。',
-        content: '字典、表单和资讯的本地操作不会连接服务器。',
-        category: '演示',
-        tags: '["演示"]',
-        coverImage: '',
-        status: '1',
-        createTime: DEMO_TIME,
-        updateTime: DEMO_TIME,
       },
     ],
     notices: [

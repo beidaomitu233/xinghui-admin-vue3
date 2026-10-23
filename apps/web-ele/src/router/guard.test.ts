@@ -32,6 +32,7 @@ vi.mock('@vben/utils', async (importOriginal) => {
   };
 });
 vi.mock('./access', () => ({ generateAccess: mocks.generateAccess }));
+vi.mock('./retired-tabs', () => ({ pruneRetiredTabs: vi.fn() }));
 
 function makeRouter() {
   const routes: RouteRecordRaw[] = [
@@ -183,6 +184,22 @@ describe('personal notification route access', () => {
 
     expect(router.currentRoute.value.name).toBe('UserManagement');
     expect(router.currentRoute.value.path).toBe('/system/user');
+  });
+
+  it('opens the protected notification center when no business route or home exists', async () => {
+    mocks.accessStore.accessToken = 'ordinary-token';
+    mocks.fetchUserInfo.mockResolvedValue({
+      roles: [],
+      homePath: '/workspace',
+    });
+    mocks.generateAccess.mockResolvedValue({
+      accessibleMenus: [],
+      accessibleRoutes: [],
+    });
+    const router = makeRouter();
+    await router.push('/workspace');
+    expect(router.currentRoute.value.name).toBe('PersonalNotificationInbox');
+    expect(mocks.accessStore.setAccessMenus).toHaveBeenCalledWith([]);
   });
 
   it('keeps the no-access landing for a role with no visible menus', async () => {

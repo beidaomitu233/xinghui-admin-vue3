@@ -101,3 +101,7 @@ baseline=2 表示将 V1/V2 视为已有，并非自动补齐这两份 SQL 的所
 旧教程基线曾在隔离MySQL8.0.12空库完成含V170的23条history、重启strict validate及真实服务验证。当前配对源码的正式CI已通过MySQL5.7与8.0两组服务矩阵，覆盖空库迁移、严格校验和认证服务检查，并包含AI配置经Druid Wall的HTTP回归。当前一期另有真实记录摘要组合验收；这些结果不等于独立机器或读者目标库的升级演练，不授权修改已应用迁移。
 
 源码：后端 `system-admin/src/main/resources/application.yml`、`application-datasource.yml`、`db/migration/*.sql`、`db/optional-migration/*.sql`、`system-admin/src/test/java/com/xinghuiTec/quality/ReleaseServicesIT.java`及 `.github/workflows/ci.yml` 的MySQL服务矩阵；版本组合见[版本页](../releases/versions.md)。
+
+## USE-05退役迁移
+
+`V20261023_330__retire_news_and_notification_templates.sql`先终止关联禁用/缺失模板的未完成旧请求，再移除模板外键/列及模板表、资讯表和专属菜单权限。事件与历史inbox保留，合法快照继续投递；不改变旧迁移校验和。

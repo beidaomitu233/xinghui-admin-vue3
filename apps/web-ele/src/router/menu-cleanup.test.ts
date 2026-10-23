@@ -63,10 +63,8 @@ describe('uI05 consolidated menus', () => {
     expect(result.accessibleMenus[0]?.children?.map((m) => m.path)).toEqual([
       '/infra/notice',
       '/system/notification-template',
-      '/notifications',
       '/system/news',
     ]);
-    expect(result.accessibleMenus[0]?.children?.[2]?.parent).toBe('/infra');
     expect(router.resolve('/notifications').name).toBe(
       'PersonalNotificationInbox',
     );
@@ -77,7 +75,7 @@ describe('uI05 consolidated menus', () => {
       'FallbackNotFound',
     );
   });
-  it('keeps a personal-only capabilities directory for an account with no business menus', async () => {
+  it('keeps the authenticated notification deep link without creating a menu for an account with no business menus', async () => {
     const router = createRouter({
       history: createMemoryHistory(),
       routes: [
@@ -94,15 +92,15 @@ describe('uI05 consolidated menus', () => {
       fetchMenuListAsync: async () => [],
       layoutMap: {},
     });
-    expect(result.accessibleMenus.map((menu) => menu.path)).toEqual(['/infra']);
+    expect(result.accessibleMenus.map((menu) => menu.path)).toEqual([]);
     expect(
       result.accessibleMenus[0]?.children?.map((menu) => menu.path),
-    ).toEqual(['/notifications']);
+    ).toEqual(undefined);
     expect(router.resolve('/notifications').name).toBe(
       'PersonalNotificationInbox',
     );
   });
-  it('preserves the ordinary seed role menu and adds only the protected personal inbox', async () => {
+  it('preserves the ordinary seed role menu without creating a personal notification menu', async () => {
     const router = createRouter({
       history: createMemoryHistory(),
       routes: [
@@ -146,14 +144,13 @@ describe('uI05 consolidated menus', () => {
     });
     expect(result.accessibleMenus.map((menu) => menu.path)).toEqual([
       '/system',
-      '/infra',
     ]);
     expect(
       result.accessibleMenus[0]?.children?.map((menu) => menu.path),
     ).toEqual(['/system/user']);
     expect(
       result.accessibleMenus[1]?.children?.map((menu) => menu.path),
-    ).toEqual(['/notifications']);
+    ).toEqual(undefined);
     expect(result.accessibleRoutes.map((route) => route.path)).toEqual([
       '/system',
     ]);

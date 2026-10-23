@@ -55,7 +55,7 @@ const coreRoutes: RouteRecordRaw[] = [
           hideInBreadcrumb: true,
           hideInMenu: true,
           hideInTab: true,
-          title: '个人通知',
+          title: '通知中心',
         },
       },
     ],

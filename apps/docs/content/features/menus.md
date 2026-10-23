@@ -13,8 +13,8 @@ AI管理的日常入口为独立AI配置（`/ai/configurations`）、提示词�
 | `menuType` | `M` 目录、`C` 页面、`F` 动作；按页面选项填写 |
 | `parentId` / `orderNum` | 父级与同级排序；父级 ID 保持字符串精度 |
 | `path` | 路由路径；已有页面迁移后保留绝对深链 |
-| `component` | 如 `system/news/index`，对应 views 下文件，不带 `.vue` |
-| `perms` | 服务端检查的精确权限串，如 `system:news:list` |
+| `component` | 如 `system/dict/index`，对应 views 下文件，不带 `.vue` |
+| `perms` | 服务端检查的精确权限串，如 `system:dict:list` |
 | `visible` / `status` | 控制显示和启停；不替代服务端权限检查 |
 | `isFrame` / `isCache` | 按当前管理页面枚举提交，不自行解释为布尔字段 |
 

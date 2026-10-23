@@ -285,31 +285,6 @@ public Result<BusinessConfigService.View> save(@PathVariable String section,@Req
 
 :::
 
-## ContentNewsController
-
-源码：`system-admin/src/main/java/com/xinghuiTec/controller/ContentNewsController.java`。
-
-| 方法 | 后端路径 | 注解权限 | 方法 / 行 |
-| --- | --- | --- | --- |
-| GET | `/system/news` | `@platformAccess.isPlatformIdentity() and hasAuthority('system:news:list')` | `list` / 23 |
-| GET | `/system/news/list` | `@platformAccess.isPlatformIdentity() and hasAuthority('system:news:list')` | `list` / 23 |
-| GET | `/system/news/{id}` | `@platformAccess.isPlatformIdentity() and hasAuthority('system:news:query')` | `get` / 33 |
-| POST | `/system/news` | `@platformAccess.isPlatformIdentity() and hasAuthority('system:news:add')` | `create` / 39 |
-| PUT | `/system/news/{id}` | `@platformAccess.isPlatformIdentity() and hasAuthority('system:news:edit')` | `update` / 46 |
-| DELETE | `/system/news/{id}` | `@platformAccess.isPlatformIdentity() and hasAuthority('system:news:remove')` | `delete` / 54 |
-
-::: details 请求参数与返回类型（源码签名）
-
-```java
-public Result<ContentService.Page> list( @RequestParam(defaultValue = "1") int pageNum, @RequestParam(defaultValue = "10") int pageSize, @RequestParam(required = false) String title, @RequestParam(required = false) String status)
-public Result<Map<String, Object>> get(@PathVariable String id)
-public Result<String> create(@RequestBody NewsChange change)
-public Result<Void> update(@PathVariable String id, @RequestBody NewsChange change)
-public Result<Void> delete(@PathVariable String id)
-```
-
-:::
-
 ## DictionaryAdminController
 
 源码：`system-admin/src/main/java/com/xinghuiTec/controller/DictionaryAdminController.java`。
@@ -398,26 +373,6 @@ public Result<Long> unreadCount()
 public Result<Item> detail(@PathVariable long id)
 public Result<Void> markRead(@PathVariable long id)
 public Result<Integer> markReadBatch(@Valid @RequestBody ReadBatch request)
-```
-
-:::
-
-## NotificationTemplateAdminController
-
-源码：`system-admin/src/main/java/com/xinghuiTec/controller/NotificationTemplateAdminController.java`。
-
-| 方法 | 后端路径 | 注解权限 | 方法 / 行 |
-| --- | --- | --- | --- |
-| GET | `/system/notification/templates` | `@platformAccess.isPlatformIdentity() and hasAuthority('system:notificationTemplate:list')` | `list` / 36 |
-| POST | `/system/notification/templates` | `@platformAccess.isPlatformIdentity() and hasAuthority('system:notificationTemplate:add')` | `create` / 42 |
-| PUT | `/system/notification/templates/{id}` | `@platformAccess.isPlatformIdentity() and hasAuthority('system:notificationTemplate:edit')` | `edit` / 49 |
-
-::: details 请求参数与返回类型（源码签名）
-
-```java
-public Result<List<View>> list()
-public Result<Long> create(@Valid @RequestBody Create request)
-public Result<Void> edit(@PathVariable long id, @Valid @RequestBody Edit request)
 ```
 
 :::

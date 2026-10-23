@@ -106,14 +106,13 @@ describe('backend route recovery', () => {
     expect(wrapper.text()).not.toContain('本人资料');
     expect(wrapper.find('button').text()).toBe('重试加载页面');
     expect(accessibleMenus.map((menu) => menu.path).toSorted()).toEqual([
-      '/infra',
       '/system/news',
     ]);
     expect(
       accessibleMenus
         .find((menu) => menu.path === '/infra')
         ?.children?.map((menu) => menu.path),
-    ).toEqual(['/notifications']);
+    ).toEqual(undefined);
     wrapper.unmount();
   });
   it('retries rejected imports with a fresh document instead of cached rejection', async () => {

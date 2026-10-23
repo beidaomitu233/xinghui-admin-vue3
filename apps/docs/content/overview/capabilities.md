@@ -17,9 +17,8 @@
 | 通用能力（旧链路兼容） | 模型元数据、场景提示词与变量 | [AI](../features/ai.md)；保留旧appKey/sceneKey读取与数据，不自动转换为新应用绑定 |
 | AI管理 | 独立AI配置、提示词与调用监控 | [AI实用流程](../features/ai.md)；已实现命名多Key关联多模型、OpenRouter/DeepSeek官方预设与目录扫描、多渠道备用及完整对话；原生核对已覆盖扫描、加密保存/刷新、多渠道优先级、单行/整表/关联子行预览与引用保存。目录不等于生成验证，DeepSeek无真实Key联调，管理权不替代业务读取与调用权 |
 | 低代码记录入口 | AI摘要、人工采纳保存 | [低代码](../features/lowcode.md)；历史一期配对已验收模型到SSE、草稿采纳及保存刷新；本轮两次OpenRouter原生摘要均超时，生成到采纳保存的正向实测尚未完成，不是Agent自动写入 |
-| 通用能力 | 通知公告、通知模板、个人收件箱 | [通知](../features/notifications.md)；本人收件箱不授予全局模板/配置管理权 |
+| 通用能力 | 通知公告与顶部通知中心 | [通知](../features/notifications.md)；个人通知不新增左侧菜单 |
 | 通用能力 | 低代码表单 | [表单](../features/lowcode.md)；平台设计/发布，授权记录操作和数据范围仍由服务端限制 |
-| 通用能力 | 资讯管理 | [资讯](../features/news.md)；保留当前实现，其他网站内容模块已退役 |
 | 运行维护 | 受控定时任务、调度日志、操作日志 | [调度](../features/scheduler.md)；处理器受控，不能配置任意类或脚本执行 |
 | 独立一级入口 | 工作台、看板 | 已授权时排在前两位；仅调整原页面入口，不把既有演示图表解释为真实业务分析数据 |
 | 用户页面操作 | `.xlsx`导入、模板与导出 | [导入导出](../features/bulk.md)；导入最多1000行/5 MiB，新账号待激活，密码不回显 |
@@ -57,6 +56,6 @@
 - 后端 `system-admin/src/main/java/com/xinghuiTec/security/PlatformVisibilityService.java`：平台菜单/权限过滤。
 - 后端同模块 `controller/BusinessConfigController.java`、`AiModelTestController.java`、`NotificationInboxController.java`：配置/模型/本人通知边界。
 - 后端同模块 `lowcode/LowcodeSchema.java`：`TYPES`、字段校验；`LowcodeFormController.java`、`LowcodeRecordController.java`：设计与记录权限。
-- 后端同模块 `controller/ContentNewsController.java`：保留资讯接口。
+- 后端同模块 `notification/NotificationContentRules.java`：内部业务快照与安全目标校验。
 - 前端 `apps/web-ele/src/views/system/user/index.vue`：导入限制与待激活提示。
 - 前端 `apps/web-ele/src/router/routes-helper.ts`、`router/routes/modules/lowcode.ts`：个人入口与隐藏运行页。
