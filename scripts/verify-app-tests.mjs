@@ -9,6 +9,8 @@ const required = [
   '/src/navigation-assets.test.ts',
   '/src/api/core/menu.test.ts',
   '/src/api/system/personal-notification.test.ts',
+  '/src/views/system/user/index.test.ts',
+  '/src/views/system/user/user-modal.test.ts',
   '/src/layouts/personal-notification-entry.test.ts',
   '/src/views/system/notification/index.test.ts',
   '/src/store/personal-notification.test.ts',
@@ -67,6 +69,8 @@ const required = [
 const minimumAssertions = new Map([
   ['/src/api/system/ai-call-log.test.ts', 1],
   ['/src/api/system/personal-notification.test.ts', 2],
+  ['/src/views/system/user/index.test.ts', 5],
+  ['/src/views/system/user/user-modal.test.ts', 3],
   ['/src/demo/ai-pages.test.ts', 8],
   ['/src/layouts/personal-notification-entry.test.ts', 1],
   ['/src/router/menu-cleanup.test.ts', 4],
