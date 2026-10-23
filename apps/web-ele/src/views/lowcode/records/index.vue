@@ -400,7 +400,7 @@ watch(
 <template>
   <!-- Prettier formats adjacent inline controls; avoid conflicting whitespace rules. -->
   <!-- eslint-disable vue/multiline-html-element-content-newline, vue/html-closing-bracket-newline -->
-  <Page class="admin-page">
+  <Page content-class="admin-page">
     <AdminPageHeader :title="runtime ? `${runtime.name} · 数据` : '表单数据'" />
     <el-card>
       <el-alert
