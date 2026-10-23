@@ -24,7 +24,7 @@
 
 当前安装版本的 `reload` 会调用 `clearAll` 清除排序。搜索回第一页且保序时，应更新最近提交表单、调用原生 `setCurrentPage(1)` 后 `query`；只有重置操作才清空表单和排序并恢复默认。
 
-VXE 4.17.46 的工具栏刷新默认也是 `reload`。需要保留当前页和排序时，显式配置 `toolbarConfig: { refresh: { code: 'query' } }`，或在已有适配层通过 `vxeUI.setConfig({ toolbar: { refresh: { code: 'query' } } })` 设置原生默认值。不能把 `refresh: true` 本身当作保序保证。
+VXE 4.17.46 的工具栏刷新默认也是 `reload`。需要保留当前页和排序时，使用 `toolbarConfig: { refresh: true, refreshOptions: { code: 'query' } }`。已有适配层也可通过 `vxeUI.setConfig({ grid: { toolbarConfig: { refreshOptions: { code: 'query' } } } })` 提供原生默认选项。旧的 `refresh: { code: 'query' }` 对象写法仍兼容，但会产生弃用提示。不能把 `refresh: true` 本身当作保序保证。
 
 loading中的新proxy查询可能被忽略；正式页面应结合当前原生状态和已提交条件处理，避免表头/分页变了但数据仍来自旧查询。用户管理样板对此有定向回归，参见`apps/web-ele/src/views/system/user/index.vue`。不要把这个版本限制改写为另一套通用请求调度框架。
 
