@@ -8,7 +8,11 @@ const required = [
   '/src/navigation-menu.test.ts',
   '/src/navigation-assets.test.ts',
   '/src/api/core/menu.test.ts',
-  '/src/api/system/content-quality.test.ts',
+  '/src/api/system/personal-notification.test.ts',
+  '/src/layouts/personal-notification-entry.test.ts',
+  '/src/views/system/notification/index.test.ts',
+  '/src/store/personal-notification.test.ts',
+  '/src/router/retired-tabs.test.ts',
   '/src/router/routes-helper.test.ts',
   '/src/router/routes-recovery.test.ts',
   '/src/router/routes/legacy-wechat.test.ts',
@@ -58,8 +62,12 @@ const required = [
 ];
 const minimumAssertions = new Map([
   ['/src/api/system/ai-call-log.test.ts', 1],
+  ['/src/api/system/personal-notification.test.ts', 2],
   ['/src/demo/ai-pages.test.ts', 8],
+  ['/src/layouts/personal-notification-entry.test.ts', 1],
   ['/src/router/menu-cleanup.test.ts', 4],
+  ['/src/router/retired-tabs.test.ts', 1],
+  ['/src/store/personal-notification.test.ts', 5],
   ['/src/styles/workspace-theme.test.ts', 5],
   ['/src/views/system/ai-config/ModelHubWorkspace.test.ts', 16],
   ['/src/views/system/ai-config/SceneRoutingWorkspace.test.ts', 5],
@@ -81,6 +89,7 @@ const minimumAssertions = new Map([
   ['/src/views/system/ai-template/workspace/SceneTrialPanel.test.ts', 5],
   ['/src/views/system/ai-template/workspace/SceneWorkspace.test.ts', 19],
   ['/src/views/system/ai-template/workspace/SqlReferenceAssistant.test.ts', 10],
+  ['/src/views/system/notification/index.test.ts', 13],
 ]);
 const authSuites = [
   '/src/api/core/session-info.test.mjs',
