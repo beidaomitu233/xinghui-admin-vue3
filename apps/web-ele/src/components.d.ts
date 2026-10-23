@@ -12,6 +12,7 @@ export {};
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
+    AdminPageHeader: typeof import('./components/admin-page-header.vue')['default']
     ElAlert: typeof import('element-plus/es')['ElAlert']
     ElBadge: typeof import('element-plus/es')['ElBadge']
     ElButton: typeof import('element-plus/es')['ElButton']
@@ -37,6 +38,7 @@ declare module 'vue' {
     ElRadio: typeof import('element-plus/es')['ElRadio']
     ElRadioButton: typeof import('element-plus/es')['ElRadioButton']
     ElRadioGroup: typeof import('element-plus/es')['ElRadioGroup']
+    ElResult: typeof import('element-plus/es')['ElResult']
     ElRow: typeof import('element-plus/es')['ElRow']
     ElSelect: typeof import('element-plus/es')['ElSelect']
     ElSwitch: typeof import('element-plus/es')['ElSwitch']
@@ -59,6 +61,7 @@ declare module 'vue' {
 
 // For TSX support
 declare global {
+  const AdminPageHeader: (typeof import('./components/admin-page-header.vue'))['default'];
   const ElAlert: (typeof import('element-plus/es'))['ElAlert'];
   const ElBadge: (typeof import('element-plus/es'))['ElBadge'];
   const ElButton: (typeof import('element-plus/es'))['ElButton'];
@@ -84,6 +87,7 @@ declare global {
   const ElRadio: (typeof import('element-plus/es'))['ElRadio'];
   const ElRadioButton: (typeof import('element-plus/es'))['ElRadioButton'];
   const ElRadioGroup: (typeof import('element-plus/es'))['ElRadioGroup'];
+  const ElResult: (typeof import('element-plus/es'))['ElResult'];
   const ElRow: (typeof import('element-plus/es'))['ElRow'];
   const ElSelect: (typeof import('element-plus/es'))['ElSelect'];
   const ElSwitch: (typeof import('element-plus/es'))['ElSwitch'];

@@ -22,10 +22,10 @@
 
 ## 从页面追到服务
 
-以资讯为例：`views/system/news/index.vue`调用`api/system/news.ts`，落到`ContentNewsController`，由`content/ContentService`校验字段并访问既有sys_news。字典管理与业务读取分为两个Controller；低代码Schema和记录有独立服务范围；不要根据相似页面名推断共用同一个权限。
+以字典为例：`views/system/dict/index.vue`调用`api/system/dict.ts`，落到DictionaryAdminController与DictionaryService。配置管理和业务字典读取使用不同Controller及权限，不因相似页面名推断共用权限。
 
 正常定位应能找到请求DTO、动作权限、服务字段限制及测试。找不到业务实现时先确认它是否已经移除：资料示例、网站、下载、页面业务模块不能从旧任务或历史路径重新当作当前能力。
 
 ## 源码依据与恢复
 
-核对 `apps/web-ele/src/api/system/news.ts`、`system-admin/src/main/java/com/xinghuiTec/controller/ContentNewsController.java`、`content/ContentService.java`。当接口路径与旧教程不一致时以当前Controller和API为准，更新文档与调用方；不要建另一套初始架构文件掩盖版本差异。
+核对 `apps/web-ele/src/api/system/dict.ts` 与后端 `controller/DictionaryAdminController.java`、`service/DictionaryService.java`。以当前接口及权限为准同步教程。

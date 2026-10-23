@@ -1,15 +1,10 @@
 # 业务事件接入站内通知
 
-面向可信业务模块，前置为已创建启用模板、收件人存在且属于业务允许的tenant。事件发布接口是内部Java接缝，不是允许浏览器任意指定收件人发消息的HTTP API。
+接口仅供可信服务端业务模块调用，不提供浏览器可任意指定收件人的发布API。收件人和tenant必须来自业务授权结果。
 
-## 提交契约
-
-`NotificationEventPublisher.Event`字段为tenantId、recipientUserId、eventCode、eventKey、variables。tenant格式为字母数字下划线连字符、1–20字符；eventCode小写字母起始、最长100；eventKey为字母数字点下划线冒号连字符、1–128字符。variables只能提供模板白名单要求的字符串值。
+## 内容快照契约
 
 ```java
-package example;
-
-import java.util.Map;
 import com.xinghuiTec.notification.NotificationEventPublisher;
 
 public class NotificationSubmitExample {
@@ -17,24 +12,20 @@ public class NotificationSubmitExample {
             NotificationEventPublisher publisher, String trustedTenant,
             long trustedRecipient, String businessEventKey) {
         return publisher.submit(new NotificationEventPublisher.Event(
-                trustedTenant, trustedRecipient, "example.completed",
-                businessEventKey, Map.of("subject", "中性示例")));
+                trustedTenant, trustedRecipient, "example.completed", businessEventKey,
+                "业务已完成", "该业务的处理结果已保存。", "/system/user"));
     }
 }
 ```
 
-example.completed是文档示例编码，调用前必须真实注册匹配模板；trustedTenant/Recipient来自服务端业务授权结果，不能直接透传浏览器字段。本示例不在文档检查时执行。
+示例不自动执行。业务事件编码须反映真实已发生事件；生产调用中按业务结果生成文案与获准目标，不能直接透传浏览器内容或身份。无需注册通知模板。
 
-## 投递阶段
+Event字段为tenantId、recipientUserId、eventCode、eventKey、title、body、target。tenant为字母数字下划线连字符1–20字符，eventCode小写字母起始最长100，eventKey为字母数字点下划线冒号连字符1–128。标题不能为空、最多200字符，正文不能为空、最多4000字符；控制字符受限，正文允许换行和tab。目标可空；站内路径禁止上跳/反斜杠/控制字符，外链仅允许配置白名单中的HTTPS主机。
 
-submit校验模板并保存PENDING请求，返回requestId/status。后台poll认领请求到PROCESSING，收件箱插入与请求完成共用事务，最多3次自动尝试；过期租约可重新认领。收件箱去重按业务事件/收件范围保证，不把两次请求ID相同当作唯一幂等证明。
+## 投递与恢复
 
-## 正常结果与恢复
+submit保存不可变快照并返回PENDING；业务事务回滚时不应留下“业务已完成”事件。后台认领至PROCESSING，插入收件箱和请求完成在同一事务；最多3次自动尝试，租约过期可恢复。同租户、收件人、事件编码、业务事件键幂等，重复事件保留首次成功内容。
 
-PENDING表示接收，不表示送达；本人收件箱出现消息后才能验证delivery。参数/模板错误会记录REJECTED安全错误码，不保存完整失败内容。临时投递失败由有限重试处理；耗尽后的requeueTransientFailure是内部补偿，不是公开管理页按钮。不能用markFailed重写已经完成的请求。
+投递时复核实际收件人存在、未删除、启用及tenant匹配，并重验目标白名单。无效内容记录安全拒绝码，不保存失败正文。临时失败补偿仅作用于 `FAILED/DELIVERY_ERROR`；`TEMPLATE_RETIRED` 不得重新排队。历史已完成事件及已读收件箱保留。
 
-模板target和变量都按规则渲染，拒绝脚本、未授权目标与缺失变量。业务事务与事件提交需按真实调用边界安排，不在业务回滚后假造“已完成”通知。当前站内投递不代表短信/邮件通道已通用接入。
-
-## 源码依据
-
-`system-admin/src/main/java/com/xinghuiTec/notification/NotificationEventPublisher.java`、`NotificationEventService.java`、`NotificationDeliveryService.java`、`NotificationTemplateRules.java`；客户端读取见[通知手册](/features/notifications)。
+当前为站内消息，不代表短信/邮件已经通用接入。源码位于 `system-admin/src/main/java/com/xinghuiTec/notification/` 的 `NotificationEventPublisher`、`NotificationEventService`、`NotificationContentRules`、`NotificationDeliveryService`；用户操作见[通知中心](../features/notifications.md)。

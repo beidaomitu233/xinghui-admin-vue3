@@ -83,7 +83,6 @@ describe('notification target policy', () => {
     '/monitor/jobLog',
     '/notifications',
     '/system/dict',
-    '/system/notification-template',
     '/system/user',
   ])(
     'allows an approved list route without record parameters: %s',
@@ -99,6 +98,16 @@ describe('notification target policy', () => {
       ).resolves.toBe('available');
     },
   );
+
+  it('does not authorize a retired template route even if stale metadata exists', () => {
+    expect(
+      resolveNotificationTarget(
+        '/system/notification-template',
+        createRouterForTargetChecks(),
+        ['tenant-user'],
+      ).kind,
+    ).toBe('unavailable');
+  });
 
   it('does not treat list routes with query values as safe record targets', () => {
     const target = resolveNotificationTarget(

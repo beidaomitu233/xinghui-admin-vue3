@@ -35,8 +35,6 @@ const fail = (status: number, message: string): never => {
   throw new DemoFailure(status, message);
 };
 const now = () => new Date().toISOString();
-const rowId = (row: Row, field: string, value: string) =>
-  String(row[field]) === value;
 const found = <T>(value: T | undefined): T =>
   value ?? fail(404, '本地示例不存在或已删除');
 const revision = (expected: unknown, actual: number) => {
@@ -190,18 +188,6 @@ const CONFIGS = [
     deletable: false,
   },
 ];
-const TEMPLATES = [
-  {
-    id: 1,
-    eventCode: 'demo.welcome',
-    name: '演示欢迎通知（只读）',
-    titleTemplate: '你好，{{name}}',
-    bodyTemplate: '此处仅展示模板，未执行真实投递。',
-    targetTemplate: '/notifications',
-    allowedVariables: ['name'],
-    enabled: false,
-  },
-];
 const FILE_TEXT = '星辉静态演示文件。纯虚构内容，无对象存储连接。\n';
 const FILES = [
   {
@@ -282,7 +268,6 @@ function load(storage: DemoStorage): DemoState {
       !Array.isArray(state.forms) ||
       !Array.isArray(state.records) ||
       !Array.isArray(state.items) ||
-      !Array.isArray(state.news) ||
       !Array.isArray(state.notifications)
     )
       throw new Error('Invalid state');
@@ -425,7 +410,6 @@ export function createDemoTransport(storage: DemoStorage) {
               providerCode,
             }));
           if (path === '/system/ai/prompts/1') return PROMPTS[0];
-          if (path === '/system/notification/templates') return TEMPLATES;
           if (path === '/system/oss/list')
             return page(filtered(FILES, params), params);
           if (path === `/system/oss/info/${FILES[0]?.ossId}`) return FILES[0];
@@ -548,33 +532,6 @@ export function createDemoTransport(storage: DemoStorage) {
             known: Boolean(item),
             enabled: Boolean(type?.enabled && item?.enabled),
           };
-        }
-        if (path === '/system/news') {
-          if (method === 'GET')
-            return page(filtered(state.news, params), params, true);
-          if (method === 'POST') {
-            const nextId = id();
-            state.news.push(newsChange(data, nextId));
-            changed = true;
-            return nextId;
-          }
-        }
-        match = path.match(/^\/system\/news\/(\d+)$/);
-        if (match) {
-          const news = found(
-            state.news.find((r) => rowId(r, 'id', found(match?.[1]))),
-          );
-          if (method === 'GET') return news;
-          if (method === 'PUT') {
-            Object.assign(news, newsChange(data, String(news.id)));
-            changed = true;
-            return null;
-          }
-          if (method === 'DELETE') {
-            state.news = state.news.filter((r) => r !== news);
-            changed = true;
-            return null;
-          }
         }
         if (path === '/system/notice/list' && method === 'GET')
           return page(filtered(state.notices, params), params);
@@ -837,22 +794,5 @@ function formDraft(data: Row): FormDraft {
     status: draft.status,
     schema: structuredClone(draft.schema),
     revision: draft.revision,
-  };
-}
-function newsChange(data: Row, id: string): Row {
-  const title = text(data.title, 200);
-  if (!title.trim()) fail(400, '请输入资讯标题');
-  if (!['0', '1'].includes(String(data.status))) fail(400, '资讯状态须为0或1');
-  return {
-    id,
-    title,
-    summary: text(data.summary ?? '', 1000),
-    content: text(data.content ?? '', 100_000),
-    coverImage: '',
-    category: text(data.category ?? '', 100),
-    tags: text(data.tags ?? '[]', 2000),
-    status: String(data.status),
-    createTime: DEMO_TIME,
-    updateTime: now(),
   };
 }

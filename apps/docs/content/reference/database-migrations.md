@@ -101,3 +101,13 @@ baseline=2 表示将 V1/V2 视为已有，并非自动补齐这两份 SQL 的所
 旧教程基线曾在隔离MySQL8.0.12空库完成含V170的23条history、重启strict validate及真实服务验证。当前配对源码的正式CI已通过MySQL5.7与8.0两组服务矩阵，覆盖空库迁移、严格校验和认证服务检查，并包含AI配置经Druid Wall的HTTP回归。当前一期另有真实记录摘要组合验收；这些结果不等于独立机器或读者目标库的升级演练，不授权修改已应用迁移。
 
 源码：后端 `system-admin/src/main/resources/application.yml`、`application-datasource.yml`、`db/migration/*.sql`、`db/optional-migration/*.sql`、`system-admin/src/test/java/com/xinghuiTec/quality/ReleaseServicesIT.java`及 `.github/workflows/ci.yml` 的MySQL服务矩阵；版本组合见[版本页](../releases/versions.md)。
+
+## USE-05退役迁移
+
+`V20261023_330__retire_news_and_notification_templates.sql`先终止关联禁用/缺失模板的未完成旧请求，再移除模板外键/列及模板表、资讯表和专属菜单权限。事件与历史inbox保留，合法快照继续投递；不改变旧迁移校验和。
+
+## 表单与通知中心组合升级
+
+V20261023_320增加分享配置和提交去重表，存量默认关闭。与V330一起按正常版本顺序部署，不能先执行高版本退役迁移再补V320。
+
+PM隔离MySQL已正常41→43：旧表单/版本/记录行摘要一致，297条无关授权保留；合法旧通知由新应用投递，禁用模板旧请求TEMPLATE_RETIRED；历史正文/已读保留，退役表0。这是本地升级证据，服务器需核对部署记录。候选CI含MySQL5.7/8.0并发和可选迁移一致性，不使用repair、清库或忽略缺失迁移。
