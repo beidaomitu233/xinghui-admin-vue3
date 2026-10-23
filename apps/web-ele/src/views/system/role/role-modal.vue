@@ -97,7 +97,11 @@ function comparable(value: RoleForm) {
     menuIds: [...value.menuIds].toSorted(),
   });
 }
-watch(busy, (value) => formApi.setState({ commonConfig: { disabled: value } }), { flush: 'sync' });
+watch(
+  busy,
+  (value) => formApi.setState({ commonConfig: { disabled: value } }),
+  { flush: 'sync' },
+);
 const [Modal, modalApi] = useVbenModal({
   confirmText: '保存',
   onBeforeClose: async () => {
@@ -208,7 +212,8 @@ const [Modal, modalApi] = useVbenModal({
         }
       }
       if (current !== request || token !== access.accessToken) return;
-      menus.value = nextMenus; menusEditable.value = canEditMenus;
+      menus.value = nextMenus;
+      menusEditable.value = canEditMenus;
       baseline = structuredClone(value);
       await formApi.setValues(value);
       ready = true;
@@ -224,9 +229,26 @@ const [Modal, modalApi] = useVbenModal({
     }
   },
 });
-watch(() => JSON.stringify([access.accessToken, ...['system:role:query', 'system:role:edit', 'system:role:add', 'system:menu:list'].map(can)]), () => {
-  request += 1; ready = false; saved = true; busy.value = false; menus.value = []; void modalApi.close();
-});
+watch(
+  () =>
+    JSON.stringify([
+      access.accessToken,
+      ...[
+        'system:role:query',
+        'system:role:edit',
+        'system:role:add',
+        'system:menu:list',
+      ].map((code) => can(code)),
+    ]),
+  () => {
+    request += 1;
+    ready = false;
+    saved = true;
+    busy.value = false;
+    menus.value = [];
+    void modalApi.close();
+  },
+);
 
 function expand() {
   for (const node of Object.values(tree.value?.store.nodesMap ?? {}))
@@ -256,17 +278,29 @@ function checkAll() {
     <Form>
       <template #menuIds="{ disabled }">
         <div v-if="menusEditable" class="w-full">
-          <el-checkbox :disabled="disabled" v-model="menuExpand" @change="expand">
+          <el-checkbox
+            :disabled="disabled"
+            v-model="menuExpand"
+            @change="expand"
+          >
             展开/折叠
           </el-checkbox>
-          <el-checkbox :disabled="disabled" v-model="menuAll" @change="checkAll">
+          <el-checkbox
+            :disabled="disabled"
+            v-model="menuAll"
+            @change="checkAll"
+          >
             全选/全不选
           </el-checkbox>
           <el-scrollbar max-height="260px">
             <el-tree
               ref="tree"
               :data="menus"
-              :props="{ label: 'menuName', children: 'children', disabled: () => disabled }"
+              :props="{
+                label: 'menuName',
+                children: 'children',
+                disabled: () => disabled,
+              }"
               show-checkbox
               node-key="menuId"
               default-expand-all

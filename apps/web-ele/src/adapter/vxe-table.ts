@@ -111,7 +111,8 @@ export function createVbenGridQuery<Result>(
       // VXE 的空串（恢复默认）与 undefined 都收敛为 null，保持 asc/desc/null 契约。
       sort: {
         field: sort?.field,
-        order: sort?.order === 'asc' || sort?.order === 'desc' ? sort.order : null,
+        order:
+          sort?.order === 'asc' || sort?.order === 'desc' ? sort.order : null,
       },
     });
   };

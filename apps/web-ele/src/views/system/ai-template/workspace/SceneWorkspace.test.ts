@@ -5,12 +5,22 @@ import type {
   SceneSaveResult,
 } from '#/api/system/ai-scene';
 
-import { flushPromises, mount } from '@vue/test-utils';
+import { DOMWrapper, flushPromises, mount } from '@vue/test-utils';
 import { h, KeepAlive, ref } from 'vue';
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 
-import { button } from '#/test-utils/element-controls';
+import { initComponentAdapter } from '#/adapter/component';
+import { initSetupVbenForm } from '#/adapter/form';
+import { button, click, fill } from '#/test-utils/element-controls';
 
 import DataReferenceTable from './DataReferenceTable.vue';
 import PromptEditor from './PromptEditor.vue';
@@ -68,6 +78,17 @@ vi.mock('#/api/system/ai-scene-data', () => ({
   })),
 }));
 vi.mock('@vben/stores', () => ({ useAccessStore: () => access }));
+beforeAll(async () => {
+  await initComponentAdapter();
+  await initSetupVbenForm();
+  // 新建表单的 Input/Select 是 defineAsyncComponent，预热门模块避免首个用例冷加载未渲染。
+  await Promise.all([
+    import('element-plus/es/components/input/index'),
+    import('element-plus/es/components/input/style/css'),
+    import('element-plus/es/components/select-v2/index'),
+    import('element-plus/es/components/select-v2/style/css'),
+  ]);
+});
 const wrappers: ReturnType<typeof mount>[] = [];
 function definition(name: string): SceneDefinition {
   return {
@@ -146,6 +167,12 @@ async function open() {
   await flushPromises();
   return wrapper;
 }
+/** 工作区弹层已迁移到 useVbenModal，内容 teleport 到 document.body。 */
+function dialogPart(selector: string): DOMWrapper<Element> {
+  const target = document.querySelector(selector);
+  if (!target) throw new Error(`Missing dialog element: ${selector}`);
+  return new DOMWrapper(target);
+}
 beforeEach(() => {
   navigation.guard = undefined;
   vi.useFakeTimers();
@@ -168,6 +195,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   wrappers.splice(0).forEach((wrapper) => wrapper.unmount());
+  document.body.innerHTML = '';
   vi.useRealTimers();
 });
 
@@ -303,15 +331,14 @@ describe('scene workspace actual editing and autosave', () => {
       await flushPromises();
       const leaving = navigation.guard?.();
       await flushPromises();
-      expect(wrapper.find('[aria-label="离开前处理未确认内容"]').exists()).toBe(
-        true,
-      );
+      const dialog = dialogPart('[role="dialog"][data-state="open"]');
+      expect(dialog.text()).toContain('离开前处理未确认内容');
       const unload = new Event('beforeunload', { cancelable: true });
       window.dispatchEvent(unload);
       expect(unload.defaultPrevented).toBe(true);
-      await wrapper
+      await dialog
         .findAll('button')
-        .find((button) => button.text() === '留在当前页')
+        .find((button) => button.text().trim() === '留在当前页')
         ?.trigger('click');
       expect(await leaving).toBe(false);
       expect(
@@ -319,10 +346,7 @@ describe('scene workspace actual editing and autosave', () => {
       ).toHaveProperty('value', '不能静默丢失');
       const discarding = navigation.guard?.();
       await flushPromises();
-      await wrapper
-        .findAll('button')
-        .find((button) => button.text() === '放弃未确认内容并离开')
-        ?.trigger('click');
+      await button('放弃未确认内容并离开', document.body).trigger('click');
       expect(await discarding).toBe(true);
     },
   );
@@ -340,23 +364,19 @@ describe('scene workspace actual editing and autosave', () => {
     api.createScene.mockRejectedValue(new Error('unknown acceptance'));
     wrapper.vm.openCreate();
     await flushPromises();
-    await wrapper
-      .get('input[aria-label="新建场景名称"]')
-      .setValue('结果未知的新建');
-    await wrapper.get('form[aria-label="新建场景"]').trigger('submit');
-    await flushPromises();
+    await fill('新建场景名称', '结果未知的新建');
+    await click('创建场景');
+    // 用户先关闭新建弹层（pendingCreate 仍保留），再尝试离开。
+    await click('取消');
     const leaving = navigation.guard?.();
     await flushPromises();
-    expect(wrapper.get('[aria-label="离开前处理未确认内容"]').text()).toContain(
-      '未确认',
-    );
+    expect(
+      dialogPart('[role="dialog"][data-state="open"]').text(),
+    ).toContain('离开前处理未确认内容');
     const unload = new Event('beforeunload', { cancelable: true });
     window.dispatchEvent(unload);
     expect(unload.defaultPrevented).toBe(true);
-    await wrapper
-      .findAll('button')
-      .find((button) => button.text() === '留在当前页')
-      ?.trigger('click');
+    await button('留在当前页', document.body).trigger('click');
     expect(await leaving).toBe(false);
   });
   it('preserves the same failed editor instance across KeepAlive deactivation and activation', async () => {
@@ -404,9 +424,8 @@ describe('scene workspace actual editing and autosave', () => {
     const wrapper = await open();
     wrapper.vm.openCreate();
     await flushPromises();
-    await wrapper.get('input[aria-label="新建场景名称"]').setValue('新场景');
-    await wrapper.get('form[aria-label="新建场景"]').trigger('submit');
-    await flushPromises();
+    await fill('新建场景名称', '新场景');
+    await click('创建场景');
     await vi.advanceTimersByTimeAsync(1000);
     expect(api.createScene.mock.calls[0]?.[0]).toMatchObject({
       name: '新场景',
@@ -423,15 +442,14 @@ describe('scene workspace actual editing and autosave', () => {
     const wrapper = await open();
     wrapper.vm.openCreate();
     await flushPromises();
-    await wrapper.get('input[aria-label="新建场景名称"]').setValue('新场景');
-    await wrapper.get('form[aria-label="新建场景"]').trigger('submit');
-    await flushPromises();
-    expect(
-      wrapper.get('input[aria-label="新建场景名称"]').attributes('disabled'),
-    ).toBeDefined();
+    await fill('新建场景名称', '新场景');
+    await click('创建场景');
+    const nameInput = document.querySelector<HTMLInputElement>(
+      'input[aria-label="新建场景名称"]',
+    );
+    expect(nameInput?.hasAttribute('disabled')).toBe(true);
     const original = api.createScene.mock.calls[0]?.[0];
-    await wrapper.get('form[aria-label="新建场景"]').trigger('submit');
-    await flushPromises();
+    await click('重试创建');
     expect(api.createScene.mock.calls[1]?.[0]).toEqual(original);
   });
   it('does not save an untouched unconfigured scene and allows switching away', async () => {
@@ -603,9 +621,11 @@ describe('scene workspace actual editing and autosave', () => {
     );
     await wrapper.find('[data-phase="conflict"] button').trigger('click');
     await flushPromises();
-    expect(wrapper.get('.conflict-content').text()).toBe('其他用户的新内容');
+    expect(
+      document.querySelector('.conflict-content')?.textContent,
+    ).toBe('其他用户的新内容');
     expect(api.saveScene).toHaveBeenCalledTimes(1);
-    await button('保留本地并重新保存', wrapper.element).trigger('click');
+    await button('保留本地并重新保存', document.body).trigger('click');
     await flushPromises();
     expect(api.saveScene.mock.calls[1]?.[1]).toMatchObject({
       expectedRevision: 5,

@@ -21,6 +21,29 @@ vi.mock('element-plus', () => ({
     ),
   ),
 }));
+// 单测端口：捕获原生表单 schema，直接驱动字段 onChange；真实表单交互在 Chrome 验证。
+const formPort = vi.hoisted(() => ({ schema: [] as Array<Record<string, any>> }));
+vi.mock('#/adapter/form', async () => {
+  const { createVbenFormPortMock } = await import('#/test-utils/vben-form-port');
+  const port = createVbenFormPortMock();
+  return {
+    useVbenForm: (options: { schema?: Array<Record<string, any>> }) => {
+      formPort.schema = options.schema ?? [];
+      return port.useVbenForm(options);
+    },
+    z: port.z,
+  };
+});
+function fieldHandlers(name: string) {
+  const schema = formPort.schema.find((item) => item.fieldName === name);
+  if (!schema) throw new Error(`Missing form field: ${name}`);
+  const props =
+    typeof schema.componentProps === 'function'
+      ? schema.componentProps()
+      : schema.componentProps;
+  if (!props?.onChange) throw new Error(`Missing onChange for ${name}`);
+  return props.onChange as (value: unknown) => unknown;
+}
 const Box = defineComponent({
   setup(_, { slots }) {
     return () => h('div', slots.default?.());
@@ -81,7 +104,7 @@ it('preserves explicit fallback order and only clears it on an explicit AUTO mod
     '11',
   ]);
   expect(changed?.fixedKey?.keyRef).toBe('10');
-  view.findAllComponents(Select)[0]?.vm.$emit('change', 'AUTO');
+  await fieldHandlers('mode')('AUTO');
   expect(
     view.emitted<ModelBinding[]>('update:modelValue')?.[1]?.[0],
   ).toMatchObject({ keyMode: 'AUTO', fixedKey: null, fallbackKeys: [] });
@@ -100,7 +123,7 @@ it('does not silently drop pinned references when current candidates cannot be r
   const view = render(value);
   await view.get('button').trigger('click');
   await flushPromises();
-  view.findAllComponents(Select)[1]?.vm.$emit('change', ['11/1', '12/1']);
+  await fieldHandlers('allowed')(['11/1', '12/1']);
   expect(
     view.emitted<ModelBinding[]>('update:modelValue')?.[0]?.[0]?.allowedKeys,
   ).toEqual(value.allowedKeys);

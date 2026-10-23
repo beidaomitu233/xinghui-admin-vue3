@@ -117,7 +117,11 @@ const [Form, formApi] = useVbenForm({
   ],
 });
 
-watch(busy, (value) => formApi.setState({ commonConfig: { disabled: value } }), { flush: 'sync' });
+watch(
+  busy,
+  (value) => formApi.setState({ commonConfig: { disabled: value } }),
+  { flush: 'sync' },
+);
 const [Modal, modalApi] = useVbenModal({
   confirmText: '保存',
   onBeforeClose: async () => {
@@ -323,9 +327,27 @@ const [Modal, modalApi] = useVbenModal({
   },
 });
 
-watch(() => JSON.stringify([access.accessToken, ...['system:user:query', 'system:user:add', 'system:user:edit', 'system:role:list'].map((code) => access.accessCodes.includes(code))]), () => {
-  request += 1; prepared = false; saved = true; busy.value = false; detail.value = undefined; roleLabels.value = {}; void modalApi.close();
-});
+watch(
+  () =>
+    JSON.stringify([
+      access.accessToken,
+      ...[
+        'system:user:query',
+        'system:user:add',
+        'system:user:edit',
+        'system:role:list',
+      ].map((code) => access.accessCodes.includes(code)),
+    ]),
+  () => {
+    request += 1;
+    prepared = false;
+    saved = true;
+    busy.value = false;
+    detail.value = undefined;
+    roleLabels.value = {};
+    void modalApi.close();
+  },
+);
 
 async function reset() {
   if (busy.value || mode.value === 'view' || !prepared) return;

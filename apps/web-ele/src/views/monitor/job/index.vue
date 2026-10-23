@@ -35,9 +35,10 @@ const sortableFields = new Set([
   'status',
   'updateTime',
 ]);
-function jobOrdering(
-  sort: { field?: unknown; order?: unknown },
-): Pick<JobListParams, 'order' | 'orderBy'> {
+function jobOrdering(sort: {
+  field?: unknown;
+  order?: unknown;
+}): Pick<JobListParams, 'order' | 'orderBy'> {
   if (
     typeof sort.field === 'string' &&
     sortableFields.has(sort.field) &&
@@ -88,7 +89,12 @@ const [Grid, gridApi] = useVbenVxeGrid<JobInfo>({
     collapsed: true,
     submitOnEnter: true,
     schema: [
-      { fieldName: 'jobName', label: '任务名称', component: 'Input', defaultValue: '' },
+      {
+        fieldName: 'jobName',
+        label: '任务名称',
+        component: 'Input',
+        defaultValue: '',
+      },
       {
         fieldName: 'jobGroup',
         label: '任务组',
@@ -158,7 +164,12 @@ const [Grid, gridApi] = useVbenVxeGrid<JobInfo>({
         slots: { default: 'status' },
       },
       { field: 'createTime', title: '创建时间', width: 180, sortable: true },
-      { title: '操作', width: 300, fixed: 'right', slots: { default: 'actions' } },
+      {
+        title: '操作',
+        width: 300,
+        fixed: 'right',
+        slots: { default: 'actions' },
+      },
     ],
     pagerConfig: { pageSize: 10, pageSizes: [10, 20, 50, 100] },
     sortConfig: {
@@ -315,13 +326,7 @@ void jobStatusDict.load();
     >
       <el-button link type="primary" @click="retryStatuses">重新加载</el-button>
     </el-alert>
-    <el-alert
-      v-if="error"
-      :title="error"
-      type="error"
-      show-icon
-      class="mb-4"
-    >
+    <el-alert v-if="error" :title="error" type="error" show-icon class="mb-4">
       <el-button link @click="load">重试</el-button>
     </el-alert>
     <Grid class="min-h-0 flex-1">
@@ -393,9 +398,7 @@ void jobStatusDict.load();
         </el-button>
       </template>
       <template #empty>
-        <el-empty
-          :description="canQuery ? '暂无定时任务' : '无任务查看权限'"
-        />
+        <el-empty :description="canQuery ? '暂无定时任务' : '无任务查看权限'" />
       </template>
     </Grid>
     <EditModal @saved="load" />

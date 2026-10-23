@@ -1,8 +1,5 @@
 <script lang="ts" setup>
-import type {
-  JobFireFilters,
-  JobFireLog,
-} from '#/api/monitor/jobLog';
+import type { JobFireFilters, JobFireLog } from '#/api/monitor/jobLog';
 
 import { computed, ref, watch } from 'vue';
 
@@ -60,9 +57,10 @@ const sortableFields = new Set([
   'status',
   'triggerType',
 ]);
-function logOrdering(
-  sort: { field?: unknown; order?: unknown },
-): Pick<JobFireFilters, 'order' | 'orderBy'> {
+function logOrdering(sort: {
+  field?: unknown;
+  order?: unknown;
+}): Pick<JobFireFilters, 'order' | 'orderBy'> {
   if (
     typeof sort.field === 'string' &&
     sortableFields.has(sort.field) &&
@@ -101,7 +99,8 @@ const queryLogs: () => Promise<{
       total: Number(result.total) || 0,
     };
   },
-  () => JSON.stringify([accessStore.accessToken, canQuery.value, queryRevision]),
+  () =>
+    JSON.stringify([accessStore.accessToken, canQuery.value, queryRevision]),
 );
 
 const [Grid, gridApi] = useVbenVxeGrid<JobFireLog>({
@@ -110,8 +109,18 @@ const [Grid, gridApi] = useVbenVxeGrid<JobFireLog>({
     collapsed: true,
     submitOnEnter: true,
     schema: [
-      { fieldName: 'jobId', label: '任务 ID', component: 'Input', defaultValue: '' },
-      { fieldName: 'jobName', label: '任务名称', component: 'Input', defaultValue: '' },
+      {
+        fieldName: 'jobId',
+        label: '任务 ID',
+        component: 'Input',
+        defaultValue: '',
+      },
+      {
+        fieldName: 'jobName',
+        label: '任务名称',
+        component: 'Input',
+        defaultValue: '',
+      },
       {
         fieldName: 'status',
         label: '结果',
@@ -195,7 +204,12 @@ const [Grid, gridApi] = useVbenVxeGrid<JobFireLog>({
         minWidth: 160,
         slots: { default: 'summary' },
       },
-      { title: '操作', width: 80, fixed: 'right', slots: { default: 'actions' } },
+      {
+        title: '操作',
+        width: 80,
+        fixed: 'right',
+        slots: { default: 'actions' },
+      },
     ],
     pagerConfig: { pageSize: 10, pageSizes: [10, 20, 50, 100] },
     sortConfig: {
@@ -308,13 +322,7 @@ watch([() => accessStore.accessToken, canQuery], async () => {
     auto-content-height
     content-class="flex min-h-0 flex-col"
   >
-    <el-alert
-      v-if="error"
-      :title="error"
-      type="error"
-      show-icon
-      class="mb-4"
-    >
+    <el-alert v-if="error" :title="error" type="error" show-icon class="mb-4">
       <el-button link @click="load">重试</el-button>
     </el-alert>
     <Grid class="min-h-0 flex-1">
@@ -336,7 +344,9 @@ watch([() => accessStore.accessToken, canQuery], async () => {
         </el-button>
       </template>
       <template #status="{ row }">
-        <el-tag :type="statusTag(row.status)">{{ statusLabel(row.status) }}</el-tag>
+        <el-tag :type="statusTag(row.status)">
+          {{ statusLabel(row.status) }}
+        </el-tag>
       </template>
       <template #summary="{ row }">
         <span class="break-all">{{ row.resultSummary || '—' }}</span>

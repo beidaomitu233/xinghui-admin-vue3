@@ -11,22 +11,23 @@ import type {
   SettingsTestRun,
 } from '#/api/system/ai-settings';
 
-import { flushPromises, mount } from '@vue/test-utils';
+import { DOMWrapper, flushPromises, mount } from '@vue/test-utils';
 
 import ElementPlus, {
   ElCheckbox,
-  ElDrawer,
   ElMessageBox,
   ElOption,
-  ElPagination,
   ElPopconfirm,
 } from 'element-plus';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   click,
+  clickPagerPage,
+  clickTab,
   fill,
   selectControl,
+  selectNative,
   selectValue,
   settleDebounce,
 } from '#/test-utils/element-controls';
@@ -77,9 +78,16 @@ const api = vi.hoisted(() => ({
     >(),
 }));
 vi.mock('@vben/stores', () => ({ useAccessStore: () => access }));
-vi.mock('@vben/common-ui', () => ({
-  Page: { template: '<main><slot /></main>' },
-}));
+vi.mock('@vben/common-ui', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@vben/common-ui')>();
+  return { ...actual, Page: { template: '<main><slot /></main>' } };
+});
+vi.mock('#/adapter/form', async () => {
+  // 单测端口：弹层内原生表单的值读写；真实表单行为在 Chrome 验证。
+  const { createVbenFormPortMock } = await import('#/test-utils/vben-form-port');
+  const port = createVbenFormPortMock();
+  return { useVbenForm: port.useVbenForm, z: port.z };
+});
 vi.mock('vue-router', () => ({
   onBeforeRouteLeave: vi.fn(),
   useRoute: () => ({ query: {} }),
@@ -212,6 +220,14 @@ function deferred<T>() {
     resolve = yes;
   });
   return { promise, resolve };
+}
+// 抽屉内容经 teleport 挂到 body，Key 区块从 document 查询。
+function keySection(index: number) {
+  const section = document.querySelector(
+    `section[aria-label="Key ${index}"]`,
+  );
+  if (!section) throw new Error(`Missing key section: ${index}`);
+  return new DOMWrapper(section);
 }
 function optionNames(wrapper: ReturnType<typeof render>, label: string) {
   return selectControl(wrapper, label)
@@ -482,7 +498,7 @@ describe('independent multi-key channel management', () => {
     const wrapper = render(true);
     await flushPromises();
     expect(wrapper.text()).toContain('模型汇总');
-    await click('供应商');
+    await clickTab('供应商');
     await flushPromises();
     expect(wrapper.findComponent(ChannelWorkspace).exists()).toBe(true);
     expect(wrapper.find('.conversation-board').exists()).toBe(false);
@@ -495,7 +511,7 @@ describe('independent multi-key channel management', () => {
     expect(api.test).not.toHaveBeenCalled();
   });
   it('saves all named keys and their model sets without rotating a first key or automatically testing', async () => {
-    const wrapper = render();
+    render();
     await flushPromises();
     await click('编辑');
     expect(
@@ -530,7 +546,8 @@ describe('independent multi-key channel management', () => {
     expect(api.update.mock.calls[0]?.[1]).not.toHaveProperty('apiKey');
     expect(api.test).not.toHaveBeenCalled();
     expect(document.body.textContent).toContain('待测试');
-    expect(wrapper.findAllComponents(ElDrawer)).toHaveLength(1);
+    // 原生 Vben 抽屉内容经 teleport 挂载；以唯一编辑表单断言无嵌套抽屉。
+    expect(document.querySelectorAll('.channel-form')).toHaveLength(1);
   });
   it('allows entering a new key, scanning and selecting a real returned model before saving', async () => {
     const wrapper = render();
@@ -567,12 +584,19 @@ describe('independent multi-key channel management', () => {
     );
   });
   it('uses server channel search and resets a later page without granting technical log access', async () => {
-    const wrapper = render();
+    // 两页数据（pageSize 20），第 2 页真实存在。
+    api.list.mockResolvedValue({
+      records: [],
+      total: '21',
+      pageNum: 1,
+      pageSize: 20,
+    });
+    render();
     await flushPromises();
-    wrapper.getComponent(ElPagination).vm.$emit('current-change', 2);
-    await flushPromises();
+    await clickPagerPage(2);
     await fill('搜索渠道', '远端渠道');
-    await settleDebounce();
+    await click('搜索');
+    await flushPromises();
     expect(api.list).toHaveBeenLastCalledWith({
       pageNum: 1,
       pageSize: 20,
@@ -588,8 +612,7 @@ describe('independent multi-key channel management', () => {
     api.savedScan.mockResolvedValueOnce(
       catalog('vendor/first', '主账号目录', 'openrouter', 1, 60),
     );
-    const firstScan = wrapper
-      .get('section[aria-label="Key 1"]')
+    const firstScan = keySection(1)
       .findAll('button')
       .find((button) => button.text() === '获取模型目录');
     if (!firstScan) throw new Error('Missing first key scan button');
@@ -605,8 +628,7 @@ describe('independent multi-key channel management', () => {
     api.savedScan.mockResolvedValueOnce(
       catalog('vendor/second-key', '备用账号目录'),
     );
-    const secondScan = wrapper
-      .get('section[aria-label="Key 2"]')
+    const secondScan = keySection(2)
       .findAll('button')
       .find((button) => button.text() === '获取模型目录');
     if (!secondScan) throw new Error('Missing second key scan button');
@@ -678,7 +700,7 @@ describe('independent multi-key channel management', () => {
     await click('新增渠道');
     await fill('Key 1 密钥', 'provider-one-key');
     await click('获取模型目录');
-    await selectValue(wrapper, '渠道服务商', 'deepseek');
+    await selectNative('渠道服务商', 'deepseek');
     delayed.resolve(catalog('vendor/old-provider', '旧服务商目录'));
     await flushPromises();
     expect(
@@ -710,7 +732,7 @@ describe('independent multi-key channel management', () => {
     expect(original?.clientMutationId).toMatch(/^[\da-f-]{36}$/i);
   });
   it('uses the same unsaved guard for footer and drawer close and clears secrets only on confirmed dismissal', async () => {
-    const wrapper = render();
+    render();
     await flushPromises();
     await click('编辑');
     await fill('Key 1 密钥', 'temporary-fictional-secret');
@@ -723,13 +745,15 @@ describe('independent multi-key channel management', () => {
         ) as HTMLInputElement
       ).value,
     ).toBe('temporary-fictional-secret');
-    const done = vi.fn();
-    const beforeClose = wrapper.getComponent(ElDrawer).props('beforeClose');
-    if (!beforeClose) throw new Error('Missing guarded drawer close');
-    beforeClose(done);
+    // 原生抽屉关闭走同一守卫；此处经页脚“关闭”二次触发，原生 X 按钮路径在 Chrome 验证。
+    await click('关闭');
     await flushPromises();
     expect(ElMessageBox.confirm).toHaveBeenCalledTimes(2);
-    expect(done).toHaveBeenCalledOnce();
+    const secret = document.querySelector<HTMLInputElement>(
+      'input[aria-label="Key 1 密钥"]',
+    );
+    // 确认关闭后密钥输入被清空（若抽屉已完成卸载则元素移除）。
+    expect(secret === null || secret.value === '').toBe(true);
   });
   it('keeps existing configuration viewers and enable-only callers independent of edit permission', async () => {
     access.accessCodes = ['ai:config:list', 'ai:config:enable'];

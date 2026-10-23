@@ -45,7 +45,11 @@ export const updateDictType = (
 export const createDictItem = (
   typeId: number | string,
   data: Omit<DictItem, 'id' | 'typeId'>,
-) => requestClient.post<number | string>(`/system/dict/types/${typeId}/items`, data);
+) =>
+  requestClient.post<number | string>(
+    `/system/dict/types/${typeId}/items`,
+    data,
+  );
 export const updateDictItem = (
   id: number | string,
   data: Pick<DictItem, 'enabled' | 'label' | 'remark' | 'sortOrder'>,

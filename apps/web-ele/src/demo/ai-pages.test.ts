@@ -21,18 +21,23 @@ const client = vi.hoisted(() => ({
 }));
 const permissions = vi.hoisted(() => ({ codes: new Array<string>() }));
 vi.mock('#/api/request', () => ({ requestClient: client }));
-vi.mock('@vben/common-ui', () => ({
-  Page: { template: '<div><slot /></div>' },
-}));
+vi.mock('@vben/common-ui', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@vben/common-ui')>();
+  return { ...actual, Page: { template: '<div><slot /></div>' } };
+});
 vi.mock('@vben/stores', () => ({
   useAccessStore: () => ({
     accessCodes: permissions.codes,
     accessToken: 'fictional-local-session',
   }),
 }));
-vi.mock('@vben/hooks', () => ({
-  useAppConfig: () => ({ apiURL: '/__static_demo_local_only__' }),
-}));
+vi.mock('@vben/hooks', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@vben/hooks')>();
+  return {
+    ...actual,
+    useAppConfig: () => ({ apiURL: '/__static_demo_local_only__' }),
+  };
+});
 vi.mock('vue-router', () => ({
   useRoute: () => ({ query: {} }),
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
@@ -92,6 +97,16 @@ function openButton(text: string) {
   if (!button) throw new Error(`Missing actual page button ${text}`);
   button.click();
 }
+function openTab(text: string) {
+  // 原生迁移后入口由按钮改为 ElTabs 页签。
+  const tab = [...document.querySelectorAll('.el-tabs__item')].find(
+    (element) => element.textContent?.trim() === text,
+  );
+  expect(tab, `Missing actual page tab ${text}`).toBeTruthy();
+  if (!(tab instanceof HTMLElement))
+    throw new Error(`Missing actual page tab ${text}`);
+  tab.click();
+}
 describe('real AI pages with read-only local transport', () => {
   it('opens fictional call logs and a metadata-only detail without invoking a provider', async () => {
     const wrapper = mount(RequestPage, {
@@ -100,14 +115,17 @@ describe('real AI pages with read-only local transport', () => {
     });
     wrappers.push(wrapper);
     await settle();
-    openButton('请求日志');
+    openTab('请求日志');
     await settle();
     expect(wrapper.text()).toContain('[虚构] 未连接模型');
     expect(wrapper.text()).toContain('未提供');
     openButton('详情');
     await settle();
-    expect(wrapper.text()).toContain('虚构布局示例，未发送上游请求');
-    expect(wrapper.text()).toContain('响应正文不可用或无权查看');
+    // 详情经原生弹层 teleport 挂载，从 body 读取文本。
+    expect(document.body.textContent).toContain(
+      '虚构布局示例，未发送上游请求',
+    );
+    expect(document.body.textContent).toContain('响应正文不可用或无权查看');
     expect(client.post).not.toHaveBeenCalled();
     expect(client.put).not.toHaveBeenCalled();
     expect(
@@ -163,12 +181,9 @@ describe('real AI pages with read-only local transport', () => {
       }
       openButton('查看 / 编辑');
       await settle();
-      const dialog = document.querySelector('.el-dialog');
-      const form = dialog?.querySelector('form');
-      if (
-        !(dialog instanceof HTMLElement) ||
-        !(form instanceof HTMLFormElement)
-      )
+      // 原生 Vben 弹层经 teleport 挂载；编辑表单取弹层内表单元素。
+      const form = [...document.querySelectorAll('form')].at(-1);
+      if (!(form instanceof HTMLFormElement))
         throw new Error('Missing detail editor');
       const snapshot = () =>
         [...form.querySelectorAll('input, textarea')].map((field) => {
@@ -215,7 +230,7 @@ describe('real AI pages with read-only local transport', () => {
         if (checkbox instanceof HTMLInputElement) checkbox.click();
       await settle();
       expect(snapshot()).toEqual(before);
-      expect(dialog.textContent).not.toContain('保存草稿');
+      expect(document.body.textContent).not.toContain('保存草稿');
       expect(errors).toEqual([]);
       expect(client.post).not.toHaveBeenCalled();
       expect(client.put).not.toHaveBeenCalled();
@@ -232,7 +247,7 @@ describe('real AI pages with read-only local transport', () => {
     });
     wrappers.push(viewer);
     await settle();
-    openButton('供应商');
+    openTab('供应商');
     await settle();
     openButton('查看 Key');
     await settle();

@@ -21,6 +21,13 @@ import FormSharing from './FormSharing.vue';
 beforeAll(async () => {
   await initComponentAdapter();
   await initSetupVbenForm();
+  // RadioGroup/Switch 是 defineAsyncComponent，预热门模块避免与 waitFor(switch) 的渲染竞态。
+  await Promise.all([
+    import('element-plus/es/components/radio/index'),
+    import('element-plus/es/components/radio-group/style/css'),
+    import('element-plus/es/components/switch/index'),
+    import('element-plus/es/components/switch/style/css'),
+  ]);
 });
 vi.mock('@vben/stores', () => ({
   useAccessStore: () => ({ accessCodes: ['lowcode:form:publish'] }),

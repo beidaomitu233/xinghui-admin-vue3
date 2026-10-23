@@ -40,8 +40,10 @@ vi.mock('@vben/common-ui', () => ({
 vi.mock('#/adapter/form', () => {
   const rule = {
     regex: () => rule,
+    min: () => rule,
     max: () => rule,
     email: () => rule,
+    optional: () => rule,
     refine: () => rule,
   };
   return {
@@ -101,7 +103,8 @@ describe('用户与角色查询的独立授权', () => {
     await modal().onOpenChange(true);
     expect(getRoleList).not.toHaveBeenCalled();
     expect(getUser).toHaveBeenCalledWith('9007199254740993');
-    expect(state.values.roleIds).toEqual(['9007199254740995']);
+    // 视图模式走只读描述展示详情，不向表单填充值。
+    expect(state.values.roleIds).toBeUndefined();
   });
   it('edits ordinary fields and preserves the original roles without role:list', async () => {
     mount(UserModal);

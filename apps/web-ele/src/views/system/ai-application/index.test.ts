@@ -24,9 +24,10 @@ const applications = vi.hoisted(() => ({
   subscribeAiRequest: vi.fn(),
 }));
 vi.mock('@vben/stores', () => ({ useAccessStore: () => access }));
-vi.mock('@vben/common-ui', () => ({
-  Page: { template: '<section><slot /></section>' },
-}));
+vi.mock('@vben/common-ui', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@vben/common-ui')>();
+  return { ...actual, Page: { template: '<section><slot /></section>' } };
+});
 vi.mock('vue-router', () => ({
   useRouter: () => ({ push: vi.fn() }),
   onBeforeRouteLeave: vi.fn(),

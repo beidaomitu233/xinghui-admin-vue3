@@ -42,6 +42,11 @@ collections.forEach((collection) => addCollection(collection));
 beforeAll(async () => {
   await initComponentAdapter();
   await initSetupVbenForm();
+  // 元数据表单的 Input 是 defineAsyncComponent，预热门模块避免首个用例冷加载未渲染。
+  await Promise.all([
+    import('element-plus/es/components/input/index'),
+    import('element-plus/es/components/input/style/css'),
+  ]);
 });
 const wrappers: ReturnType<typeof mount>[] = [];
 async function render(readOnly = false) {

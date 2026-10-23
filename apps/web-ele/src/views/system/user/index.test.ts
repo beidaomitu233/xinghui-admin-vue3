@@ -28,7 +28,7 @@ const state = vi.hoisted(() => ({
     | undefined
     | {
         field: string;
-        order: 'asc' | 'desc';
+        order: 'asc' | 'desc' | undefined;
         page: number;
         values: Record<string, unknown>;
       },
@@ -41,29 +41,33 @@ vi.mock('@vben/stores', () => ({
   useAccessStore: () => ({ accessCodes: state.codes }),
 }));
 vi.mock('#/adapter/form', () => ({ useVbenForm: vi.fn(), z: {} }));
-vi.mock('#/adapter/vxe-table', () => ({
-  useVbenVxeGrid: (options: GridQuery & { tableTitle?: string }) => {
-    if (options.tableTitle === '用户列表') state.options = options;
-    return [
-      { template: '<div />' },
-      {
-        grid: state.live
-          ? {
-              getCurrentPage: () => state.live?.page ?? 1,
-              getPageSize: () => 10,
-              getSortColumns: () => [
-                { field: state.live?.field, order: state.live?.order },
-              ],
-              setCurrentPage: async (page: number) => {
-                if (state.live) state.live.page = page;
-              },
-            }
-          : {},
-        formApi: { getLatestSubmissionValues: () => state.live?.values ?? {} },
-      },
-    ];
-  },
-}));
+vi.mock('#/adapter/vxe-table', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('#/adapter/vxe-table')>();
+  return {
+    ...actual,
+    useVbenVxeGrid: (options: GridQuery & { tableTitle?: string }) => {
+      if (options.tableTitle === '用户列表') state.options = options;
+      return [
+        { template: '<div />' },
+        {
+          grid: {
+            getCurrentPage: () => state.live?.page ?? 1,
+            getPageSize: () => 10,
+            getSortColumns: () => [
+              { field: state.live?.field, order: state.live?.order },
+            ],
+            setCurrentPage: async (page: number) => {
+              if (state.live) state.live.page = page;
+            },
+          },
+          formApi: {
+            getLatestSubmissionValues: () => state.live?.values ?? {},
+          },
+        },
+      ];
+    },
+  };
+});
 vi.mock('#/api/system/user', () => ({
   getUserList: vi.fn(),
   getUser: vi.fn(),
@@ -84,9 +88,13 @@ function query(
   values: Record<string, unknown> = {},
 ) {
   if (!state.options) throw new Error('用户原生Grid未初始化');
+  // createVbenGridQuery 从原生 Grid 状态读取查询条件，不走 proxy 参数。
+  state.live = { field, order: order ?? undefined, page, values };
   return state.options.gridOptions.proxyConfig.ajax.query(
-    { page: { currentPage: page, pageSize: 10 }, sort: { field, order } },
-    values,
+    {} as Parameters<
+      GridQuery['gridOptions']['proxyConfig']['ajax']['query']
+    >[0],
+    {},
   );
 }
 function deferred<T>() {
@@ -139,10 +147,15 @@ describe('用户原生Grid查询合同', () => {
       .mockReturnValueOnce(old.promise)
       .mockResolvedValueOnce({ records: [], total: 21 });
     const first = query(1, 'username', 'asc');
+    // loading 期间到达的新查询加入在飞请求；完成后按最新原生状态接续查询。
     const second = query(2, 'username', 'desc');
-    expect(await second).toEqual({ items: [], total: 21 });
     old.resolve({ records: [], total: 999 });
     expect(await first).toEqual({ items: [], total: 21 });
+    expect(await second).toEqual({ items: [], total: 21 });
+    expect(getUserList).toHaveBeenCalledTimes(2);
+    expect(getUserList).toHaveBeenLastCalledWith(
+      expect.objectContaining({ pageNum: 2, order: 'desc' }),
+    );
   });
   it('continues a filter change that Vxe ignores while its proxy is loading', async () => {
     state.live = { page: 3, field: 'username', order: 'asc', values: {} };
@@ -156,15 +169,15 @@ describe('用户原生Grid查询合同', () => {
     state.live.field = 'nickname';
     state.live.order = 'desc';
     old.resolve({ records: [], total: 999 });
+    // 旧回包丢弃，按最新原生状态（第 3 页 + 新筛选/排序）接续，不自行改页。
     expect(await first).toEqual({ items: [], total: 4 });
     expect(getUserList).toHaveBeenLastCalledWith({
-      pageNum: 1,
+      pageNum: 3,
       pageSize: 10,
       orderBy: 'nickname',
       order: 'desc',
       status: '0',
     });
-    expect(state.live.page).toBe(1);
   });
   it('does not issue a list request without the list permission', async () => {
     state.codes = [];

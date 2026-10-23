@@ -150,7 +150,8 @@ describe('demo-only static publication build', () => {
     const actions = [...source.matchAll(/can\('(system:dict:[^']+)'\)/g)].map(
       (m) => m[1],
     );
-    expect(actions).toHaveLength(4);
+    // 原生字典页拆分类型/条目新增入口：list + type:add/edit + item:add/edit。
+    expect(actions).toHaveLength(5);
     for (const action of actions) expect(DEMO_PERMISSIONS).toContain(action);
     expect(DEMO_PERMISSIONS).toContain('system:oss:download');
     for (const action of [

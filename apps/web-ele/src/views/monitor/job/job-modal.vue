@@ -9,12 +9,7 @@ import { useAccessStore } from '@vben/stores';
 import { ElMessage, ElMessageBox } from 'element-plus';
 
 import { useVbenForm, z } from '#/adapter/form';
-import {
-  addJob,
-  getJob,
-  getJobHandlers,
-  updateJob,
-} from '#/api/monitor/job';
+import { addJob, getJob, getJobHandlers, updateJob } from '#/api/monitor/job';
 
 const emit = defineEmits<{ saved: [] }>();
 const access = useAccessStore();
@@ -141,7 +136,11 @@ const [Form, formApi] = useVbenForm({
   ],
 });
 
-watch(busy, (value) => formApi.setState({ commonConfig: { disabled: value } }), { flush: 'sync' });
+watch(
+  busy,
+  (value) => formApi.setState({ commonConfig: { disabled: value } }),
+  { flush: 'sync' },
+);
 
 async function loadHandlers() {
   handlersLoading.value = true;
@@ -170,11 +169,15 @@ const [Modal, modalApi] = useVbenModal({
     });
     if (!changed) return true;
     try {
-      await ElMessageBox.confirm('当前修改尚未保存，确定放弃吗？', '未保存的修改', {
-        cancelButtonText: '继续编辑',
-        confirmButtonText: '放弃修改',
-        type: 'warning',
-      });
+      await ElMessageBox.confirm(
+        '当前修改尚未保存，确定放弃吗？',
+        '未保存的修改',
+        {
+          cancelButtonText: '继续编辑',
+          confirmButtonText: '放弃修改',
+          type: 'warning',
+        },
+      );
       return true;
     } catch {
       return false;
@@ -199,7 +202,10 @@ const [Modal, modalApi] = useVbenModal({
           throw new Error('JSON object required');
         }
       } catch {
-        formApi.form.setFieldError('handlerParams', '处理器参数必须是 JSON 对象');
+        formApi.form.setFieldError(
+          'handlerParams',
+          '处理器参数必须是 JSON 对象',
+        );
         return;
       }
       const payload = { ...values, jobId: editingId.value };

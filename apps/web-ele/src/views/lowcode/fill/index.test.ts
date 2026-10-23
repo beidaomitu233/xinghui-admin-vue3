@@ -20,6 +20,13 @@ import FillPage from './index.vue';
 beforeAll(async () => {
   await initComponentAdapter();
   await initSetupVbenForm();
+  // RuntimeFields 的表单控件是 defineAsyncComponent，预热门模块避免首个用例冷加载未渲染。
+  await Promise.all([
+    import('element-plus/es/components/input/index'),
+    import('element-plus/es/components/input/style/css'),
+    import('element-plus/es/components/select-v2/index'),
+    import('element-plus/es/components/select-v2/style/css'),
+  ]);
 });
 
 const context = vi.hoisted(() => ({

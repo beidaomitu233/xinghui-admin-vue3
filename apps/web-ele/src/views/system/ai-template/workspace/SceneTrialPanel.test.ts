@@ -1,8 +1,8 @@
 import type { SceneDefinition } from '#/api/system/ai-scene';
 
-import { flushPromises, mount } from '@vue/test-utils';
+import { DOMWrapper, flushPromises, mount } from '@vue/test-utils';
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { selectValue } from '#/test-utils/element-controls';
 
@@ -46,11 +46,25 @@ function definition(): SceneDefinition {
     },
   };
 }
+/** 试运行面板已迁移到 useVbenDrawer，内容 teleport 到 document.body；入口按钮仍在 wrapper 内。 */
 function button(wrapper: ReturnType<typeof mount>, text: string) {
-  const result = wrapper.findAll('button').find((item) => item.text() === text);
-  if (!result) throw new Error(`Missing ${text}`);
-  return result;
+  const scopes: ParentNode[] = [wrapper.element, document.body];
+  for (const scope of scopes) {
+    const result = [
+      ...scope.querySelectorAll<HTMLButtonElement>('button'),
+    ].find((element) => element.textContent?.trim() === text);
+    if (result) return new DOMWrapper(result);
+  }
+  throw new Error(`Missing ${text}`);
 }
+function bodyElement(selector: string): DOMWrapper<Element> {
+  const target = document.querySelector(selector);
+  if (!target) throw new Error(`Missing element: ${selector}`);
+  return new DOMWrapper(target);
+}
+afterEach(() => {
+  document.body.innerHTML = '';
+});
 beforeEach(() => {
   vi.clearAllMocks();
   access.accessCodes = ['ai:scene:test', 'ai:scene:invoke'];
@@ -161,11 +175,11 @@ describe('explicit scene trial', () => {
     await flushPromises();
     await button(wrapper, '授权预览').trigger('click');
     await flushPromises();
-    expect(wrapper.text()).toContain('实际授权订单');
-    expect(wrapper.text()).toContain('null');
-    expect(wrapper.text()).toContain('已截断');
-    expect(wrapper.text()).toContain('实际发送内容');
-    expect(wrapper.text()).toContain('未调用模型');
+    expect(document.body.textContent).toContain('实际授权订单');
+    expect(document.body.textContent).toContain('null');
+    expect(document.body.textContent).toContain('已截断');
+    expect(document.body.textContent).toContain('实际发送内容');
+    expect(document.body.textContent).toContain('未调用模型');
     expect(api.testScene).not.toHaveBeenCalled();
     expect(stream).not.toHaveBeenCalled();
     wrapper.unmount();
@@ -181,7 +195,7 @@ describe('explicit scene trial', () => {
     });
     await button(wrapper, '试运行').trigger('click');
     await flushPromises();
-    expect(wrapper.get('textarea').attributes('maxlength')).toBe('2048');
+    expect(bodyElement('textarea').attributes('maxlength')).toBe('2048');
     await button(wrapper, '授权预览').trigger('click');
     await flushPromises();
     expect(api.previewScene).toHaveBeenCalledWith('scene.a', {
@@ -191,7 +205,7 @@ describe('explicit scene trial', () => {
     });
     expect(api.testScene).not.toHaveBeenCalled();
     expect(button(wrapper, '主动试运行').attributes('disabled')).toBeDefined();
-    await wrapper.get('input[type="checkbox"]').setValue(true);
+    await bodyElement('input[type="checkbox"]').setValue(true);
     await button(wrapper, '主动试运行').trigger('click');
     await flushPromises();
     expect(api.testScene.mock.calls[0]?.[1]).toMatchObject({
@@ -226,7 +240,7 @@ describe('explicit scene trial', () => {
     await button(wrapper, '试运行').trigger('click');
     await flushPromises();
     await selectValue(wrapper, '试运行组合', 1);
-    await wrapper.get('input[type="checkbox"]').setValue(true);
+    await bodyElement('input[type="checkbox"]').setValue(true);
     await button(wrapper, '主动试运行').trigger('click');
     await flushPromises();
     await wrapper.setProps({ revision: 5, versionId: 'version-5' });

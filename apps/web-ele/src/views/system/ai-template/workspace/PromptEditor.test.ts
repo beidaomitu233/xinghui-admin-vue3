@@ -31,6 +31,13 @@ const value = {
 beforeAll(async () => {
   await initComponentAdapter();
   await initSetupVbenForm();
+  // 表单 Input/Select 是 defineAsyncComponent，预热门模块避免冷加载时 DOM 未渲染。
+  await Promise.all([
+    import('element-plus/es/components/input/index'),
+    import('element-plus/es/components/input/style/css'),
+    import('element-plus/es/components/select-v2/index'),
+    import('element-plus/es/components/select-v2/style/css'),
+  ]);
 });
 
 describe('one editable prompt document', () => {

@@ -1,8 +1,5 @@
 <script lang="ts" setup>
-import type {
-  OperLogInfo,
-  OperLogListParams,
-} from '#/api/monitor/operlog';
+import type { OperLogInfo, OperLogListParams } from '#/api/monitor/operlog';
 
 import { computed, ref, watch } from 'vue';
 
@@ -61,9 +58,10 @@ const sortableFields = new Set([
   'status',
   'title',
 ]);
-function logOrdering(
-  sort: { field?: unknown; order?: unknown },
-): Pick<OperLogListParams, 'order' | 'orderBy'> {
+function logOrdering(sort: {
+  field?: unknown;
+  order?: unknown;
+}): Pick<OperLogListParams, 'order' | 'orderBy'> {
   if (
     typeof sort.field === 'string' &&
     sortableFields.has(sort.field) &&
@@ -106,7 +104,8 @@ const queryLogs: () => Promise<{
       total: Number(result.total) || 0,
     };
   },
-  () => JSON.stringify([accessStore.accessToken, canQuery.value, queryRevision]),
+  () =>
+    JSON.stringify([accessStore.accessToken, canQuery.value, queryRevision]),
 );
 
 const [Grid, gridApi] = useVbenVxeGrid<OperLogInfo>({
@@ -115,8 +114,18 @@ const [Grid, gridApi] = useVbenVxeGrid<OperLogInfo>({
     collapsed: true,
     submitOnEnter: true,
     schema: [
-      { fieldName: 'title', label: '系统模块', component: 'Input', defaultValue: '' },
-      { fieldName: 'operName', label: '操作人员', component: 'Input', defaultValue: '' },
+      {
+        fieldName: 'title',
+        label: '系统模块',
+        component: 'Input',
+        defaultValue: '',
+      },
+      {
+        fieldName: 'operName',
+        label: '操作人员',
+        component: 'Input',
+        defaultValue: '',
+      },
       {
         fieldName: 'businessType',
         label: '操作类型',
@@ -178,7 +187,12 @@ const [Grid, gridApi] = useVbenVxeGrid<OperLogInfo>({
       },
       { field: 'costTime', title: '耗时(ms)', width: 100, sortable: true },
       { field: 'operTime', title: '操作时间', width: 180, sortable: true },
-      { title: '操作', width: 80, fixed: 'right', slots: { default: 'actions' } },
+      {
+        title: '操作',
+        width: 80,
+        fixed: 'right',
+        slots: { default: 'actions' },
+      },
     ],
     pagerConfig: { pageSize: 10, pageSizes: [10, 20, 50, 100] },
     sortConfig: {
@@ -284,13 +298,7 @@ watch([() => accessStore.accessToken, canQuery], async () => {
     auto-content-height
     content-class="flex min-h-0 flex-col"
   >
-    <el-alert
-      v-if="error"
-      :title="error"
-      type="error"
-      show-icon
-      class="mb-4"
-    >
+    <el-alert v-if="error" :title="error" type="error" show-icon class="mb-4">
       <el-button link @click="load">重试</el-button>
     </el-alert>
     <Grid class="min-h-0 flex-1">

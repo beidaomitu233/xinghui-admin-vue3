@@ -1451,7 +1451,6 @@ h2 {
   max-width: 340px;
 }
 
-
 .channel-form {
   display: grid;
   gap: 12px;
