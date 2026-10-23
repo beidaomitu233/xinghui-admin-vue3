@@ -8,7 +8,6 @@ import '@vben/styles';
 import '@vben/styles/ele';
 
 import { useTitle } from '@vueuse/core';
-import { ElLoading } from 'element-plus';
 
 import { $t, setupI18n } from '#/locales';
 
@@ -37,12 +36,9 @@ async function bootstrap(namespace: string) {
   const app = createApp(App);
   app.provide('app-namespace', namespace);
 
-  // 注册Element Plus提供的v-loading指令
-  app.directive('loading', ElLoading.directive);
-
-  // 注册Vben提供的v-loading和v-spinning指令
+  // 业务指令沿用 Vben 原生加载组件；Grid/Modal 使用各自的加载状态。
   registerLoadingDirective(app, {
-    loading: false, // Vben提供的v-loading指令和Element Plus提供的v-loading指令二选一即可，此处false表示不注册Vben提供的v-loading指令
+    loading: true,
     spinning: 'spinning',
   });
 
