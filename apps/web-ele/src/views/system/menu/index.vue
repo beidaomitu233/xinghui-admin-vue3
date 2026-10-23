@@ -13,6 +13,7 @@ import {
   removeMenu,
   updateMenu,
 } from '#/api/system/menu';
+import AdminPageHeader from '#/components/admin-page-header.vue';
 
 // 搜索表单
 const accessStore = useAccessStore();
@@ -226,9 +227,23 @@ onMounted(() => {
 </script>
 
 <template>
-  <Page title="菜单管理" description="配置系统菜单及权限">
+  <Page content-class="admin-page">
+    <AdminPageHeader title="菜单管理" description="配置系统菜单及权限">
+      <template #actions>
+        <el-button @click="handleToggleExpand">
+          {{ toggleExpand ? '收起' : '展开' }}
+        </el-button>
+        <el-button
+          v-if="can('system:menu:add')"
+          type="primary"
+          @click="handleAdd()"
+        >
+          新增菜单
+        </el-button>
+      </template>
+    </AdminPageHeader>
     <!-- 搜索区域 -->
-    <el-card class="mb-4" shadow="never">
+    <el-card shadow="never">
       <el-form :inline="true" :model="formInline">
         <el-form-item label="菜单名称">
           <el-input
@@ -258,24 +273,6 @@ onMounted(() => {
 
     <!-- 操作区域 -->
     <el-card shadow="never">
-      <template #header>
-        <div class="flex items-center justify-between">
-          <span>菜单列表</span>
-          <div>
-            <el-button @click="handleToggleExpand">
-              {{ toggleExpand ? '收起' : '展开' }}
-            </el-button>
-            <el-button
-              v-if="can('system:menu:add')"
-              type="primary"
-              @click="handleAdd()"
-            >
-              新增菜单
-            </el-button>
-          </div>
-        </div>
-      </template>
-
       <!-- 表格 -->
       <el-table
         v-loading="loading"
