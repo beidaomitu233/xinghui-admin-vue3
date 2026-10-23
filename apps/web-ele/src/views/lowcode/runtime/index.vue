@@ -99,7 +99,7 @@ watch(
 <template>
   <!-- Prettier formats adjacent inline controls; avoid conflicting whitespace rules. -->
   <!-- eslint-disable vue/multiline-html-element-content-newline, vue/html-closing-bracket-newline -->
-  <Page class="admin-page">
+  <Page content-class="admin-page">
     <AdminPageHeader :title="runtime?.name || '填写表单'" />
     <el-card v-loading="loading" class="max-w-4xl">
       <el-alert
