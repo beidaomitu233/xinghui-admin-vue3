@@ -22,9 +22,12 @@ vi.mock('element-plus', () => ({
   ),
 }));
 // 单测端口：捕获原生表单 schema，直接驱动字段 onChange；真实表单交互在 Chrome 验证。
-const formPort = vi.hoisted(() => ({ schema: [] as Array<Record<string, any>> }));
+const formPort = vi.hoisted(() => ({
+  schema: [] as Array<Record<string, any>>,
+}));
 vi.mock('#/adapter/form', async () => {
-  const { createVbenFormPortMock } = await import('#/test-utils/vben-form-port');
+  const { createVbenFormPortMock } =
+    await import('#/test-utils/vben-form-port');
   const port = createVbenFormPortMock();
   return {
     useVbenForm: (options: { schema?: Array<Record<string, any>> }) => {

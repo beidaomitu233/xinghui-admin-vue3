@@ -54,9 +54,8 @@ export async function fill(label: string, value: string) {
     ...document.querySelectorAll('label, .vben-form-item__label'),
   ].find(
     (element) =>
-      (element.textContent ?? '')
-        .replace(/\s|\*/g, '')
-        .trim() === label.replace(/\s|\*/g, ''),
+      (element.textContent ?? '').replaceAll(/\s|\*/g, '').trim() ===
+      label.replaceAll(/\s|\*/g, ''),
   );
   const field = labelElement?.parentElement?.querySelector<
     HTMLInputElement | HTMLTextAreaElement

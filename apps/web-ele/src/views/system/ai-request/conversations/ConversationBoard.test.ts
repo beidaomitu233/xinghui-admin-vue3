@@ -6,12 +6,19 @@ import type {
 
 import { flushPromises, mount } from '@vue/test-utils';
 
-import { describe, expect, it, vi } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 
+import { initComponentAdapter } from '#/adapter/component';
+import { initSetupVbenForm } from '#/adapter/form';
 import { selectValue } from '#/test-utils/element-controls';
 
 import ConversationBoard from './ConversationBoard.vue';
 import { ConversationSendFailure } from './view-model';
+
+beforeAll(async () => {
+  await initComponentAdapter();
+  await initSetupVbenForm();
+});
 
 function item(key = 'conversation-private-1'): ConversationItem {
   return {
@@ -75,6 +82,11 @@ describe('conversation presentation and scoped draft state', () => {
     expect(wrapper.text()).toContain('请选择会话');
     expect(wrapper.text()).not.toContain('开始新对话');
     expect(wrapper.find('textarea').exists()).toBe(false);
+    // 搜索控件由 Vben 表单异步装载：等待真实输入框出现后再断言。
+    await vi.waitFor(() => {
+      if (!wrapper.find('input[placeholder="搜索对话标题"]').exists())
+        throw new Error('Search input not mounted yet');
+    });
     expect(wrapper.find('input[placeholder="搜索对话标题"]').exists()).toBe(
       true,
     );
@@ -125,9 +137,11 @@ describe('conversation presentation and scoped draft state', () => {
     expect(wrapper.text()).toContain('不会作为完整回答使用');
     expect(wrapper.text()).not.toContain('conversation-private-1');
     expect(wrapper.text()).not.toContain('scene-internal-1');
-    expect(
-      wrapper.get('details.conversation-details').attributes('open'),
-    ).toBeUndefined();
+    // 详情折叠面板（ElCollapse）默认收起：标题可见，统计插槽内容不外泄。
+    const details = wrapper.find('.conversation-details');
+    expect(details.exists()).toBe(true);
+    expect(details.text()).toContain('对话信息');
+    expect(details.text()).not.toContain('次要请求统计');
     await flushPromises();
     wrapper.unmount();
   });

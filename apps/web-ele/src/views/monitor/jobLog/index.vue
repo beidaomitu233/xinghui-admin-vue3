@@ -151,6 +151,7 @@ const [Grid, gridApi] = useVbenVxeGrid<JobFireLog>({
       const values = await gridApi.formApi.getValues();
       gridApi.formApi.setLatestSubmissionValues(values);
       await gridApi.grid.clearSort();
+      // eslint-disable-next-line unicorn/no-array-sort -- VxeGrid.sort 是原生表头排序 API，非数组排序。
       await gridApi.grid.sort({ field: 'fireId', order: 'desc' });
       await gridApi.grid.setCurrentPage(1);
       await gridApi.query(values);

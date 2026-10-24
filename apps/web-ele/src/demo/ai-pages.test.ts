@@ -4,7 +4,17 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { nextTick } from 'vue';
 
 import ElementPlus from 'element-plus';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
+
+import { initSetupVbenForm } from '#/adapter/form';
 
 import ConfigPage from '../views/system/ai-config/index.vue';
 import RequestPage from '../views/system/ai-request/index.vue';
@@ -45,6 +55,10 @@ vi.mock('vue-router', () => ({
 }));
 
 const wrappers: ReturnType<typeof mount>[] = [];
+beforeAll(async () => {
+  // 真实栈挂全部 AI 页面；先注册 required 等字符串表单规则。
+  await initSetupVbenForm();
+});
 beforeEach(async () => {
   permissions.codes = [...DEMO_PERMISSIONS];
   const values = new Map<string, string>();
@@ -122,9 +136,7 @@ describe('real AI pages with read-only local transport', () => {
     openButton('详情');
     await settle();
     // 详情经原生弹层 teleport 挂载，从 body 读取文本。
-    expect(document.body.textContent).toContain(
-      '虚构布局示例，未发送上游请求',
-    );
+    expect(document.body.textContent).toContain('虚构布局示例，未发送上游请求');
     expect(document.body.textContent).toContain('响应正文不可用或无权查看');
     expect(client.post).not.toHaveBeenCalled();
     expect(client.put).not.toHaveBeenCalled();

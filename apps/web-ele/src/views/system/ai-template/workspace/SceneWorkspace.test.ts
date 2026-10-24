@@ -370,9 +370,9 @@ describe('scene workspace actual editing and autosave', () => {
     await click('取消');
     const leaving = navigation.guard?.();
     await flushPromises();
-    expect(
-      dialogPart('[role="dialog"][data-state="open"]').text(),
-    ).toContain('离开前处理未确认内容');
+    expect(dialogPart('[role="dialog"][data-state="open"]').text()).toContain(
+      '离开前处理未确认内容',
+    );
     const unload = new Event('beforeunload', { cancelable: true });
     window.dispatchEvent(unload);
     expect(unload.defaultPrevented).toBe(true);
@@ -621,9 +621,9 @@ describe('scene workspace actual editing and autosave', () => {
     );
     await wrapper.find('[data-phase="conflict"] button').trigger('click');
     await flushPromises();
-    expect(
-      document.querySelector('.conflict-content')?.textContent,
-    ).toBe('其他用户的新内容');
+    expect(document.querySelector('.conflict-content')?.textContent).toBe(
+      '其他用户的新内容',
+    );
     expect(api.saveScene).toHaveBeenCalledTimes(1);
     await button('保留本地并重新保存', document.body).trigger('click');
     await flushPromises();

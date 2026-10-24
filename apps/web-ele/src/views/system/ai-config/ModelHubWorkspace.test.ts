@@ -17,7 +17,6 @@ import {
 
 import { initComponentAdapter } from '#/adapter/component';
 import { initSetupVbenForm } from '#/adapter/form';
-
 import {
   click,
   clickTab,
@@ -387,11 +386,10 @@ describe('model-centered AI configuration from the approved prototype', () => {
     expect(wrapper.text().match(/未提供/g)).toHaveLength(2);
     await click('编辑模型');
     const slugLabel = [...document.querySelectorAll('label')].find((element) =>
-      (element.textContent ?? '').replace(/\s|\*/g, '').includes('调用名称'),
+      (element.textContent ?? '').replaceAll(/\s|\*/g, '').includes('调用名称'),
     );
-    const slugInput = slugLabel?.parentElement?.querySelector<HTMLInputElement>(
-      'input',
-    );
+    const slugInput =
+      slugLabel?.parentElement?.querySelector<HTMLInputElement>('input');
     expect(slugInput?.readOnly).toBe(true);
     expect(document.body.textContent).toContain('创建后保持稳定');
     await click('保存设置');
@@ -505,9 +503,7 @@ describe('model-centered AI configuration from the approved prototype', () => {
     expect(wrapper.get('.overview-models .el-empty').text()).toContain(
       '还没有配置模型',
     );
-    expect(wrapper.find('.overview-models .vxe-pager').exists()).toBe(
-      false,
-    );
+    expect(wrapper.find('.overview-models .vxe-pager').exists()).toBe(false);
   });
   it('keeps unverified keys and unavailable models outside the ready metrics', async () => {
     const unknown = channel();

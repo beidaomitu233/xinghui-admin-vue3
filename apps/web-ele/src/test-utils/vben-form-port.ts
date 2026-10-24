@@ -6,22 +6,28 @@ export function createVbenFormPortMock() {
   const chain: unknown = new Proxy(
     {},
     {
-      get: () => (..._args: unknown[]) => chain,
+      get:
+        () =>
+        (..._args: unknown[]) =>
+          chain,
     },
   );
   const z: unknown = new Proxy(
     {},
     {
-      get: () => (..._args: unknown[]) => chain,
+      get:
+        () =>
+        (..._args: unknown[]) =>
+          chain,
     },
   );
 
   const useVbenForm = (options: {
-    handleSubmit?: (values: Record<string, unknown>) => unknown;
+    [key: string]: unknown;
     handleReset?: () => unknown;
+    handleSubmit?: (values: Record<string, unknown>) => unknown;
     schema?: Array<Record<string, any>>;
     showDefaultActions?: boolean;
-    [key: string]: unknown;
   }) => {
     // 每个表单实例独立状态，避免多个 useVbenForm 调用互相覆盖 schema。
     const state = reactive({
@@ -115,7 +121,7 @@ export function createVbenFormPortMock() {
               },
             },
             [
-              ...state.schemas.map(renderField),
+              ...state.schemas.map((schema) => renderField(schema)),
               // 与原生表单一致：提供提交/重置入口，走调用方的 handleSubmit/handleReset。
               options.handleSubmit
                 ? h(

@@ -101,12 +101,13 @@ const render = (keys = false) =>
     global: { stubs: { ElDrawer: drawer } },
   });
 const click = async (wrapper: ReturnType<typeof render>, text: string) => {
-  const button = wrapper
-    .findAll('button')
-    .find((item) => item.text().includes(text));
-  expect(button).toBeTruthy();
-  if (!button) throw new Error('BUTTON_MISSING');
-  await button.trigger('click');
+  // Element Plus 的页签渲染为 div[role="tab"]，其余操作仍以原生按钮为准。
+  const target =
+    wrapper.findAll('button').find((item) => item.text().includes(text)) ??
+    wrapper.findAll('[role="tab"]').find((item) => item.text().includes(text));
+  expect(target).toBeTruthy();
+  if (!target) throw new Error('BUTTON_MISSING');
+  await target.trigger('click');
   await flushPromises();
 };
 beforeEach(() => {

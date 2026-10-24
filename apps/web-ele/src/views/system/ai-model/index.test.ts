@@ -170,25 +170,35 @@ describe('aI model configuration page', () => {
     if (!create) throw new Error('Create action missing');
     await create.trigger('click');
     await flushPromises();
-    const dialog = document.querySelector<HTMLElement>(
-      '[role="dialog"][data-state="open"]',
-    );
-    if (!dialog) throw new Error('Native model editor missing');
+    const dialog = await vi.waitFor(() => {
+      const target = document.querySelector<HTMLElement>(
+        '[role="dialog"][data-state="open"]',
+      );
+      if (!target) throw new Error('Native model editor missing');
+      return target;
+    });
+    // Vben 表单控件是异步组件：满负载并行时输入框装载更慢，逐个等待真实输入框出现。
     for (const [placeholder, value] of [
       ['如 openai', 'openai'],
       ['如 gpt-4.1-mini', 'created-during-list'],
       ['https://api.example.com/v1', 'https://api.example.com/v1'],
     ]) {
-      const input = dialog.querySelector<HTMLInputElement>(
-        `input[placeholder="${placeholder}"]`,
-      );
-      if (!input) throw new Error(`Input missing: ${placeholder}`);
+      const input = await vi.waitFor(() => {
+        const target = dialog.querySelector<HTMLInputElement>(
+          `input[placeholder="${placeholder}"]`,
+        );
+        if (!target) throw new Error(`Input missing: ${placeholder}`);
+        return target;
+      });
       await new DOMWrapper(input).setValue(value);
     }
-    const save = [...dialog.querySelectorAll('button')].find(
-      (button) => button.textContent?.trim() === '保存',
-    );
-    if (!save) throw new Error('Save action missing');
+    const save = await vi.waitFor(() => {
+      const target = [...dialog.querySelectorAll('button')].find(
+        (button) => button.textContent?.trim() === '保存',
+      );
+      if (!target) throw new Error('Save action missing');
+      return target;
+    });
     const saveButton = new DOMWrapper(save);
     await Promise.all([
       saveButton.trigger('click'),

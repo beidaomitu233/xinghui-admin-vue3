@@ -62,9 +62,6 @@ function bodyElement(selector: string): DOMWrapper<Element> {
   if (!target) throw new Error(`Missing element: ${selector}`);
   return new DOMWrapper(target);
 }
-afterEach(() => {
-  document.body.innerHTML = '';
-});
 beforeEach(() => {
   vi.clearAllMocks();
   access.accessCodes = ['ai:scene:test', 'ai:scene:invoke'];
@@ -85,6 +82,10 @@ beforeEach(() => {
     sceneVersionId: 'version-4',
     status: 'SUCCEEDED',
   });
+});
+
+afterEach(() => {
+  document.body.innerHTML = '';
 });
 describe('explicit scene trial', () => {
   it('resolves dynamic SQL record context from the authorized entry without scanning SQL text', async () => {

@@ -67,9 +67,6 @@ function field(selector: string): DOMWrapper<Element> {
   if (!target) throw new Error(`Missing element: ${selector}`);
   return new DOMWrapper(target);
 }
-afterEach(() => {
-  document.body.innerHTML = '';
-});
 beforeEach(() => {
   vi.clearAllMocks();
   api.tables.mockResolvedValue({
@@ -113,6 +110,10 @@ beforeEach(() => {
       foreignKey: true,
     },
   ]);
+});
+
+afterEach(() => {
+  document.body.innerHTML = '';
 });
 describe('actual database bindings', () => {
   it('clears table filters when switching to an exact row and keeps a valid Unicode alias', async () => {

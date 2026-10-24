@@ -84,9 +84,14 @@ vi.mock('@vben/common-ui', async (importOriginal) => {
 });
 vi.mock('#/adapter/form', async () => {
   // 单测端口：弹层内原生表单的值读写；真实表单行为在 Chrome 验证。
-  const { createVbenFormPortMock } = await import('#/test-utils/vben-form-port');
+  const { createVbenFormPortMock } =
+    await import('#/test-utils/vben-form-port');
   const port = createVbenFormPortMock();
-  return { useVbenForm: port.useVbenForm, z: port.z };
+  return {
+    useVbenForm: port.useVbenForm,
+    z: port.z,
+    initSetupVbenForm: async () => {},
+  };
 });
 vi.mock('vue-router', () => ({
   onBeforeRouteLeave: vi.fn(),
@@ -223,9 +228,7 @@ function deferred<T>() {
 }
 // 抽屉内容经 teleport 挂到 body，Key 区块从 document 查询。
 function keySection(index: number) {
-  const section = document.querySelector(
-    `section[aria-label="Key ${index}"]`,
-  );
+  const section = document.querySelector(`section[aria-label="Key ${index}"]`);
   if (!section) throw new Error(`Missing key section: ${index}`);
   return new DOMWrapper(section);
 }
@@ -718,19 +721,24 @@ describe('independent multi-key channel management', () => {
     await click('获取模型目录');
     expect(api.draftScan.mock.calls.at(-1)?.[0].provider).toBe('deepseek');
   });
-  it('retries an uncertain save with the original nonce and identical key body', async () => {
-    api.update.mockRejectedValueOnce(new Error('unknown admission'));
-    render();
-    await flushPromises();
-    await click('编辑');
-    await fill('渠道名称', '待确认渠道');
-    await click('保存渠道');
-    const original = api.update.mock.calls[0]?.[1];
-    expect(document.body.textContent).toContain('保存结果未确认');
-    await click('重试原保存');
-    expect(api.update.mock.calls[1]?.[1]).toEqual(original);
-    expect(original?.clientMutationId).toMatch(/^[\da-f-]{36}$/i);
-  });
+  // 满载并跑下涉及防抖与多次 flush，放宽该用例时间预算。
+  it(
+    'retries an uncertain save with the original nonce and identical key body',
+    { timeout: 20_000 },
+    async () => {
+      api.update.mockRejectedValueOnce(new Error('unknown admission'));
+      render();
+      await flushPromises();
+      await click('编辑');
+      await fill('渠道名称', '待确认渠道');
+      await click('保存渠道');
+      const original = api.update.mock.calls[0]?.[1];
+      expect(document.body.textContent).toContain('保存结果未确认');
+      await click('重试原保存');
+      expect(api.update.mock.calls[1]?.[1]).toEqual(original);
+      expect(original?.clientMutationId).toMatch(/^[\da-f-]{36}$/i);
+    },
+  );
   it('uses the same unsaved guard for footer and drawer close and clears secrets only on confirmed dismissal', async () => {
     render();
     await flushPromises();

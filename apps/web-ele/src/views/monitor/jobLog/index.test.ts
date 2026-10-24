@@ -100,7 +100,12 @@ beforeEach(() => {
 describe('调度日志原生Grid查询合同', () => {
   it('sends whitelisted sort and ledger filters to the server', async () => {
     mount(JobLogPage);
-    vi.mocked(getJobLogList).mockResolvedValue({ records: [], total: 41, pageNum: 1, pageSize: 10 });
+    vi.mocked(getJobLogList).mockResolvedValue({
+      records: [],
+      total: 41,
+      pageNum: 1,
+      pageSize: 10,
+    });
     await query(3, 'startedAt', 'asc', {
       jobId: ' 12 ',
       jobName: '清理',
@@ -121,7 +126,12 @@ describe('调度日志原生Grid查询合同', () => {
 
   it('keeps the fire ledger default order when the header sort is cleared', async () => {
     mount(JobLogPage);
-    vi.mocked(getJobLogList).mockResolvedValue({ records: [], total: 0, pageNum: 1, pageSize: 10 });
+    vi.mocked(getJobLogList).mockResolvedValue({
+      records: [],
+      total: 0,
+      pageNum: 1,
+      pageSize: 10,
+    });
     await query(1, 'status', null);
     expect(getJobLogList).toHaveBeenCalledWith(
       expect.objectContaining({ orderBy: 'fireId', order: 'desc' }),
@@ -130,7 +140,12 @@ describe('调度日志原生Grid查询合同', () => {
 
   it('does not forward an unsortable column to the server', async () => {
     mount(JobLogPage);
-    vi.mocked(getJobLogList).mockResolvedValue({ records: [], total: 0, pageNum: 1, pageSize: 10 });
+    vi.mocked(getJobLogList).mockResolvedValue({
+      records: [],
+      total: 0,
+      pageNum: 1,
+      pageSize: 10,
+    });
     await query(1, 'traceId', 'asc');
     expect(getJobLogList).toHaveBeenCalledWith(
       expect.objectContaining({ orderBy: 'fireId', order: 'desc' }),

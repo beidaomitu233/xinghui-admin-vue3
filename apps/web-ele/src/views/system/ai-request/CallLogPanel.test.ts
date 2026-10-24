@@ -118,17 +118,30 @@ async function setScope(
   wrapper: ReturnType<typeof mount>,
   scope: 'AUDIT' | 'OWN',
 ) {
-  const select = wrapper
-    .findAllComponents(ElSelectV2)
-    .find((control) =>
-      (control.props().options as { value?: unknown }[]).some(
-        (option) => option.value === 'AUDIT',
-      ),
-    );
-  if (!select) throw new Error('Missing native scope select');
+  // Vben 表单控件是异步组件：等待原生 select 真正装载后再交互。
+  const select = await vi.waitFor(() => {
+    const target = wrapper.findAllComponents(ElSelectV2).find((control) => {
+      const options = control.props().options as
+        | undefined
+        | { value?: unknown }[];
+      return (
+        Array.isArray(options) &&
+        options.some((option) => option.value === 'AUDIT')
+      );
+    });
+    if (!target) throw new Error('Native scope select not mounted yet');
+    return target;
+  });
   select.vm.$emit('update:modelValue', scope);
   select.vm.$emit('change', scope);
   await flushPromises();
+}
+async function awaitInput(wrapper: ReturnType<typeof mount>, label: string) {
+  return vi.waitFor(() => {
+    const target = wrapper.find(`input[aria-label="${label}"]`);
+    if (!target.exists()) throw new Error(`Input not mounted yet: ${label}`);
+    return target;
+  });
 }
 beforeEach(() => {
   vi.clearAllMocks();
@@ -299,7 +312,8 @@ describe('call log isolation and exact rendering', () => {
     const wrapper = panel();
     await flushPromises();
     await setScope(wrapper, 'AUDIT');
-    await wrapper.get('[aria-label="租户"]').setValue('other');
+    const tenant = await awaitInput(wrapper, '租户');
+    await tenant.setValue('other');
     await click(wrapper, '查询');
     await click(wrapper, '详情');
     expect(document.body.textContent).toContain('private response');
