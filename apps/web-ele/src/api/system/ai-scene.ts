@@ -47,7 +47,7 @@ export interface SceneEntry {
   availability: SceneAvailability;
   currentVersionId: null | string;
   formId: null | string;
-  kind: 'GENERAL' | 'RECORD_SUMMARY';
+  kind: 'AGENT' | 'GENERAL' | 'RECORD_SUMMARY';
   name: string;
   revision: number;
   sceneKey: string;

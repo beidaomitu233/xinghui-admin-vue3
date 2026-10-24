@@ -41,6 +41,33 @@ beforeAll(async () => {
 });
 
 describe('one editable prompt document', () => {
+  it('edits an Agent system prompt without a data picker or user input variable controls', async () => {
+    const wrapper = mount(PromptEditor, {
+      props: {
+        value: {
+          ...value,
+          promptText: '按当前业务权限自主规划并执行任务。',
+          outputRequirement: '',
+        },
+        agent: true,
+        models: [],
+        fields: {},
+        readonly: false,
+      },
+      slots: { data: '<div data-testid="data-picker">数据引用</div>' },
+    });
+    await flushPromises();
+    expect(wrapper.find('[data-testid="data-picker"]').exists()).toBe(false);
+    expect(wrapper.text()).toContain('Agent 系统提示词');
+    expect(wrapper.get('textarea').attributes('placeholder')).toContain(
+      'AI 工作台',
+    );
+    await wrapper.get('textarea').setValue('管理业务任务，并汇报实际结果。');
+    const changed = wrapper.emitted('change')?.at(-1)?.[0] as SceneDefinition;
+    expect(changed.promptText).toBe('管理业务任务，并汇报实际结果。');
+    expect(changed.modelPolicy).toEqual(value.modelPolicy);
+    wrapper.unmount();
+  });
   it('selects a stable business model identity for a new scene without creating a provider/key route', async () => {
     const model: HubModel = {
       modelId: 'business-1',

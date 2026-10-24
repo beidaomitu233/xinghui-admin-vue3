@@ -64,7 +64,11 @@ const invalidTotal = computed(() => !Number.isSafeInteger(Number(props.total)));
         <span>
           {{
             scene.purpose ||
-            (scene.kind === 'RECORD_SUMMARY' ? '记录摘要' : '通用场景')
+            (scene.kind === 'AGENT'
+              ? 'Agent 系统提示词'
+              : scene.kind === 'RECORD_SUMMARY'
+                ? '记录摘要'
+                : '通用场景')
           }}
         </span>
       </ElButton>

@@ -200,6 +200,23 @@ afterEach(() => {
 });
 
 describe('scene workspace actual editing and autosave', () => {
+  it('manages Agent prompts in the existing workspace while leaving execution to the AI workbench', async () => {
+    api.getScene.mockImplementation(async (key: string) => {
+      const saved = detail(key);
+      saved.scene.kind = 'AGENT';
+      if (!saved.definition) throw new Error('Missing test prompt');
+      saved.definition.promptText = '自主完成当前账号可访问的业务任务。';
+      return saved;
+    });
+    const wrapper = await open();
+    expect(wrapper.getComponent(PromptEditor).props('agent')).toBe(true);
+    expect(wrapper.text()).toContain('Agent 系统提示词');
+    expect(wrapper.findComponent(DataReferenceTable).exists()).toBe(false);
+    expect(
+      wrapper.findAll('button').some((entry) => entry.text() === '试运行'),
+    ).toBe(false);
+    expect(api.saveScene).not.toHaveBeenCalled();
+  });
   it.each([false, true])(
     'refreshes model metadata on KeepAlive return while preserving the correct body and CAS base (dirty=%s)',
     async (dirty) => {

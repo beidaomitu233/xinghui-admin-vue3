@@ -19,6 +19,7 @@ import { promptDocument, singlePromptDocument } from './prompt-document';
 import PromptTextEditor from './PromptTextEditor.vue';
 
 const props = defineProps<{
+  agent?: boolean;
   businessModelOverview?: null | string;
   businessModels?: HubModel[];
   canConfigureRouting?: boolean;
@@ -225,7 +226,7 @@ watch(
       type="error"
       :closable="false"
     />
-    <section class="prompt-data" aria-label="数据引用说明">
+    <section v-if="!agent" class="prompt-data" aria-label="数据引用说明">
       <slot name="data"></slot>
       <p
         v-if="fields.dataObjects || fields.dataBindings"
@@ -236,12 +237,17 @@ watch(
       </p>
     </section>
     <section class="prompt-document">
-      <h2>提示词</h2>
+      <h2>{{ agent ? 'Agent 系统提示词' : '提示词' }}</h2>
       <PromptTextEditor
         ref="editor"
         :model-value="document"
         :readonly="readonly"
-        :variables="variables ?? []"
+        :variables="agent ? [] : (variables ?? [])"
+        :placeholder="
+          agent
+            ? '定义助手职责、业务背景和执行偏好。具体任务在 AI 工作台输入。'
+            : undefined
+        "
         @update:model-value="updatePrompt"
       />
       <p

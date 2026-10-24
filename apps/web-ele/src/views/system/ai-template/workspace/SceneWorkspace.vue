@@ -74,7 +74,7 @@ const selected = ref<SceneSummary>();
 const createOpen = ref(false);
 const newName = ref('');
 const newPurpose = ref('');
-const newKind = ref<'GENERAL' | 'RECORD_SUMMARY'>('GENERAL');
+const newKind = ref<SceneSummary['kind']>('GENERAL');
 const newFormId = ref('');
 const creating = ref(false);
 const pendingCreate = ref<SceneCreate>();
@@ -609,7 +609,11 @@ const [CreateForm, createFormApi] = useVbenForm({
   handleValuesChange: (values) => {
     newName.value = values.name ?? '';
     newPurpose.value = values.purpose ?? '';
-    if (values.kind === 'GENERAL' || values.kind === 'RECORD_SUMMARY')
+    if (
+      values.kind === 'GENERAL' ||
+      values.kind === 'RECORD_SUMMARY' ||
+      values.kind === 'AGENT'
+    )
       newKind.value = values.kind;
   },
   schema: [
@@ -622,6 +626,7 @@ const [CreateForm, createFormApi] = useVbenForm({
         'aria-label': '新建场景类型',
         options: [
           { label: '通用场景', value: 'GENERAL' },
+          { label: 'Agent 系统提示词', value: 'AGENT' },
           ...(access.accessCodes.includes('lowcode:record:query')
             ? [{ label: '记录摘要', value: 'RECORD_SUMMARY' }]
             : []),
@@ -707,7 +712,10 @@ watch(dialogOpen, (open) => workspaceModalApi.setState({ isOpen: open }), {
           </div>
           <div class="scene-actions">
             <SceneTrialPanel
-              v-if="legacy?.compatibility !== 'READ_ONLY'"
+              v-if="
+                legacy?.compatibility !== 'READ_ONLY' &&
+                selected.kind !== 'AGENT'
+              "
               :scene-key="view.sceneKey"
               :definition="view.confirmed"
               :revision="view.revision"
@@ -776,6 +784,7 @@ watch(dialogOpen, (open) => workspaceModalApi.setState({ isOpen: open }), {
           v-if="legacy?.compatibility !== 'READ_ONLY'"
           ref="promptEditor"
           :value="view.value"
+          :agent="selected.kind === 'AGENT'"
           :readonly="!view.editable"
           :models="models"
           :business-models="businessModels"
@@ -788,7 +797,7 @@ watch(dialogOpen, (open) => workspaceModalApi.setState({ isOpen: open }), {
             access.accessCodes.includes('ai:config:query')
           "
           :fields="view.fields"
-          :variables="allVariables"
+          :variables="selected.kind === 'AGENT' ? [] : allVariables"
           @change="autosave.edit(view.sceneKey, $event)"
           @configure="configureRouting"
           @refresh-models="refreshMetadata"
@@ -815,7 +824,7 @@ watch(dialogOpen, (open) => workspaceModalApi.setState({ isOpen: open }), {
         </PromptEditor>
         <SqlReferenceAssistant
           ref="queryAssistant"
-          v-if="view.editable"
+          v-if="view.editable && selected.kind !== 'AGENT'"
           v-model:open="assistantOpen"
           :binding="editingQuery"
           :readonly="!view.editable"

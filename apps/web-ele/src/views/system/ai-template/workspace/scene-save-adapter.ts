@@ -100,6 +100,22 @@ export function sceneSaveProblem(error: unknown) {
   if (status === 401 || status === 403)
     return new SaveProblem('denied', '当前无编辑权限，本地输入已保留。');
   if (status === 400 || status === 422) {
+    const code = object(response.data).message;
+    const agentProblems: Record<string, string> = {
+      AGENT_INPUT_COMES_FROM_CHAT:
+        '具体任务在 AI 工作台输入，系统提示词无需插入“用户要求”变量。',
+      AGENT_USES_BUSINESS_TOOLS:
+        'Agent 会按当前账号权限调用业务工具，系统提示词无需预选数据记录。',
+      AGENT_REQUIRES_TEXT_MODEL: 'Agent 系统提示词需要使用对话模型。',
+    };
+    const agentMessage =
+      typeof code === 'string' && Object.hasOwn(agentProblems, code)
+        ? agentProblems[code]
+        : undefined;
+    if (agentMessage)
+      return new SaveProblem('validation', agentMessage, {
+        promptText: agentMessage,
+      });
     const data = object(object(response.data).data);
     const fields: Record<string, string> = {};
     if (Array.isArray(data.fields))
