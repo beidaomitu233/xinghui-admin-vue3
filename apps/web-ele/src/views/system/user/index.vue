@@ -124,7 +124,7 @@ const [Grid, gridApi] = useVbenVxeGrid<UserInfo>({
     actionWrapperClass: 'border-t mt-1 pt-3',
     resetButtonOptions: { plain: true },
     commonConfig: { labelWidth: 60, labelClass: '!justify-start' },
-    wrapperClass: 'grid-cols-1 md:grid-cols-2 xl:grid-cols-3',
+    wrapperClass: 'grid-cols-1 gap-x-6 md:grid-cols-2 xl:grid-cols-3',
     submitOnEnter: true,
     schema: [
       {

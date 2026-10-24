@@ -133,7 +133,9 @@
   --vxe-ui-table-header-background-color: hsl(var(--card));
 }
 
-.vben-list-surface .vxe-cell {
+.vben-list-surface .vxe-header--column > .vxe-cell,
+.vben-list-surface .vxe-body--column > .vxe-cell,
+.vben-list-surface .vxe-footer--column > .vxe-cell {
   padding-right: 20px !important;
   padding-left: 20px !important;
 }
