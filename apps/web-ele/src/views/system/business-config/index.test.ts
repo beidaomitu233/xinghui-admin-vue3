@@ -5,7 +5,7 @@ import type {
 
 import { flushPromises, mount } from '@vue/test-utils';
 
-import ElementPlus, { ElCollapseItem } from 'element-plus';
+import ElementPlus from 'element-plus';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { initComponentAdapter } from '#/adapter/component';
@@ -98,7 +98,7 @@ describe('business configuration sections', () => {
     access.codes = ['system:businessConfig:query'];
     const wrapper = page();
     await flushPromises();
-    expect(wrapper.findAllComponents(ElCollapseItem)).toHaveLength(5);
+    expect(wrapper.findAll('[id^="business-"]')).toHaveLength(5);
     expect(
       wrapper
         .findAll('input:not([type=hidden])')
@@ -106,7 +106,7 @@ describe('business configuration sections', () => {
     ).toBe(true);
     const reload = wrapper
       .findAll('button')
-      .find((button) => button.text() === '重新读取');
+      .find((button) => button.text() === '重新加载');
     if (!reload) throw new Error('Reload button missing');
     expect(reload.element.closest('fieldset')).toBeNull();
     await reload.trigger('click');
@@ -127,7 +127,7 @@ describe('business configuration sections', () => {
     await flushPromises();
     const save = oss
       .findAll('button')
-      .find((button) => button.text() === '保存对象存储');
+      .find((button) => button.text() === '保存配置');
     if (!save) throw new Error('Save button missing');
     await save.trigger('click');
     await flushPromises();

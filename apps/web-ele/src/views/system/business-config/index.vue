@@ -4,7 +4,7 @@ import type {
   BusinessSection,
 } from '#/api/system/business-config';
 
-import { computed, nextTick, onMounted, reactive, ref } from 'vue';
+import { computed, nextTick, onMounted, reactive } from 'vue';
 import { useRoute } from 'vue-router';
 
 import { Loading, Page } from '@vben/common-ui';
@@ -222,7 +222,6 @@ const sections = reactive<SectionForm[]>([
     clear: {},
   },
 ]);
-const expandedSections = ref(sections.map((section) => section.key));
 function sectionValues(section: SectionForm) {
   return {
     enabled: section.enabled,
@@ -244,9 +243,10 @@ const forms = Object.fromEntries(
   sections.map((section) => {
     const [Form, api] = useVbenForm({
       showDefaultActions: false,
-      layout: 'vertical',
-      wrapperClass: 'grid-cols-1 md:grid-cols-2',
+      layout: 'horizontal',
+      wrapperClass: 'grid-cols-1',
       commonConfig: {
+        labelWidth: 144,
         componentProps: () => ({
           class: 'w-full',
           disabled: !canEdit.value || section.saving || !section.value,
@@ -466,11 +466,11 @@ async function save(section: SectionForm) {
 }
 function status(section: SectionForm) {
   const state = section.value?.effectiveState;
-  if (state === 'DEPLOYMENT_ACTIVE') return '当前使用部署配置，保存后即时切换';
-  if (state === 'ADAPTED_SEND_UNVERIFIED')
-    return '配置已生效，真实发送尚未验证';
-  if (state === 'AUTHORIZATION_READY_IDENTITY_UNVERIFIED')
-    return '授权配置已生效，微信身份扫码验证暂缓';
+  if (section.loading) return '读取中';
+  if (section.failed) return '读取失败';
+  if (state === 'DEPLOYMENT_ACTIVE') return '部署配置';
+  if (state === 'ADAPTED_SEND_UNVERIFIED') return '已配置';
+  if (state === 'AUTHORIZATION_READY_IDENTITY_UNVERIFIED') return '已配置';
   if (state === 'ACTIVE') return '已生效';
   if (state === 'SECRET_UNAVAILABLE') return '密钥不可用';
   return '已停用';
@@ -486,71 +486,71 @@ onMounted(async () => {
 });
 </script>
 <template>
-  <Page
-    title="系统业务配置"
-    description="分别保存微信、短信、邮件和对象存储设置。"
-  >
-    <el-alert
-      class="mb-4"
-      title="同一服务商密钥留空保持原值；切换服务商、邮件主机/账号或微信 AppID 需重新填写密钥。清除需单独勾选。"
-      type="info"
-      show-icon
-      closable
-    />
+  <Page title="系统业务配置">
     <el-empty v-if="!canRead" description="没有业务配置查询权限" />
-    <el-collapse v-else v-model="expandedSections">
-      <el-collapse-item
-        v-for="section in sections"
-        :id="`business-${section.key}`"
-        :key="section.key"
-        :name="section.key"
-        :title="section.title"
-      >
-        <template #title>
-          <span class="scroll-mt-28">
-            {{ section.title }}
-          </span>
-          <el-tag class="ml-3" type="info">{{ status(section) }}</el-tag>
-        </template>
-        <el-alert
-          v-if="section.failed"
-          class="mb-4"
-          :title="`读取${section.title}失败，请重试。`"
-          type="error"
-        />
-        <el-alert
-          v-if="
-            ['sms', 'mail'].includes(section.key) && providerChanged(section)
-          "
-          class="mb-4"
-          title="服务商、邮件主机或账号已变更，不会沿用旧密钥，请填写新凭据后再启用。"
-          type="info"
-          :closable="false"
-        />
-        <Loading :spinning="section.loading" :text="`读取${section.title}…`">
-          <component :is="forms[section.key]!.Form" />
-        </Loading>
-        <div class="flex flex-wrap items-center gap-3">
-          <el-button
-            v-if="canEdit"
-            type="primary"
-            :loading="section.saving"
-            :disabled="section.loading || !section.value"
-            @click="save(section)"
+    <div v-else>
+      <div class="min-w-0 space-y-5">
+        <el-card
+          v-for="section in sections"
+          :id="`business-${section.key}`"
+          :key="section.key"
+          shadow="never"
+          class="scroll-mt-24"
+        >
+          <template #header>
+            <div class="flex items-center justify-between gap-3">
+              <h2 class="text-base font-semibold">{{ section.title }}</h2>
+              <el-tag
+                size="small"
+                :type="section.value?.enabled ? 'success' : 'info'"
+              >
+                {{ status(section) }}
+              </el-tag>
+            </div>
+          </template>
+          <el-alert
+            v-if="section.failed"
+            class="mb-4"
+            :title="`读取${section.title}失败，请重试。`"
+            type="error"
+          />
+          <el-alert
+            v-if="
+              ['sms', 'mail'].includes(section.key) && providerChanged(section)
+            "
+            class="mb-4"
+            title="接入信息已变更，请填写新密钥。"
+            type="info"
+          />
+          <Loading :spinning="section.loading" :text="`读取${section.title}…`">
+            <div class="max-w-3xl">
+              <component :is="forms[section.key]!.Form" />
+            </div>
+          </Loading>
+          <div
+            class="mt-2 flex flex-wrap items-center gap-3 border-t pt-4 md:pl-36"
           >
-            保存{{ section.title }}
-          </el-button>
-          <el-button
-            :disabled="section.loading || section.saving"
-            @click="reload(section)"
-          >
-            重新读取
-          </el-button>
-          <span v-if="section.value" class="text-xs text-muted-foreground">
-            版本 {{ section.value.revision }}
-          </span>
-        </div>
-      </el-collapse-item>
-    </el-collapse>
+            <el-button
+              v-if="canEdit"
+              type="primary"
+              :loading="section.saving"
+              :disabled="section.loading || !section.value"
+              @click="save(section)"
+            >
+              保存配置
+            </el-button>
+            <el-button
+              :disabled="section.loading || section.saving"
+              @click="reload(section)"
+            >
+              重新加载
+            </el-button>
+            <span v-if="section.value" class="text-xs text-muted-foreground">
+              版本 {{ section.value.revision }}
+            </span>
+          </div>
+        </el-card>
+      </div>
+    </div>
   </Page>
 </template>

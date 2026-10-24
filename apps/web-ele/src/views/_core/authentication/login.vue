@@ -119,46 +119,65 @@ onMounted(() => {
 
 <template>
   <component :is="DemoLogin" v-if="DemoLogin" />
-  <AuthenticationLogin
+  <div
     v-else
-    :form-schema="formSchema"
-    :loading="authStore.loginLoading"
-    :submit-disabled="captchaState.status !== 'ready'"
-    :show-code-login="false"
-    :show-qrcode-login="false"
-    :show-register="false"
-    :show-remember-me="true"
-    :show-forget-password="false"
-    :show-third-party-login="false"
-    @submit="submit"
+    class="grid items-center gap-8 md:grid-cols-[minmax(0,1fr)_300px] md:gap-12 md:px-5"
   >
-    <template #third-party-login>
-      <WechatEntry />
-      <p v-if="captchaState.status === 'loading'" class="mt-3" role="status">
-        正在获取验证码配置…
-      </p>
-      <div
-        v-else-if="captchaState.status === 'error'"
-        class="mt-3"
-        role="alert"
-      >
-        <span>验证码加载失败，请重试。</span>
-        <button class="ml-2 underline" type="button" @click="refreshCaptcha">
-          重试
+    <AuthenticationLogin
+      title="账号密码登录"
+      sub-title="欢迎使用 Xinghui Admin"
+      :form-schema="formSchema"
+      :loading="authStore.loginLoading"
+      :submit-disabled="captchaState.status !== 'ready'"
+      :show-code-login="false"
+      :show-qrcode-login="false"
+      :show-register="false"
+      :show-remember-me="true"
+      :show-forget-password="false"
+      :show-third-party-login="false"
+      @submit="submit"
+    >
+      <template #to-register>
+        <div class="mt-5 text-center">
+          <RouterLink
+            class="text-sm text-primary"
+            :to="{
+              path: '/auth/code-login',
+              query: router.currentRoute.value.query,
+            }"
+          >
+            短信验证码登录
+          </RouterLink>
+        </div>
+      </template>
+      <template #third-party-login>
+        <p v-if="captchaState.status === 'loading'" class="mt-3" role="status">
+          正在获取验证码配置…
+        </p>
+        <div
+          v-else-if="captchaState.status === 'error'"
+          class="mt-3"
+          role="alert"
+        >
+          <span>验证码加载失败，请重试。</span>
+          <button class="ml-2 underline" type="button" @click="refreshCaptcha">
+            重试
+          </button>
+        </div>
+        <button
+          v-else-if="captchaEnabled"
+          class="mt-3 flex items-center gap-2"
+          type="button"
+          @click="refreshCaptcha"
+        >
+          <img
+            :src="`data:image/png;base64,${captchaImage}`"
+            alt="验证码，点击刷新"
+          />
+          <span>换一张</span>
         </button>
-      </div>
-      <button
-        v-else-if="captchaEnabled"
-        class="mt-3 flex items-center gap-2"
-        type="button"
-        @click="refreshCaptcha"
-      >
-        <img
-          :src="`data:image/png;base64,${captchaImage}`"
-          alt="验证码，点击刷新"
-        />
-        <span>换一张</span>
-      </button>
-    </template>
-  </AuthenticationLogin>
+      </template>
+    </AuthenticationLogin>
+    <WechatEntry class="md:border-l md:pl-8" />
+  </div>
 </template>

@@ -4,6 +4,7 @@ import type { ToolbarType } from './types';
 import { computed } from 'vue';
 
 import { preferences, usePreferences } from '@vben/preferences';
+import { cn } from '@vben/utils';
 
 import { Copyright } from '../basic/copyright';
 import AuthenticationFormView from './form.vue';
@@ -21,10 +22,16 @@ interface Props {
   copyright?: boolean;
   toolbarList?: ToolbarType[];
   clickLogo?: () => void;
+  layout?: 'center' | 'left' | 'right';
+  formClass?: string;
+  contentClass?: string;
 }
 
 const props = withDefaults(defineProps<Props>(), {
   appName: '',
+  layout: undefined,
+  formClass: '',
+  contentClass: '',
   copyright: true,
   logo: '',
   logoDark: '',
@@ -36,8 +43,21 @@ const props = withDefaults(defineProps<Props>(), {
   clickLogo: () => {},
 });
 
-const { authPanelCenter, authPanelLeft, authPanelRight, isDark } =
-  usePreferences();
+const {
+  authPanelCenter: defaultCenter,
+  authPanelLeft: defaultLeft,
+  authPanelRight: defaultRight,
+  isDark,
+} = usePreferences();
+const authPanelCenter = computed(() =>
+  props.layout ? props.layout === 'center' : defaultCenter.value,
+);
+const authPanelLeft = computed(() =>
+  props.layout ? props.layout === 'left' : defaultLeft.value,
+);
+const authPanelRight = computed(() =>
+  props.layout ? props.layout === 'right' : defaultRight.value,
+);
 
 /**
  * @zh_CN 根据主题选择合适的 logo 图标
@@ -65,6 +85,7 @@ const logoSrc = computed(() => {
     <!-- 左侧认证面板 -->
     <AuthenticationFormView
       v-if="authPanelLeft"
+      :content-class="contentClass"
       class="min-h-full w-2/5 flex-1"
       data-side="left"
     >
@@ -139,7 +160,13 @@ const logoSrc = computed(() => {
     <div v-if="authPanelCenter" class="flex-center relative w-full">
       <div class="login-background absolute left-0 top-0 size-full"></div>
       <AuthenticationFormView
-        class="md:bg-background shadow-primary/5 shadow-float w-full rounded-3xl pb-20 md:w-2/3 lg:w-1/2 xl:w-[36%]"
+        :class="
+          cn(
+            'md:bg-background shadow-primary/5 shadow-float w-full rounded-3xl pb-20 md:w-2/3 lg:w-1/2 xl:w-[36%]',
+            formClass,
+          )
+        "
+        :content-class="contentClass"
         data-side="bottom"
       >
         <template v-if="copyright" #copyright>
@@ -156,6 +183,7 @@ const logoSrc = computed(() => {
     <!-- 右侧认证面板 -->
     <AuthenticationFormView
       v-if="authPanelRight"
+      :content-class="contentClass"
       class="min-h-full w-2/5 flex-1"
       data-side="right"
     >

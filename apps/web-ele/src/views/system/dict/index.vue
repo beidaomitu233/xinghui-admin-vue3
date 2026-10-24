@@ -37,30 +37,23 @@ const queryTypes: () => Promise<{ items: DictType[]; total: number }> =
   );
 const [TypesGrid, typesApi] = useVbenVxeGrid<DictType>({
   tableTitle: '字典类型',
+  gridEvents: { cellClick: ({ row }: { row: DictType }) => selectType(row) },
   gridOptions: {
     height: 'auto',
     minHeight: 360,
-    rowConfig: { keyField: 'id' },
+    showHeader: false,
+    rowConfig: { keyField: 'id', isCurrent: true, isHover: true },
+    cellConfig: { height: 76 },
     pagerConfig: { enabled: false },
     columns: [
       {
         field: 'name',
-        title: '名称',
-        minWidth: 150,
-        sortable: true,
+        title: '字典类型',
+        minWidth: 260,
         slots: { default: 'name' },
       },
-      { field: 'code', title: '编码', minWidth: 150, sortable: true },
-      {
-        field: 'enabled',
-        title: '状态',
-        width: 90,
-        sortable: true,
-        slots: { default: 'enabled' },
-      },
-      { title: '操作', width: 85, slots: { default: 'actions' } },
     ],
-    toolbarConfig: { refresh: true, custom: true },
+    toolbarConfig: { refresh: false, custom: false },
     sortConfig: {
       remote: false,
       multiple: false,
@@ -226,17 +219,9 @@ watch([() => access.accessToken, canQuery], async () => {
 <template>
   <Page
     title="字典管理"
-    description="维护稳定编码和显示名称；停用后历史记录仍可显示原名称"
     auto-content-height
     content-class="flex min-h-0 flex-col"
   >
-    <el-alert
-      title="类型编码和条目值创建后不可修改"
-      type="info"
-      show-icon
-      :closable="false"
-      class="mb-4"
-    />
     <el-alert
       v-if="typeError"
       :title="typeError"
@@ -255,7 +240,9 @@ watch([() => access.accessToken, canQuery], async () => {
     >
       <el-button link @click="loadItems">重试</el-button>
     </el-alert>
-    <div class="grid min-h-0 min-w-0 flex-1 grid-cols-1 gap-4 xl:grid-cols-2">
+    <div
+      class="grid min-h-0 min-w-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-[320px_minmax(0,1fr)]"
+    >
       <TypesGrid class="min-h-[360px] min-w-0">
         <template #toolbar-actions>
           <el-button
@@ -267,30 +254,34 @@ watch([() => access.accessToken, canQuery], async () => {
           </el-button>
         </template>
         <template #name="{ row }">
-          <el-button
-            link
-            :type="
-              String(selectedId) === String(row.id) ? 'primary' : undefined
-            "
-            @click="selectType(row)"
-          >
-            {{ row.name }}
-          </el-button>
-        </template>
-        <template #enabled="{ row }">
-          <el-tag :type="row.enabled ? 'success' : 'info'">
-            {{ row.enabled ? '启用' : '停用' }}
-          </el-tag>
-        </template>
-        <template #actions="{ row }">
-          <el-button
-            v-if="can('system:dict:type:edit')"
-            link
-            type="primary"
-            @click="openType(row)"
-          >
-            编辑
-          </el-button>
+          <div class="flex items-center justify-between gap-2 px-2 text-left">
+            <div class="min-w-0">
+              <div
+                class="truncate font-medium"
+                :class="{
+                  'text-primary': String(selectedId) === String(row.id),
+                }"
+              >
+                {{ row.name }}
+              </div>
+              <div class="mt-1 truncate text-xs text-muted-foreground">
+                {{ row.code }}
+              </div>
+            </div>
+            <div class="flex shrink-0 items-center gap-2">
+              <el-tag :type="row.enabled ? 'success' : 'info'" size="small">
+                {{ row.enabled ? '启用' : '停用' }}
+              </el-tag>
+              <el-button
+                v-if="can('system:dict:type:edit')"
+                link
+                type="primary"
+                @click.stop="openType(row)"
+              >
+                编辑
+              </el-button>
+            </div>
+          </div>
         </template>
         <template #empty>
           <el-empty
