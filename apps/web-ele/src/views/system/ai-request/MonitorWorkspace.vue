@@ -4,11 +4,13 @@ import { ref } from 'vue';
 import { ElTabPane, ElTabs } from 'element-plus';
 
 import CallLogPanel from './CallLogPanel.vue';
+import AgentConversationHistory from './conversations/AgentConversationHistory.vue';
 import ConversationWorkspace from './conversations/ConversationWorkspace.vue';
 
 defineProps<{ initialKeySettings?: boolean }>();
 const tab = ref('conversations');
 const logsVisited = ref(false);
+const agentVisited = ref(false);
 </script>
 <template>
   <section class="monitor-workspace">
@@ -18,10 +20,12 @@ const logsVisited = ref(false);
       @tab-change="
         (value) => {
           if (value === 'logs') logsVisited = true;
+          if (value === 'agent') agentVisited = true;
         }
       "
     >
       <ElTabPane label="我的对话" name="conversations" />
+      <ElTabPane label="工作台对话" name="agent" />
       <ElTabPane label="请求日志" name="logs" />
     </ElTabs>
     <div
@@ -32,6 +36,9 @@ const logsVisited = ref(false);
     </div>
     <div v-if="logsVisited" v-show="tab === 'logs'" class="monitor-pane">
       <CallLogPanel :active="tab === 'logs'" />
+    </div>
+    <div v-if="agentVisited" v-show="tab === 'agent'" class="monitor-pane">
+      <AgentConversationHistory :active="tab === 'agent'" />
     </div>
   </section>
 </template>

@@ -79,6 +79,7 @@ import ModelHubLayout from './ModelHubLayout.vue';
 import ModelHubModel from './ModelHubModel.vue';
 import ModelHubOverview from './ModelHubOverview.vue';
 import ModelHubSupplier from './ModelHubSupplier.vue';
+import SupplierModelSelect from './SupplierModelSelect.vue';
 
 const emit = defineEmits<{ routing: [] }>();
 const access = useAccessStore();
@@ -115,7 +116,11 @@ const routeDraft = reactive({
   upstreamModel: '',
   enabled: true,
 });
-const pendingSave = ref<{ body: HubModelChange; modelId?: string }>();
+const pendingSave = ref<{
+  body: HubModelChange;
+  modelId?: string;
+  preserveView?: boolean;
+}>();
 const pendingToggle = ref<{
   body: {
     clientMutationId: string;
@@ -163,12 +168,12 @@ const selectedChannel = computed(() =>
     (channel) => channel.configId === selectedChannelId.value,
   ),
 );
-const boundModelCount = computed(() => {
+const boundModels = computed(() => {
   const channelId = selectedChannel.value?.configId;
-  if (!channelId) return 0;
+  if (!channelId) return [];
   return models.value.filter((model) =>
     model.routes.some((route) => route.channelId === channelId),
-  ).length;
+  );
 });
 const filteredModels = computed(() =>
   models.value.filter((model) =>
@@ -476,7 +481,11 @@ async function closeModel() {
   modelEditorOpen.value = false;
   return true;
 }
-async function saveModel(body?: HubModelChange, modelId?: string) {
+async function saveModel(
+  body?: HubModelChange,
+  modelId?: string,
+  preserveView = false,
+) {
   const targetId = pendingSave.value?.modelId ?? modelId;
   if (
     saving.value ||
@@ -486,7 +495,7 @@ async function saveModel(body?: HubModelChange, modelId?: string) {
     return false;
   if (!pendingSave.value) {
     if (!body) return false;
-    pendingSave.value = { body, modelId };
+    pendingSave.value = { body, modelId, preserveView };
   }
   const attempt = pendingSave.value;
   const actor = identity.value;
@@ -499,8 +508,10 @@ async function saveModel(body?: HubModelChange, modelId?: string) {
       : await createHubModel(attempt.body);
     if (!alive || actor !== identity.value) return false;
     replaceModel(value);
-    selectedModelId.value = value.modelId;
-    view.value = 'models';
+    if (!attempt.preserveView) {
+      selectedModelId.value = value.modelId;
+      view.value = 'models';
+    }
     pendingSave.value = undefined;
     unknown.value = false;
     modelEditorOpen.value = false;
@@ -592,6 +603,24 @@ function mutateModel(change: Partial<HubModelChange>) {
     model.modelId,
   );
 }
+function updateSupplierPolicy(
+  modelId: string,
+  strategy: HubModel['strategy'],
+  fallback: boolean,
+) {
+  const model = models.value.find((item) => item.modelId === modelId);
+  if (!model || busy.value || !can('edit')) return;
+  void saveModel(
+    {
+      ...hubModelChange(model),
+      strategy,
+      fallback,
+      clientMutationId: crypto.randomUUID(),
+    },
+    modelId,
+    true,
+  );
+}
 async function removeModel() {
   const model = editingModel.value;
   if (!model || busy.value || !can('edit')) return;
@@ -655,14 +684,6 @@ function saveRoute() {
     busy.value
   )
     return;
-  if (
-    !routeChannel.value?.models.some(
-      (item) => item.code === routeDraft.upstreamModel,
-    )
-  ) {
-    error.value = '请先为该渠道 Key 配置所选上游模型。';
-    return;
-  }
   const routes = hubModelChange(model).routes;
   const values = { ...routeDraft };
   if (
@@ -998,12 +1019,9 @@ watch(
     @add-channel="editor?.open()"
     @add-model="openModel()"
   >
-    <template #header-actions>
+    <template #model-actions>
       <ElButton v-if="canRouting" link :disabled="busy" @click="showRouting">
         场景调用顺序
-      </ElButton>
-      <ElButton :loading="loading" :disabled="busy" @click="load">
-        刷新
       </ElButton>
     </template>
     <template #sidebar>
@@ -1150,8 +1168,7 @@ watch(
       :busy="busy"
       @edit="openModel(selectedModel)"
       @toggle="toggleModel"
-      @strategy="mutateModel({ strategy: $event })"
-      @fallback="mutateModel({ fallback: $event })"
+      @supplier="selectSupplier"
       @add-route="openRoute()"
       @edit-route="openRoute"
       @remove-route="removeRoute"
@@ -1163,7 +1180,7 @@ watch(
       v-else-if="view === 'suppliers' && selectedChannel"
       :channel="selectedChannel"
       :provider-name="providerName(selectedChannel.provider)"
-      :bound-models="boundModelCount"
+      :bound-models="boundModels"
       :can-edit="can('edit')"
       :can-enable="can('enable')"
       :can-scan="can('test')"
@@ -1178,6 +1195,7 @@ watch(
       @scan="refreshCatalog"
       @test="editor?.open(selectedChannel)"
       @toggle="toggleChannel"
+      @policy="updateSupplierPolicy"
     />
     <ElEmpty
       v-else
@@ -1230,22 +1248,25 @@ watch(
         </ElSelect>
       </ElFormItem>
       <ElFormItem label="上游模型" required>
-        <ElSelect
+        <SupplierModelSelect
           v-model="routeDraft.upstreamModel"
-          aria-label="供应商上游模型"
-          filterable
-        >
-          <ElOption
-            v-for="model in routeChannel?.models ?? []"
-            :key="model.code"
-            :value="model.code"
-            :label="`${model.name} — ${model.code}`"
-          />
-        </ElSelect>
+          :channel="routeChannel"
+        />
       </ElFormItem>
       <p v-if="routeChannel" class="hub-dialog-help">
         {{ routeChannel.endpointUrl }} ·
         {{ routeChannel.active ? '渠道已启用' : '渠道未启用' }}
+      </p>
+      <p
+        v-if="
+          routeDraft.upstreamModel &&
+          !routeChannel?.models.some(
+            (model) => model.code === routeDraft.upstreamModel,
+          )
+        "
+        class="hub-dialog-help"
+      >
+        此模型尚未关联 Key，保存后可在供应商管理中配置并验证。
       </p>
       <ElCheckbox v-model="routeDraft.enabled">启用此供应商</ElCheckbox>
     </ElForm>

@@ -30,26 +30,6 @@ const panes = [
     title="AI 配置"
     description="管理业务模型、供应商与接入渠道"
   >
-    <template #extra>
-      <div class="flex flex-wrap gap-2">
-        <slot name="header-actions"></slot>
-        <ElButton
-          v-if="canAddChannel"
-          :disabled="busy"
-          @click="emit('addChannel')"
-        >
-          添加渠道
-        </ElButton>
-        <ElButton
-          v-if="canAddModel"
-          type="primary"
-          :disabled="busy"
-          @click="emit('addModel')"
-        >
-          添加模型
-        </ElButton>
-      </div>
-    </template>
     <section class="model-hub" aria-label="AI 配置工作区">
       <div class="hub-workspace">
         <aside class="hub-sidebar">
@@ -78,6 +58,14 @@ const panes = [
             class="hub-search"
             @update:model-value="emit('search', $event)"
           />
+          <ElButton
+            v-if="view === 'models' ? canAddModel : canAddChannel"
+            type="primary"
+            :disabled="busy"
+            @click="view === 'models' ? emit('addModel') : emit('addChannel')"
+          >
+            {{ view === 'models' ? '添加模型' : '添加渠道' }}
+          </ElButton>
           <nav
             class="hub-list"
             :aria-label="view === 'models' ? '业务模型' : '供应商渠道'"
@@ -85,6 +73,7 @@ const panes = [
             <slot name="sidebar"></slot>
           </nav>
           <footer class="hub-sidebar-footer">
+            <slot v-if="view === 'models'" name="model-actions"></slot>
             <slot name="sidebar-footer"></slot>
           </footer>
         </aside>

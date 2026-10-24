@@ -7,13 +7,7 @@ import type {
 
 import { computed, watch } from 'vue';
 
-import {
-  ElButton,
-  ElCheckbox,
-  ElOption,
-  ElSelect,
-  ElSwitch,
-} from 'element-plus';
+import { ElButton, ElSwitch, ElTag } from 'element-plus';
 
 import { useVbenVxeGrid } from '#/adapter/vxe-table';
 
@@ -30,11 +24,10 @@ const emit = defineEmits<{
   addRoute: [];
   edit: [];
   editRoute: [routeId: string];
-  fallback: [enabled: boolean];
   move: [index: number, direction: number];
   removeRoute: [routeId: string];
   routeEnabled: [routeId: string, enabled: boolean];
-  strategy: [strategy: HubModel['strategy']];
+  supplier: [channelId: string];
   test: [];
   toggle: [enabled: boolean];
 }>();
@@ -82,9 +75,6 @@ function keyCount(route: HubModelRoute) {
 function routeStatus(route: HubModelRoute) {
   if (!route.enabled) return '已停用';
   return route.health.ready ? '可用' : '待配置或验证';
-}
-function changeStrategy(value: unknown) {
-  if (value === 'PRIORITY' || value === 'ROUND_ROBIN') emit('strategy', value);
 }
 const [Grid, gridApi] = useVbenVxeGrid<
   HubModelRoute & { priorityIndex: number }
@@ -217,6 +207,16 @@ watch(
         <span :class="{ 'is-ready': row.enabled && row.health.ready }">
           {{ routeStatus(row) }}
         </span>
+        <ElButton
+          v-if="
+            canEdit && row.health.reasons.includes('UPSTREAM_NOT_CONFIGURED')
+          "
+          link
+          type="primary"
+          @click="emit('supplier', row.channelId)"
+        >
+          配置 Key
+        </ElButton>
       </template>
       <template #cell5="{ row }">
         <ElSwitch
@@ -242,23 +242,10 @@ watch(
     </Grid>
     <div class="model-routing-bar">
       <span>调用策略</span>
-      <ElSelect
-        :model-value="model.strategy"
-        :disabled="busy || !canEdit"
-        aria-label="业务模型调用策略"
-        class="model-strategy"
-        @change="changeStrategy"
-      >
-        <ElOption label="按优先级调用" value="PRIORITY" />
-        <ElOption label="轮询调用" value="ROUND_ROBIN" />
-      </ElSelect>
-      <ElCheckbox
-        :model-value="model.fallback"
-        :disabled="busy || !canEdit"
-        @change="emit('fallback', Boolean($event))"
-      >
-        失败时自动切换
-      </ElCheckbox>
+      <ElTag effect="plain">
+        {{ model.strategy === 'PRIORITY' ? '按优先级调用' : '轮询调用' }}
+      </ElTag>
+      <span>{{ model.fallback ? '失败时自动切换' : '失败时停止' }}</span>
       <ElButton
         v-if="canTest"
         :disabled="busy || !model.enabled || model.routes.length === 0"

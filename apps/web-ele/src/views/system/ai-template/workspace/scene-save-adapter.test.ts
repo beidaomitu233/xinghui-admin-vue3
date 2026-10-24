@@ -16,7 +16,7 @@ it('explains Agent prompt validation without reflecting unknown server messages'
   const known = sceneSaveProblem({
     response: { status: 400, data: { message: 'AGENT_INPUT_COMES_FROM_CHAT' } },
   });
-  expect(known.message).toContain('AI 工作台');
+  expect(known.message).toContain('变量');
   const unknown = sceneSaveProblem({
     response: { status: 400, data: { message: 'private provider diagnostic' } },
   });

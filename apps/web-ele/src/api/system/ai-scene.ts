@@ -25,6 +25,7 @@ export interface SceneModelPolicy {
   timeoutSeconds: number;
 }
 export interface SceneDefinition {
+  businessModels?: string[];
   businessModel?: null | string;
   sqlBindings?: QueryBinding[];
   initialModel?: ModelReference | null;

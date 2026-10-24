@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import type { PromptVariable } from './prompt-tokens';
 
-import type { ModelBinding } from '#/api/system/ai-application';
 import type { HubModel } from '#/api/system/ai-model-hub';
 import type {
   SceneDefinition,
@@ -11,10 +10,11 @@ import type {
 
 import { computed, ref, watch } from 'vue';
 
-import { ElAlert, ElButton, ElOption, ElSelect } from 'element-plus';
+import { ElAlert } from 'element-plus';
 
 import { useVbenForm, z } from '#/adapter/form';
 
+import ModelPriorityEditor from './ModelPriorityEditor.vue';
 import { promptDocument, singlePromptDocument } from './prompt-document';
 import PromptTextEditor from './PromptTextEditor.vue';
 
@@ -39,37 +39,6 @@ const emit = defineEmits<{
 }>();
 const editor = ref<InstanceType<typeof PromptTextEditor>>();
 const document = computed(() => promptDocument(props.value));
-function modelId(model: ModelBinding['model']) {
-  return `${model.modelRef}:${model.configVersion}`;
-}
-const selectedModel = computed(() => {
-  const business = props.businessModelOverview ?? props.value.businessModel;
-  if (business) return `business:${business}`;
-  if (props.value.initialModel) return modelId(props.value.initialModel);
-  const first = (props.routingOverview ?? props.value.modelPolicy).models[0];
-  return first ? modelId(first.model) : '';
-});
-const choices = computed(() => {
-  const options = props.models.map((option) => ({
-    id: modelId(option.model),
-    label: `${option.configName} · ${option.modelCode}`,
-  }));
-  options.unshift(
-    ...(props.businessModels ?? []).map((model) => ({
-      id: `business:${model.slug}`,
-      label: model.name,
-    })),
-  );
-  if (
-    selectedModel.value &&
-    !options.some((option) => option.id === selectedModel.value)
-  )
-    options.push({
-      id: selectedModel.value,
-      label: '已保存模型（当前不可用）',
-    });
-  return options;
-});
 function updatePrompt(value: string) {
   if (!props.readonly)
     emit('change', {
@@ -78,35 +47,17 @@ function updatePrompt(value: string) {
       outputRequirement: '',
     });
 }
-function chooseModel(id: string) {
-  if (props.readonly || !props.initialModel || id === selectedModel.value)
-    return;
-  const business = props.businessModels?.find(
-    (model) => `business:${model.slug}` === id,
+function changeModels(models: string[]) {
+  if (props.readonly || props.saving) return;
+  emit(
+    'change',
+    singlePromptDocument({
+      ...props.value,
+      businessModels: models,
+      businessModel: null,
+      initialModel: null,
+    }),
   );
-  if (business) {
-    if (!props.saving)
-      emit(
-        'change',
-        singlePromptDocument({
-          ...props.value,
-          businessModel: business.slug,
-          initialModel: null,
-        }),
-      );
-    return;
-  }
-  const option = props.models.find((model) => modelId(model.model) === id);
-  if (!option) return;
-  if (!props.saving)
-    emit(
-      'change',
-      singlePromptDocument({
-        ...props.value,
-        businessModel: null,
-        initialModel: option.model,
-      }),
-    );
 }
 async function insertVariable(name: string) {
   await editor.value?.insertVariable(name);
@@ -121,6 +72,7 @@ const [Form, formApi] = useVbenForm({
   layout: 'vertical',
   wrapperClass: 'grid-cols-1 md:grid-cols-2',
   commonConfig: {
+    formItemClass: 'pb-0',
     componentProps: () => ({ class: 'w-full', readonly: props.readonly }),
   },
   handleValuesChange: (values) => {
@@ -167,49 +119,13 @@ watch(
   <div class="prompt-editor">
     <Form class="prompt-metadata">
       <template #model>
-        <ElSelect
-          v-if="initialModel"
-          :model-value="selectedModel"
-          :disabled="readonly || saving"
-          aria-label="使用模型"
-          filterable
-          placeholder="选择业务模型或已有渠道模型"
-          @update:model-value="chooseModel"
-          @visible-change="
-            (visible) => {
-              if (visible) emit('refreshModels');
-            }
-          "
-        >
-          <ElOption
-            v-for="option in choices"
-            :key="option.id"
-            :label="option.label"
-            :value="option.id"
-          />
-        </ElSelect>
-        <div v-else class="model-summary">
-          <span>
-            {{
-              choices.find((option) => option.id === selectedModel)?.label ||
-              '尚未配置模型'
-            }}{{
-              !value.businessModel &&
-              !businessModelOverview &&
-              (routingOverview ?? value.modelPolicy).models.length > 1
-                ? ` · ${(routingOverview ?? value.modelPolicy).models.length} 个调用组合`
-                : ''
-            }}
-          </span>
-          <ElButton
-            v-if="canConfigureRouting"
-            link
-            type="primary"
-            @click="emit('configure')"
-          >
-            到 AI 配置调整
-          </ElButton>
-        </div>
+        <ModelPriorityEditor
+          :value="value"
+          :models="businessModels ?? []"
+          :legacy-models="models"
+          :readonly="readonly || Boolean(saving)"
+          @change="changeModels"
+        />
       </template>
     </Form>
     <ElAlert
@@ -226,7 +142,7 @@ watch(
       type="error"
       :closable="false"
     />
-    <section v-if="!agent" class="prompt-data" aria-label="数据引用说明">
+    <section class="prompt-data" aria-label="数据引用说明">
       <slot name="data"></slot>
       <p
         v-if="fields.dataObjects || fields.dataBindings"
@@ -242,7 +158,7 @@ watch(
         ref="editor"
         :model-value="document"
         :readonly="readonly"
-        :variables="agent ? [] : (variables ?? [])"
+        :variables="variables ?? []"
         :placeholder="
           agent
             ? '定义助手职责、业务背景和执行偏好。具体任务在 AI 工作台输入。'
@@ -270,13 +186,8 @@ watch(
 }
 
 .prompt-metadata {
-  display: grid;
+  display: block;
   flex-shrink: 0;
-  grid-template-columns: minmax(150px, 1fr) minmax(150px, 1fr) minmax(
-      220px,
-      1.3fr
-    );
-  gap: 16px;
 }
 
 .prompt-metadata :deep(.el-form-item) {

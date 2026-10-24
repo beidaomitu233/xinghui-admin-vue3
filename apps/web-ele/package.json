@@ -46,12 +46,15 @@
     "@vben/utils": "workspace:*",
     "@vueuse/core": "catalog:",
     "dayjs": "catalog:",
+    "dompurify": "3.4.17",
     "element-plus": "catalog:",
+    "marked": "18.1.1",
     "pinia": "catalog:",
     "vue": "catalog:",
     "vue-router": "catalog:"
   },
   "devDependencies": {
+    "jsdom": "27.4.0",
     "unplugin-element-plus": "catalog:",
     "unplugin-vue-components": "catalog:"
   }

@@ -3,6 +3,7 @@ import type {
   CatalogModel,
   ModelCatalogPage,
 } from '#/api/system/ai-model-catalog';
+import type { HubModel } from '#/api/system/ai-model-hub';
 import type {
   AiSettingsView,
   ConnectionStatus,
@@ -12,7 +13,15 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue';
 
 import { useAccessStore } from '@vben/stores';
 
-import { ElAlert, ElButton, ElSwitch } from 'element-plus';
+import {
+  ElAlert,
+  ElButton,
+  ElOption,
+  ElSelect,
+  ElSwitch,
+  ElTable,
+  ElTableColumn,
+} from 'element-plus';
 
 import { useVbenVxeGrid } from '#/adapter/vxe-table';
 import {
@@ -21,7 +30,7 @@ import {
 } from '#/api/system/ai-model-catalog';
 
 const props = defineProps<{
-  boundModels: number;
+  boundModels: HubModel[];
   busy: boolean;
   canEdit: boolean;
   canEnable: boolean;
@@ -37,6 +46,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   configure: [];
   configureKeys: [];
+  policy: [modelId: string, strategy: HubModel['strategy'], fallback: boolean];
   scan: [];
   test: [];
   toggle: [enabled: boolean];
@@ -282,13 +292,51 @@ onBeforeUnmount(() => {
       </div>
       <div>
         <dt>绑定业务模型</dt>
-        <dd>{{ boundModels }}</dd>
+        <dd>{{ boundModels.length }}</dd>
       </div>
       <div>
         <dt>连接状态</dt>
         <dd>{{ statusLabel(channel.connection?.status) }}</dd>
       </div>
     </dl>
+    <section v-if="boundModels.length > 0" aria-label="供应商调度策略">
+      <div class="supplier-section-heading"><h3>模型调度策略</h3></div>
+      <ElTable :data="boundModels" row-key="modelId" size="small">
+        <ElTableColumn prop="name" label="业务模型" min-width="160" />
+        <ElTableColumn label="供应商调用顺序" min-width="200">
+          <template #default="{ row }">
+            <ElSelect
+              :model-value="row.strategy"
+              :aria-label="`${row.name} 调度策略`"
+              :disabled="busy || !canEdit"
+              @change="
+                emit(
+                  'policy',
+                  row.modelId,
+                  $event as HubModel['strategy'],
+                  row.fallback,
+                )
+              "
+            >
+              <ElOption label="按优先级调用" value="PRIORITY" />
+              <ElOption label="轮询调用" value="ROUND_ROBIN" />
+            </ElSelect>
+          </template>
+        </ElTableColumn>
+        <ElTableColumn label="失败自动切换" width="140">
+          <template #default="{ row }">
+            <ElSwitch
+              :model-value="row.fallback"
+              :aria-label="`${row.name} 失败自动切换`"
+              :disabled="busy || !canEdit"
+              @change="
+                emit('policy', row.modelId, row.strategy, Boolean($event))
+              "
+            />
+          </template>
+        </ElTableColumn>
+      </ElTable>
+    </section>
     <ElAlert
       v-if="channel.pendingChanges"
       title="修改待验证，当前仍使用已生效的原连接。"

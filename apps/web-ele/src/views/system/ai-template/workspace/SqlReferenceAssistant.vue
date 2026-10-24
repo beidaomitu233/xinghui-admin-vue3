@@ -54,6 +54,7 @@ import { queryParameterText, readQueryParameters } from './query-parameters';
 const props = defineProps<{
   binding?: QueryBinding;
   businessModel?: null | string;
+  businessModels?: string[];
   configured: boolean;
   initialModel?: ModelReference | null;
   open: boolean;
@@ -436,7 +437,10 @@ async function generateSql() {
     !schema.value ||
     !description.value.trim() ||
     props.sceneSaving ||
-    (!props.configured && !props.initialModel && !props.businessModel)
+    (!props.configured &&
+      !props.initialModel &&
+      !props.businessModel &&
+      !props.businessModels?.length)
   )
     return;
   const retrying = Boolean(pendingStart);
@@ -446,6 +450,9 @@ async function generateSql() {
     description: description.value,
     ...context.value,
     initialModel: props.configured ? null : (props.initialModel ?? null),
+    ...(!props.configured && props.businessModels?.length
+      ? { businessModels: props.businessModels }
+      : {}),
     ...(!props.configured && props.businessModel
       ? { businessModel: props.businessModel }
       : {}),
@@ -820,7 +827,10 @@ watch(
             !scopeReady ||
             !description.trim() ||
             sceneSaving ||
-            (!configured && !initialModel && !businessModel) ||
+            (!configured &&
+              !initialModel &&
+              !businessModel &&
+              !businessModels?.length) ||
             generating
           "
           :loading="generationBusy"

@@ -1,5 +1,5 @@
 import type { HubModel } from '#/api/system/ai-model-hub';
-import type { SceneDefinition, SceneModelOption } from '#/api/system/ai-scene';
+import type { SceneDefinition } from '#/api/system/ai-scene';
 
 import { flushPromises, mount } from '@vue/test-utils';
 
@@ -41,7 +41,7 @@ beforeAll(async () => {
 });
 
 describe('one editable prompt document', () => {
-  it('edits an Agent system prompt without a data picker or user input variable controls', async () => {
+  it('keeps data references available when editing an Agent prompt', async () => {
     const wrapper = mount(PromptEditor, {
       props: {
         value: {
@@ -57,7 +57,7 @@ describe('one editable prompt document', () => {
       slots: { data: '<div data-testid="data-picker">数据引用</div>' },
     });
     await flushPromises();
-    expect(wrapper.find('[data-testid="data-picker"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="data-picker"]').exists()).toBe(true);
     expect(wrapper.text()).toContain('Agent 系统提示词');
     expect(wrapper.get('textarea').attributes('placeholder')).toContain(
       'AI 工作台',
@@ -99,71 +99,14 @@ describe('one editable prompt document', () => {
         initialModel: true,
       },
     });
-    await selectValue(wrapper, '使用模型', 'business:customer-chat');
-    const changed = wrapper.emitted('change')?.at(-1)?.[0] as SceneDefinition;
-    expect(changed.businessModel).toBe('customer-chat');
-    expect(changed.initialModel).toBeNull();
-    expect(changed.modelPolicy).toEqual(value.modelPolicy);
-    wrapper.unmount();
-  });
-  it('keeps existing fixed-key routing untouched while editing text and exposes only the configuration jump', async () => {
-    const routed: SceneDefinition = {
-      ...value,
-      modelPolicy: {
-        ...value.modelPolicy,
-        models: [
-          {
-            model: { modelRef: '11', configVersion: '1' },
-            keyMode: 'FIXED',
-            allowedKeys: [],
-            fixedKey: { keyRef: 'key-a', keyVersion: '2' },
-            fallbackKeys: [{ keyRef: 'key-b', keyVersion: '3' }],
-          },
-        ],
-        fallback: true,
-      },
-    };
-    const wrapper = mount(PromptEditor, {
-      props: {
-        value: routed,
-        models: [],
-        fields: {},
-        readonly: false,
-        canConfigureRouting: true,
-      },
-    });
-    expect(wrapper.findAll('.el-select')).toHaveLength(0);
-    expect(wrapper.text()).not.toContain('上移');
-    expect(wrapper.text()).not.toContain('可用Key');
-    await wrapper.get('textarea').setValue('仅修改正文');
-    const changed = wrapper.emitted('change')?.at(-1)?.[0] as SceneDefinition;
-    expect(changed.modelPolicy).toEqual(routed.modelPolicy);
-    const jump = wrapper
+    await wrapper
       .findAll('button')
-      .find((button) => button.text() === '到 AI 配置调整');
-    await jump?.trigger('click');
-    expect(wrapper.emitted('configure')).toHaveLength(1);
-    wrapper.unmount();
-  });
-  it('uses initialModel for a new scene without constructing or widening a routing policy', async () => {
-    const models: SceneModelOption[] = [
-      {
-        configId: '11',
-        configName: '主渠道',
-        providerCode: 'openrouter',
-        modelCode: 'vendor/a',
-        model: { modelRef: '11', configVersion: '1' },
-        streaming: true,
-        outputFormats: ['TEXT'],
-        usableKeyCount: 2,
-      },
-    ];
-    const wrapper = mount(PromptEditor, {
-      props: { value, models, fields: {}, readonly: false, initialModel: true },
-    });
-    await selectValue(wrapper, '使用模型', '11:1');
+      .find((button) => button.text() === '选择模型与顺序')
+      ?.trigger('click');
+    await selectValue(wrapper, '添加调用模型', 'customer-chat');
     const changed = wrapper.emitted('change')?.at(-1)?.[0] as SceneDefinition;
-    expect(changed.initialModel).toEqual(models[0]?.model);
+    expect(changed.businessModels).toEqual(['customer-chat']);
+    expect(changed.initialModel).toBeNull();
     expect(changed.modelPolicy).toEqual(value.modelPolicy);
     wrapper.unmount();
   });

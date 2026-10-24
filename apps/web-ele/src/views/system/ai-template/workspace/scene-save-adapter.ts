@@ -46,6 +46,9 @@ export function cloneDataBinding(binding: DataBinding): DataBinding {
 export function cloneScene(value: SceneDefinition): SceneDefinition {
   return {
     ...value,
+    businessModels: value.businessModels
+      ? [...value.businessModels]
+      : undefined,
     ...(value.sqlBindings
       ? {
           sqlBindings: value.sqlBindings.map((binding) => ({
@@ -102,10 +105,7 @@ export function sceneSaveProblem(error: unknown) {
   if (status === 400 || status === 422) {
     const code = object(response.data).message;
     const agentProblems: Record<string, string> = {
-      AGENT_INPUT_COMES_FROM_CHAT:
-        '具体任务在 AI 工作台输入，系统提示词无需插入“用户要求”变量。',
-      AGENT_USES_BUSINESS_TOOLS:
-        'Agent 会按当前账号权限调用业务工具，系统提示词无需预选数据记录。',
+      AGENT_INPUT_COMES_FROM_CHAT: '必填变量缺少输入来源，请检查变量引用。',
       AGENT_REQUIRES_TEXT_MODEL: 'Agent 系统提示词需要使用对话模型。',
     };
     const agentMessage =
@@ -161,7 +161,11 @@ export async function persistScene(
   try {
     const definition: SceneEditableDefinition = { ...command.value };
     delete definition.modelPolicy;
-    if (definition.businessModel || !definition.initialModel)
+    if (
+      definition.businessModels?.length ||
+      definition.businessModel ||
+      !definition.initialModel
+    )
       delete definition.initialModel;
     const result = await saveScene(command.sceneKey, {
       clientMutationId: command.clientMutationId,

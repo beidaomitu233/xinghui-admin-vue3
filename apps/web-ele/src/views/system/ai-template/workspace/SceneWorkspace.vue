@@ -54,6 +54,7 @@ import SceneSidebar from './SceneSidebar.vue';
 import SceneTrialPanel from './SceneTrialPanel.vue';
 import SqlReferenceAssistant from './SqlReferenceAssistant.vue';
 
+const props = defineProps<{ initialSceneKey?: string }>();
 const access = useAccessStore();
 const router = useRouter();
 const can = (action: string) =>
@@ -266,6 +267,7 @@ const autosave = new OrderedSceneAutosave<SceneDefinition>({
     if (!value.promptText.trim()) errors.promptText = '请输入提示词';
     if (
       !value.businessModel &&
+      !value.businessModels?.length &&
       !value.initialModel &&
       value.modelPolicy.models.length === 0
     )
@@ -571,7 +573,15 @@ onMounted(async () => {
   window.addEventListener('beforeunload', beforeUnload);
   if (can('list')) await loadList();
   await refreshMetadata();
+  const initial = props.initialSceneKey || scenes.value[0]?.sceneKey;
+  if (initial && !view.value) await selectScene(initial);
 });
+watch(
+  () => props.initialSceneKey,
+  (key) => {
+    if (key && key !== view.value?.sceneKey) void selectScene(key);
+  },
+);
 onActivated(() => {
   if (!activatedOnce) {
     activatedOnce = true;
@@ -797,7 +807,7 @@ watch(dialogOpen, (open) => workspaceModalApi.setState({ isOpen: open }), {
             access.accessCodes.includes('ai:config:query')
           "
           :fields="view.fields"
-          :variables="selected.kind === 'AGENT' ? [] : allVariables"
+          :variables="allVariables"
           @change="autosave.edit(view.sceneKey, $event)"
           @configure="configureRouting"
           @refresh-models="refreshMetadata"
@@ -824,7 +834,7 @@ watch(dialogOpen, (open) => workspaceModalApi.setState({ isOpen: open }), {
         </PromptEditor>
         <SqlReferenceAssistant
           ref="queryAssistant"
-          v-if="view.editable && selected.kind !== 'AGENT'"
+          v-if="view.editable"
           v-model:open="assistantOpen"
           :binding="editingQuery"
           :readonly="!view.editable"
@@ -833,6 +843,7 @@ watch(dialogOpen, (open) => workspaceModalApi.setState({ isOpen: open }), {
           :configured="Boolean(selected.currentVersionId)"
           :initial-model="view.value.initialModel"
           :business-model="view.value.businessModel"
+          :business-models="view.value.businessModels"
           :scene-saving="view.phase === 'saving'"
           :used-variables="allVariables.map((variable) => variable.name)"
           :save-binding="saveQueryBinding"
