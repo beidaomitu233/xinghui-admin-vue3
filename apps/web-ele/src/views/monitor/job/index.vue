@@ -84,7 +84,6 @@ const queryJobs: () => Promise<{
 );
 
 const [Grid, gridApi] = useVbenVxeGrid<JobInfo>({
-  tableTitle: '任务列表',
   formOptions: {
     collapsed: true,
     submitOnEnter: true,
@@ -182,7 +181,7 @@ const [Grid, gridApi] = useVbenVxeGrid<JobInfo>({
       custom: true,
       refresh: true,
       refreshOptions: { code: 'query' },
-      zoom: true,
+      zoom: false,
       search: true,
     },
     proxyConfig: {

@@ -104,7 +104,6 @@ const queryLogs: () => Promise<{
 );
 
 const [Grid, gridApi] = useVbenVxeGrid<JobFireLog>({
-  tableTitle: '执行记录',
   formOptions: {
     collapsed: true,
     submitOnEnter: true,
@@ -222,7 +221,7 @@ const [Grid, gridApi] = useVbenVxeGrid<JobFireLog>({
       custom: true,
       refresh: true,
       refreshOptions: { code: 'query' },
-      zoom: true,
+      zoom: false,
       search: true,
     },
     proxyConfig: {

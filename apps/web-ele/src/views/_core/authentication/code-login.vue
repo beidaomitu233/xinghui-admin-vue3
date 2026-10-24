@@ -165,10 +165,9 @@ onUnmounted(() => {
 });
 </script>
 <template>
-  <div
-    class="grid items-center gap-8 md:grid-cols-[minmax(0,1fr)_300px] md:gap-12 md:px-5"
-  >
+  <div class="grid items-center gap-8 md:grid-cols-[minmax(0,360px)_280px]">
     <AuthenticationLogin
+      class="min-w-0 md:border-r md:pr-10"
       ref="form"
       title="短信验证码登录"
       sub-title="使用已开通账号的手机号登录"
@@ -221,6 +220,6 @@ onUnmounted(() => {
         </div>
       </template>
     </AuthenticationLogin>
-    <WechatEntry class="md:border-l md:pl-8" />
+    <WechatEntry />
   </div>
 </template>

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { Config, DragRule } from '@form-create/designer';
-import type { Rule } from '@form-create/element-ui';
+import type { Options, Rule } from '@form-create/element-ui';
 
 import type { Component } from 'vue';
 
@@ -36,7 +36,16 @@ import {
   updateForm,
 } from '#/api/lowcode/forms';
 
-import { dataError, fieldTypes, initialData, newField } from '../form-schema';
+import {
+  arrayField,
+  choiceField,
+  dataError,
+  fieldTypes,
+  initialData,
+  newField,
+  numericField,
+  schemaError,
+} from '../form-schema';
 import RuntimeFields from '../RuntimeFields.vue';
 import { designerToSchema, schemaToDesigner } from './designer-schema';
 
@@ -64,7 +73,9 @@ const formId = ref<string>();
 const designerComponent = shallowRef<Component>();
 type DesignerApi = {
   addComponent: (rules: DragRule[]) => void;
+  getOption: () => Options;
   getRule: () => unknown[];
+  setOption: (options: Options) => void;
   setRule: (rules: ReturnType<typeof schemaToDesigner>) => void;
 };
 const designer = ref<DesignerApi>();
@@ -128,7 +139,7 @@ const config: Config = {
   showMenuBar: false,
   showSaveBtn: false,
   showPreviewBtn: false,
-  showFormConfig: false,
+  showFormConfig: true,
   showBaseForm: true,
   showComponentName: false,
   showControl: false,
@@ -138,13 +149,32 @@ const config: Config = {
   showValidateForm: false,
   showStyleForm: false,
   showInputData: false,
-  showDevice: false,
+  showDevice: true,
   showLanguage: false,
   exitConfirm: false,
   switchType: false,
   fieldReadonly: false,
   updateConfigOnBlur: false,
   baseRule: () => baseRules(),
+  formRule: () => [
+    {
+      type: 'radio',
+      field: 'labelPosition',
+      title: '标签位置',
+      value: 'left',
+      options: [
+        { label: '左对齐', value: 'left' },
+        { label: '右对齐', value: 'right' },
+        { label: '顶部', value: 'top' },
+      ],
+    },
+    {
+      type: 'SizeInput',
+      field: 'labelWidth',
+      title: '标签宽度',
+      value: '90px',
+    },
+  ],
 };
 function baseRules(): Rule[] {
   return [
@@ -166,19 +196,66 @@ function baseRules(): Rule[] {
       title: '填写帮助',
       props: { maxlength: 500 },
     },
+    {
+      type: 'select',
+      field: 'formCreateCol>span',
+      title: '字段宽度',
+      value: 24,
+      options: [
+        { label: '整行', value: 24 },
+        { label: '1/2 行', value: 12 },
+        { label: '1/3 行', value: 8 },
+        { label: '1/4 行', value: 6 },
+      ],
+    },
   ];
 }
+const icons: Partial<Record<FieldType, string>> = {
+  textarea: 'icon-textarea',
+  number: 'icon-number',
+  date: 'icon-date',
+  daterange: 'icon-date-range',
+  time: 'icon-time',
+  timerange: 'icon-time-range',
+  select: 'icon-select',
+  multiselect: 'icon-select',
+  radio: 'icon-radio',
+  checkbox: 'icon-checkbox',
+  switch: 'icon-switch',
+  slider: 'icon-slider',
+  rate: 'icon-rate',
+  color: 'icon-color',
+};
 const menu = [
   {
-    name: 'lowcode',
-    title: '字段组件',
-    list: fieldTypes.map(({ value, label }) => ({
+    name: 'input',
+    title: '输入组件',
+    types: [
+      'text',
+      'textarea',
+      'number',
+      'date',
+      'daterange',
+      'time',
+      'timerange',
+    ],
+  },
+  {
+    name: 'choice',
+    title: '选择组件',
+    types: ['select', 'multiselect', 'radio', 'checkbox', 'switch'],
+  },
+  { name: 'advanced', title: '其他组件', types: ['slider', 'rate', 'color'] },
+].map((group) => ({
+  ...group,
+  list: fieldTypes
+    .filter((item) => group.types.includes(item.value))
+    .map(({ value, label }) => ({
       name: `lowcode_${value}`,
       label,
-      icon: 'icon-input',
+      icon: icons[value] ?? 'icon-input',
     })),
-  },
-];
+}));
 function newRule(type: FieldType) {
   const fields = designer.value?.getRule() ?? [];
   let index = 1;
@@ -192,15 +269,20 @@ function newRule(type: FieldType) {
   field.type = type;
   field.label = fieldTypes.find((entry) => entry.value === type)!.label;
   field.maxLength = type === 'textarea' ? 5000 : 200;
-  if (['multiselect', 'select'].includes(type))
+  if (choiceField(type))
     field.options = [{ label: '选项1', value: 'option_1' }];
+  if (type === 'slider') {
+    field.min = 0;
+    field.max = 100;
+  }
+  if (arrayField(type)) field.defaultValue = [];
   return schemaToDesigner({ fields: [field] })[0]!;
 }
 function components(): DragRule[] {
   return fieldTypes.map(({ value: type, label }) => ({
     name: `lowcode_${type}`,
     label,
-    icon: 'icon-input',
+    icon: icons[type] ?? 'icon-input',
     languageKey: [],
     input: true,
     style: false,
@@ -211,7 +293,7 @@ function components(): DragRule[] {
       const rules: ReturnType<DragRule['props']> = [
         { type: 'switch', field: 'formCreate$required', title: '必填' },
         { type: 'switch', field: 'formCreateListVisible', title: '列表显示' },
-        ...(type === 'multiselect'
+        ...(arrayField(type)
           ? []
           : [
               {
@@ -222,7 +304,7 @@ function components(): DragRule[] {
             ]),
       ];
       const options = Array.isArray(rule.options) ? rule.options : [];
-      if (['multiselect', 'select'].includes(type))
+      if (choiceField(type))
         rules.push({
           type: 'TableOptions',
           field: 'formCreateOptions',
@@ -236,13 +318,24 @@ function components(): DragRule[] {
           },
         });
       if (['text', 'textarea'].includes(type))
-        rules.push({
-          type: 'inputNumber',
-          field: 'maxlength',
-          title: '最大长度',
-          props: { min: 1, max: type === 'textarea' ? 5000 : 2000 },
-        });
-      if (type === 'number')
+        rules.push(
+          {
+            type: 'input',
+            field: 'placeholder',
+            title: '占位提示',
+            props: { maxlength: 200 },
+          },
+          { type: 'switch', field: 'clearable', title: '允许清空' },
+          { type: 'switch', field: 'readonly', title: '只读' },
+          { type: 'switch', field: 'showWordLimit', title: '显示字数' },
+          {
+            type: 'inputNumber',
+            field: 'maxlength',
+            title: '最大长度',
+            props: { min: 1, max: type === 'textarea' ? 5000 : 2000 },
+          },
+        );
+      if (numericField(type) && type !== 'rate')
         for (const [field, title] of [
           ['min', '最小值'],
           ['max', '最大值'],
@@ -253,13 +346,16 @@ function components(): DragRule[] {
             title,
             props: { precision: 6, min: -1e12, max: 1e12 },
           });
-      rules.push({
-        type: rule.type,
-        field: 'formCreateValue',
-        title: '默认值',
-        options,
-        props: { ...rule.props },
-      });
+      rules.push(
+        { type: 'switch', field: 'disabled', title: '禁用' },
+        {
+          type: rule.type,
+          field: 'formCreateValue',
+          title: '默认值',
+          options,
+          props: { ...rule.props, readonly: false, disabled: false },
+        },
+      );
       return rules;
     },
   }));
@@ -277,6 +373,14 @@ async function initialize(run: number) {
     if (editable.value) {
       if (!designer.value) throw new Error('设计器未就绪');
       designer.value.addComponent(components());
+      designer.value.setOption({
+        form: {
+          labelPosition: draft.value.schema.layout?.labelPosition ?? 'left',
+          labelWidth: `${draft.value.schema.layout?.labelWidth ?? 90}px`,
+        },
+        submitBtn: false,
+        resetBtn: false,
+      });
       designer.value.setRule(schemaToDesigner(draft.value.schema));
     }
     metadataApi.setState({ commonConfig: { disabled: !editable.value } });
@@ -338,6 +442,20 @@ function captureSchema() {
     designer.value.getRule(),
     draft.value.schema,
   );
+  const form = designer.value.getOption().form;
+  const labelPosition = form?.labelPosition ?? 'left';
+  if (
+    labelPosition !== 'left' &&
+    labelPosition !== 'right' &&
+    labelPosition !== 'top'
+  )
+    throw new Error('表单标签布局不正确');
+  draft.value.schema.layout = {
+    labelPosition,
+    labelWidth: Number(String(form?.labelWidth ?? 90).replace('px', '')),
+  };
+  const invalid = schemaError(draft.value.schema);
+  if (invalid) throw new Error(invalid);
 }
 function openPreview() {
   try {

@@ -29,6 +29,7 @@ import {
 import { recordSummaryScene } from '#/api/system/ai-scene';
 
 import {
+  arrayField,
   dataError,
   displayValue,
   initialData,
@@ -171,7 +172,7 @@ const gridOptions: VxeTableGridOptions<FormRecordRow> = {
     custom: true,
     refresh: true,
     refreshOptions: { code: 'query' },
-    zoom: true,
+    zoom: false,
     search: true,
   },
 };
@@ -239,7 +240,7 @@ function configureGrid(definition: RuntimeDefinition) {
           field: `data.${field.fieldKey}`,
           title: field.label,
           minWidth: 160,
-          sortable: field.type !== 'multiselect',
+          sortable: !arrayField(field.type),
           formatter: ({ row }: { row: FormRecordRow }) =>
             displayValue(field, row.data[field.fieldKey]),
         })),
@@ -619,6 +620,7 @@ watch(
   <Page
     :title="runtime ? `${runtime.name} · 数据` : '表单数据'"
     auto-content-height
+    content-class="flex min-h-0 flex-col"
   >
     <el-alert
       v-if="!can('list')"
@@ -644,7 +646,7 @@ watch(
         class="mb-3"
         @close="summaryError = ''"
       />
-      <Grid table-title="表单记录">
+      <Grid class="min-h-0 flex-1">
         <template #toolbar-actions>
           <el-button
             v-if="can('add') && runtime?.status === 'enabled'"

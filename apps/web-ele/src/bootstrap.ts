@@ -16,6 +16,10 @@ import { initSetupVbenForm } from './adapter/form';
 import App from './app.vue';
 import { router } from './router';
 
+// Runtime registered controls (including the official form designer) need the
+// native styles before Vben installs its theme tokens. Lazy loading this CSS
+// later would override the active Element Plus palette.
+import 'element-plus/dist/index.css';
 import './styles/workspace-theme.css';
 
 async function bootstrap(namespace: string) {

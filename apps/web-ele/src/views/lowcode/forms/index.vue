@@ -81,7 +81,7 @@ const gridOptions: VxeTableGridOptions<FormDefinition> = {
     {
       field: 'publishedVersion',
       title: '发布版本',
-      width: 110,
+      width: 130,
       sortable: true,
     },
     { field: 'revision', title: '修订', width: 90 },
@@ -100,7 +100,7 @@ const gridOptions: VxeTableGridOptions<FormDefinition> = {
     refresh: true,
     refreshOptions: { code: 'query' },
     search: true,
-    zoom: true,
+    zoom: false,
   },
   proxyConfig: {
     sort: true,
@@ -257,7 +257,11 @@ async function action(
 }
 </script>
 <template>
-  <Page title="表单管理" auto-content-height>
+  <Page
+    title="表单管理"
+    auto-content-height
+    content-class="flex min-h-0 flex-col"
+  >
     <el-alert
       v-if="!can('list')"
       title="没有表单设计列表权限"
@@ -274,7 +278,7 @@ async function action(
       >
         <el-button @click="load">重试</el-button>
       </el-alert>
-      <Grid table-title="表单列表">
+      <Grid class="min-h-0 flex-1">
         <template #toolbar-actions>
           <el-button v-if="can('add')" type="primary" @click="open()">
             新增表单

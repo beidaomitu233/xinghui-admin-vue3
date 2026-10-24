@@ -92,7 +92,7 @@ const gridOptions: VxeTableGridOptions<NoticeInfo> = {
     refresh: true,
     refreshOptions: { code: 'query' },
     search: true,
-    zoom: true,
+    zoom: false,
   },
   proxyConfig: {
     sort: true,
@@ -270,7 +270,11 @@ async function status(row: NoticeInfo) {
 }
 </script>
 <template>
-  <Page title="通知公告" auto-content-height>
+  <Page
+    title="通知公告"
+    auto-content-height
+    content-class="flex min-h-0 flex-col"
+  >
     <el-alert
       v-if="failed"
       title="公告列表加载失败，请重试"
@@ -280,7 +284,7 @@ async function status(row: NoticeInfo) {
     >
       <el-button @click="gridApi.query()">重试</el-button>
     </el-alert>
-    <Grid v-if="can('list')" table-title="公告列表">
+    <Grid v-if="can('list')" class="min-h-0 flex-1">
       <template #toolbar-actions>
         <el-button v-if="can('add')" type="primary" @click="edit()">
           新增公告

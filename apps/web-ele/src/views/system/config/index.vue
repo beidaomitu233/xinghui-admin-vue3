@@ -53,7 +53,6 @@ const valueOptions: Record<string, { label: string; value: string }[]> = {
 };
 
 const [Grid, gridApi] = useVbenVxeGrid<ConfigView>({
-  tableTitle: '系统参数',
   gridOptions: {
     height: 'auto',
     rowConfig: { keyField: 'configId' },

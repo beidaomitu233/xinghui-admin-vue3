@@ -113,7 +113,7 @@ const [Grid, gridApi] = useVbenVxeGrid<UserInfo>({
   tableTitle: '',
   showSearchForm: false,
   separator: false,
-  class: '!rounded-none !bg-transparent',
+  class: '!bg-transparent',
   gridClass: '!p-0',
   formOptions: {
     collapsed: false,
@@ -472,7 +472,7 @@ function downloadImportErrors() {
       </div>
       <ImportGrid :grid-options="{ data: importSummary.rows }" class="mb-4" />
     </template>
-    <Grid class="min-h-0 flex-1 !rounded-none !bg-transparent">
+    <Grid class="min-h-0 flex-1 !bg-transparent">
       <template #toolbar-actions>
         <el-button v-if="canOpenDialog('create')" type="primary" @click="add">
           新增用户
@@ -616,59 +616,3 @@ function downloadImportErrors() {
     <EditModal @saved="load" />
   </Page>
 </template>
-
-<style scoped>
-/* Only this business page is the layout sample pending user review. */
-.user-management :deep(.vxe-grid--form-wrapper > div) {
-  margin-bottom: 16px;
-  padding: 20px 20px 16px;
-  border-radius: 0;
-  background: hsl(var(--card));
-}
-
-.user-management :deep(.vxe-toolbar) {
-  background: transparent;
-  padding-bottom: 16px;
-}
-
-.user-management :deep(.vxe-grid--layout-body-content-wrapper) {
-  background: hsl(var(--card));
-}
-
-.user-management :deep(.vxe-tools--operate .vxe-button) {
-  border-color: transparent;
-  border-radius: 4px;
-  background: transparent;
-}
-
-.user-management :deep(.vxe-table) {
-  --vxe-ui-table-header-background-color: hsl(var(--card));
-}
-
-.user-management :deep(.vxe-cell) {
-  padding-right: 20px !important;
-  padding-left: 20px !important;
-}
-
-.user-management :deep(.vxe-pager) {
-  margin-top: 0;
-  border-top: 1px solid hsl(var(--border));
-  padding: 12px 20px;
-}
-
-.user-management :deep(.vxe-pager--total) {
-  margin-right: auto;
-  margin-left: 0;
-}
-
-.user-management :deep(.vxe-pager--sizes) {
-  margin-right: 0;
-}
-
-@media (max-width: 767px) {
-  .user-management :deep(.vxe-toolbar) {
-    flex-wrap: wrap;
-    gap: 8px;
-  }
-}
-</style>

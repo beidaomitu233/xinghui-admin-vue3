@@ -109,7 +109,6 @@ const queryLogs: () => Promise<{
 );
 
 const [Grid, gridApi] = useVbenVxeGrid<OperLogInfo>({
-  tableTitle: '操作日志',
   formOptions: {
     collapsed: true,
     submitOnEnter: true,
@@ -205,7 +204,7 @@ const [Grid, gridApi] = useVbenVxeGrid<OperLogInfo>({
       custom: true,
       refresh: true,
       refreshOptions: { code: 'query' },
-      zoom: true,
+      zoom: false,
       search: true,
     },
     proxyConfig: {

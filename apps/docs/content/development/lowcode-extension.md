@@ -4,7 +4,11 @@
 
 ## 现有协议
 
-Schema是fields数组；Field定义fieldKey、label、type、required、defaultValue、options、help、maxLength、min/max、listVisible、searchable。保存草稿后发布不可变版本，Record带schemaVersion/revision/data。记录creator仅记录创建者，权限范围是当前tenant+form+record，不是creator等于当前用户。
+Schema包含fields数组和可选layout；Field定义fieldKey、label、type、required、defaultValue、options、help、maxLength、min/max、listVisible、searchable及可选ui。保存草稿后发布不可变版本，Record带schemaVersion/revision/data。记录creator仅记录创建者，权限范围是当前tenant+form+record，不是creator等于当前用户。
+
+原生form-create设计器提供输入组件、选择组件、其他组件三组，支持text、textarea、number、date、daterange、time、timerange、select、multiselect、radio、checkbox、switch、slider、rate、color共15类控件。时间值使用HH:mm:ss，日期使用YYYY-MM-DD；范围为起止字符串数组，复选/多选为选项值数组，评分和滑块为数字，颜色为六位十六进制字符串。数组字段不能作为单值列表筛选或排序字段。
+
+`layout`包含labelPosition（left/right/top）及40–240的整数labelWidth。`ui`包含placeholder（最多200字符）、clearable、readOnly、disabled、showWordLimit和span（6/8/12/24）。字段宽度在窄屏下自动变为整行；这些展示属性和布局跟随发布版本，并传递给独立分享填写页。旧JSON缺省属性仍可读取，不执行脚本、远程选项或自定义HTML。
 
 ```ts
 import type { FormSchema } from '#/api/lowcode/forms';
@@ -54,7 +58,7 @@ export const exampleSchema: FormSchema = {
 
 `GET/PUT /lowcode/forms/{formId}/sharing`要求平台身份与发布权限，独立revision并发控制。默认关闭，login/public模式；服务端随机令牌，存查找哈希和可恢复密文。保留部署主密钥；撤销、轮换、模式变化和停用使旧链接失效。
 
-仅`GET/POST /lowcode/fill/{token}`允许匿名进入。GET只返回title、schemaVersion、accessMode、fields。POST只接受schemaVersion、requestKey、data；拒绝客户端归属字段，回执不返回ID或答案。登录模式重查账号和租户，公开模式按分享配置归属；链接不授予记录管理权限。
+仅`GET/POST /lowcode/fill/{token}`允许匿名进入。GET只返回title、schemaVersion、accessMode、fields及layout；fields只含填写所需属性与ui，不含列表/查询配置。POST只接受schemaVersion、requestKey、data；拒绝客户端归属字段，回执不返回ID或答案。登录模式重查账号和租户，公开模式按分享配置归属；链接不授予记录管理权限。
 
 锁顺序为表单→分享；提交事务显式READ_COMMITTED，重查令牌、启用状态、版本和账号。去重账本与记录同事务，同键同内容返回原回执，不同内容409。只有确认重新加载且GET成功后才更换提交键，普通失败重试保留。扩展时保持真实MySQL并发屏障测试覆盖发布、撤销、模式变化及同键竞争。
 

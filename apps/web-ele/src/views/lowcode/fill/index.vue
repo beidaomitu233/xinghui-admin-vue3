@@ -26,6 +26,7 @@ const errorStatus = ref(0);
 const receipt = ref<FillReceipt>();
 const requestKey = ref('');
 const schema = computed<FormSchema>(() => ({
+  layout: definition.value?.layout,
   fields: (definition.value?.fields ?? []).map((field) => ({
     ...field,
     listVisible: false,

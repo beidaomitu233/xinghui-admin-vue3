@@ -190,10 +190,18 @@ watch(detailOpen, (open) => (open ? drawerApi.open() : void drawerApi.close()));
 
 const [QueryForm, formApi] = useVbenForm({
   submitButtonOptions: { content: '查询' },
-  showCollapseButton: true,
-  collapsedRows: 1,
+  showCollapseButton: false,
+  collapsed: false,
+  actionLayout: 'newLine',
+  actionPosition: 'left',
+  actionButtonsReverse: true,
+  actionWrapperClass: 'border-t mt-1 pt-3',
   wrapperClass: 'grid-cols-1 md:grid-cols-2 xl:grid-cols-3',
-  commonConfig: { componentProps: { class: 'w-full' } },
+  commonConfig: {
+    labelWidth: 80,
+    labelClass: '!justify-start',
+    componentProps: { class: 'w-full' },
+  },
   handleSubmit: search,
   handleReset: async () => {
     await formApi.resetForm();
@@ -509,7 +517,6 @@ onBeforeUnmount(clear);
         每行代表一次上游交互，包含连接测试与目录扫描。默认最近7日。
       </p>
       <ElAlert v-if="error" :title="error" type="error" @close="error = ''" />
-      <QueryForm />
       <ElAlert
         v-if="filters.scope === 'AUDIT'"
         title="平台审计范围由服务端核验；私有正文仍按原访问权限保护。"
@@ -537,6 +544,7 @@ onBeforeUnmount(clear);
         </div>
       </dl>
       <Grid>
+        <template #form><QueryForm /></template>
         <template #toolbar-actions>
           <ElButton
             v-if="can('export')"

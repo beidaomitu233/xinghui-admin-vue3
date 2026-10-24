@@ -200,9 +200,17 @@ async function download() {
 }
 const [QueryForm, formApi] = useVbenForm({
   submitButtonOptions: { content: '查询' },
-  showCollapseButton: true,
-  collapsedRows: 1,
-  commonConfig: { componentProps: { class: 'w-full' } },
+  showCollapseButton: false,
+  collapsed: false,
+  actionLayout: 'newLine',
+  actionPosition: 'left',
+  actionButtonsReverse: true,
+  actionWrapperClass: 'border-t mt-1 pt-3',
+  commonConfig: {
+    labelWidth: 80,
+    labelClass: '!justify-start',
+    componentProps: { class: 'w-full' },
+  },
   handleSubmit: search,
   handleReset: async () => {
     await formApi.resetForm();
@@ -571,7 +579,6 @@ onBeforeUnmount(() => {
       closable
       class="mb-3"
     />
-    <QueryForm v-if="!controlledFilters" />
     <el-alert
       v-if="error"
       :title="error"
@@ -596,6 +603,7 @@ onBeforeUnmount(() => {
       </el-descriptions-item>
     </el-descriptions>
     <Grid>
+      <template v-if="!controlledFilters" #form><QueryForm /></template>
       <template #toolbar-actions>
         <el-button v-if="can('export')" :loading="exporting" @click="download">
           导出 JSON

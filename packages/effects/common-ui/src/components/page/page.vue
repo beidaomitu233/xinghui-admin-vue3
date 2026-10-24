@@ -62,7 +62,7 @@ onMounted(() => {
       ref="headerRef"
       :class="
         cn(
-          'bg-card border-border relative flex items-end border-b px-6 py-4',
+          'bg-card border-border relative flex items-end border-b px-5 py-3',
           headerClass,
         )
       "
@@ -86,7 +86,7 @@ onMounted(() => {
       </div>
     </div>
 
-    <div :class="cn('h-full p-4', contentClass)" :style="contentStyle">
+    <div :class="cn('h-full p-5', contentClass)" :style="contentStyle">
       <slot></slot>
     </div>
     <div

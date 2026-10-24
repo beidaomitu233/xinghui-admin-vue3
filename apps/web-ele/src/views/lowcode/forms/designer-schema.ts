@@ -5,7 +5,12 @@ import type {
   FormSchema,
 } from '#/api/lowcode/forms';
 
-import { schemaError } from '../form-schema';
+import {
+  arrayField,
+  choiceField,
+  numericField,
+  schemaError,
+} from '../form-schema';
 
 export interface DesignerRule {
   type: string;
@@ -18,6 +23,7 @@ export interface DesignerRule {
   options?: { label: string; value: string }[];
   listVisible: boolean;
   searchable: boolean;
+  col?: { span: number };
   _fc_drag_tag?: string;
 }
 const componentTypes: Record<FieldType, string> = {
@@ -28,6 +34,14 @@ const componentTypes: Record<FieldType, string> = {
   select: 'select',
   multiselect: 'select',
   switch: 'switch',
+  radio: 'radio',
+  checkbox: 'checkbox',
+  time: 'timePicker',
+  timerange: 'timePicker',
+  daterange: 'datePicker',
+  slider: 'slider',
+  rate: 'rate',
+  color: 'colorPicker',
 };
 export function schemaToDesigner(schema: FormSchema): DesignerRule[] {
   const error = schemaError(schema);
@@ -37,21 +51,43 @@ export function schemaToDesigner(schema: FormSchema): DesignerRule[] {
     field: field.fieldKey,
     title: field.label,
     info: field.help,
-    value: structuredClone(field.defaultValue),
+    value: Array.isArray(field.defaultValue)
+      ? [...field.defaultValue]
+      : field.defaultValue,
     $required: field.required,
     listVisible: field.listVisible,
     searchable: field.searchable,
     _fc_drag_tag: `lowcode_${field.type}`,
-    props: designerProps(field),
-    ...(['multiselect', 'select'].includes(field.type)
-      ? { options: structuredClone(field.options) }
+    props: {
+      ...designerProps(field),
+      ...(field.ui
+        ? {
+            placeholder: field.ui.placeholder,
+            clearable: field.ui.clearable,
+            readonly: field.ui.readOnly,
+            disabled: field.ui.disabled,
+            showWordLimit: field.ui.showWordLimit,
+          }
+        : {}),
+    },
+    col: { span: field.ui?.span ?? 24 },
+    ...(choiceField(field.type)
+      ? { options: field.options.map((option) => ({ ...option })) }
       : {}),
   }));
 }
 function designerProps(field: FormField): Record<string, unknown> {
   switch (field.type) {
-    case 'date': {
-      return { type: 'date', valueFormat: 'YYYY-MM-DD' };
+    case 'checkbox':
+    case 'radio': {
+      return {};
+    }
+    case 'color': {
+      return { colorFormat: 'hex', showAlpha: false };
+    }
+    case 'date':
+    case 'daterange': {
+      return { type: field.type, valueFormat: 'YYYY-MM-DD' };
     }
     case 'multiselect':
     case 'select': {
@@ -60,8 +96,18 @@ function designerProps(field: FormField): Record<string, unknown> {
     case 'number': {
       return { min: field.min, max: field.max, precision: 6 };
     }
+    case 'rate': {
+      return { max: 5, allowHalf: true };
+    }
+    case 'slider': {
+      return { min: field.min ?? 0, max: field.max ?? 100 };
+    }
     case 'switch': {
       return { activeValue: true, inactiveValue: false };
+    }
+    case 'time':
+    case 'timerange': {
+      return { isRange: field.type === 'timerange', valueFormat: 'HH:mm:ss' };
     }
     default: {
       return {
@@ -121,13 +167,21 @@ export function designerToSchema(
       throw new Error('当前表单不支持隐藏字段');
     let type: FieldType;
     switch (rule.type) {
+      case 'checkbox': {
+        type = 'checkbox';
+        break;
+      }
+      case 'colorPicker': {
+        type = 'color';
+        break;
+      }
       case 'datePicker': {
         if (
-          (props.type && props.type !== 'date') ||
+          (props.type && !['date', 'daterange'].includes(String(props.type))) ||
           (props.valueFormat && props.valueFormat !== 'YYYY-MM-DD')
         )
           throw new Error('日期仅支持YYYY-MM-DD');
-        type = 'date';
+        type = props.type === 'daterange' ? 'daterange' : 'date';
         break;
       }
       case 'input': {
@@ -140,8 +194,20 @@ export function designerToSchema(
         type = 'number';
         break;
       }
+      case 'radio': {
+        type = 'radio';
+        break;
+      }
+      case 'rate': {
+        type = 'rate';
+        break;
+      }
       case 'select': {
         type = props.multiple === true ? 'multiselect' : 'select';
+        break;
+      }
+      case 'slider': {
+        type = 'slider';
         break;
       }
       case 'switch': {
@@ -153,8 +219,14 @@ export function designerToSchema(
         type = 'switch';
         break;
       }
+      case 'timePicker': {
+        if (props.valueFormat && props.valueFormat !== 'HH:mm:ss')
+          throw new Error('时间须使用HH:mm:ss');
+        type = props.isRange === true ? 'timerange' : 'time';
+        break;
+      }
       default: {
-        throw new Error('仅支持当前七种标准字段');
+        throw new Error('不支持此字段组件');
       }
     }
     if (
@@ -169,7 +241,7 @@ export function designerToSchema(
     )
       throw new Error('当前字段不支持远程选项或函数配置');
     if (
-      ['multiselect', 'select'].includes(type) &&
+      choiceField(type) &&
       (!Array.isArray(rule.options) ||
         rule.options.some((entry) => {
           const option = object(entry);
@@ -197,9 +269,13 @@ export function designerToSchema(
       required:
         rule.$required === true ||
         (typeof rule.$required === 'string' && rule.$required.length > 0),
-      defaultValue: (rule.value ?? null) as FieldValue,
-      options: ['multiselect', 'select'].includes(type)
-        ? (rule.options as FormField['options'])
+      defaultValue: (Array.isArray(rule.value)
+        ? [...rule.value]
+        : (rule.value ?? null)) as FieldValue,
+      options: choiceField(type)
+        ? (rule.options as FormField['options']).map((option) => ({
+            ...option,
+          }))
         : [],
       help: rule.info || '',
       maxLength: ['text', 'textarea'].includes(type)
@@ -209,17 +285,56 @@ export function designerToSchema(
               (type === 'textarea' ? 5000 : 200),
           )
         : (old?.maxLength ?? 200),
-      min: type === 'number' ? numericBound(props.min) : null,
-      max: type === 'number' ? numericBound(props.max) : null,
+      min:
+        numericField(type) && type !== 'rate'
+          ? numericBound(props.min)
+          : (old?.min ?? null),
+      max:
+        numericField(type) && type !== 'rate'
+          ? numericBound(props.max)
+          : (old?.max ?? null),
       listVisible: (rule.listVisible as boolean) ?? old?.listVisible ?? true,
-      searchable:
-        type === 'multiselect'
-          ? false
-          : ((rule.searchable as boolean) ?? old?.searchable ?? false),
+      searchable: arrayField(type)
+        ? false
+        : ((rule.searchable as boolean) ?? old?.searchable ?? false),
+      ...presentation(rule, props, old),
     };
   });
-  const schema = { fields };
+  const schema: FormSchema = {
+    fields,
+    ...(previous.layout ? { layout: { ...previous.layout } } : {}),
+  };
   const error = schemaError(schema);
   if (error) throw new Error(error);
   return structuredClone(schema);
+}
+
+function presentation(
+  rule: Record<string, unknown>,
+  props: Record<string, unknown>,
+  old?: FormField,
+): Pick<FormField, 'ui'> {
+  const ui = { ...old?.ui };
+  for (const [property, target] of [
+    ['clearable', 'clearable'],
+    ['readonly', 'readOnly'],
+    ['disabled', 'disabled'],
+    ['showWordLimit', 'showWordLimit'],
+  ] as const) {
+    if (props[property] !== undefined) {
+      if (typeof props[property] !== 'boolean')
+        throw new Error('字段显示属性格式不正确');
+      ui[target] = props[property];
+    }
+  }
+  if (props.placeholder !== undefined) {
+    if (typeof props.placeholder !== 'string')
+      throw new Error('占位文字须为文本');
+    ui.placeholder = props.placeholder;
+  }
+  if (rule.col !== undefined) {
+    const span = Number(object(rule.col).span ?? 24) as 6 | 8 | 12 | 24;
+    if (span !== 24 || old?.ui?.span !== undefined) ui.span = span;
+  }
+  return Object.keys(ui).length > 0 ? { ui } : {};
 }

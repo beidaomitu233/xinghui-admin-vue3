@@ -5,6 +5,7 @@ import { nextTick, onBeforeUnmount, watch } from 'vue';
 
 import { useVbenForm } from '#/adapter/form';
 
+import { arrayField } from './form-schema';
 import { recordFormSchema } from './record-form';
 
 const props = defineProps<{
@@ -30,7 +31,7 @@ function values(
     props.schema.fields.map((field) => {
       let fallback: FieldValue = null;
       if (field.type === 'switch') fallback = false;
-      if (field.type === 'multiselect') fallback = [];
+      if (arrayField(field.type)) fallback = [];
       return [field.fieldKey, input[field.fieldKey] ?? fallback];
     }),
   );
@@ -38,7 +39,7 @@ function values(
 const [Form, formApi] = useVbenForm({
   schema: [],
   showDefaultActions: false,
-  wrapperClass: 'grid-cols-1',
+  wrapperClass: 'grid-cols-12',
   commonConfig: { componentProps: { class: 'w-full' } },
   handleSubmit: submitValues,
   handleValuesChange: (input) => {
@@ -73,6 +74,17 @@ watch(
     try {
       formApi.setState({
         ...(changed ? { schema: recordFormSchema(props.schema) } : {}),
+        layout:
+          props.schema.layout?.labelPosition === 'top'
+            ? 'vertical'
+            : 'horizontal',
+        commonConfig: {
+          labelWidth: props.schema.layout?.labelWidth ?? 90,
+          labelClass:
+            props.schema.layout?.labelPosition === 'right'
+              ? '!justify-end'
+              : '!justify-start',
+        },
       });
       await nextTick();
       if (run !== generation) return;
@@ -95,5 +107,9 @@ watch(
 );
 </script>
 <template>
-  <Form @submit="submitValues"><slot name="actions"></slot></Form>
+  <Form @submit="submitValues">
+    <div v-if="$slots.actions" class="col-span-full">
+      <slot name="actions"></slot>
+    </div>
+  </Form>
 </template>

@@ -16,9 +16,17 @@ setupVbenVxeTable({
   configVxeTable: (vxeUI) => {
     vxeUI.setConfig({
       grid: {
+        layouts: [
+          ['Toolbar', 'Form'],
+          ['Top', 'Table', 'Bottom', 'Pager'],
+        ],
+        cellConfig: { height: 48 },
+        headerCellConfig: { height: 44 },
+        sortConfig: { trigger: 'cell' },
         // 采用当前VXE的原生选项；刷新保留原生页码/排序。
         toolbarConfig: { refreshOptions: { code: 'query' } },
-        align: 'center',
+        align: 'left',
+        headerAlign: 'left',
         border: false,
         columnConfig: {
           resizable: true,
@@ -40,6 +48,7 @@ setupVbenVxeTable({
         },
         round: true,
         showOverflow: true,
+        showHeaderOverflow: true,
         size: 'small',
       } as VxeTableGridOptions,
     });

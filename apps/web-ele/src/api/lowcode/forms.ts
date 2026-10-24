@@ -1,13 +1,21 @@
 import { requestClient } from '#/api/request';
 
 export type FieldType =
+  | 'checkbox'
+  | 'color'
   | 'date'
+  | 'daterange'
   | 'multiselect'
   | 'number'
+  | 'radio'
+  | 'rate'
   | 'select'
+  | 'slider'
   | 'switch'
   | 'text'
-  | 'textarea';
+  | 'textarea'
+  | 'time'
+  | 'timerange';
 export type FieldValue = boolean | null | number | string | string[];
 export interface FormField {
   fieldKey: string;
@@ -22,9 +30,21 @@ export interface FormField {
   max: null | number;
   listVisible: boolean;
   searchable: boolean;
+  ui?: null | {
+    clearable?: boolean;
+    disabled?: boolean;
+    placeholder?: string;
+    readOnly?: boolean;
+    showWordLimit?: boolean;
+    span?: 6 | 8 | 12 | 24;
+  };
 }
 export interface FormSchema {
   fields: FormField[];
+  layout?: null | {
+    labelPosition: 'left' | 'right' | 'top';
+    labelWidth: number;
+  };
 }
 export interface FormDraft {
   name: string;

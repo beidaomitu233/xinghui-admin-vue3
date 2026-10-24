@@ -110,7 +110,7 @@ const gridOptions: VxeTableGridOptions<OssFile> = {
     refresh: true,
     refreshOptions: { code: 'query' },
     search: true,
-    zoom: true,
+    zoom: false,
   },
   proxyConfig: {
     sort: true,
@@ -377,19 +377,11 @@ const displayFileName = (row: OssFile) =>
 </script>
 
 <template>
-  <Page title="文件管理" description="管理系统上传的文件" auto-content-height>
-    <template #extra>
-      <el-upload
-        v-if="canUpload()"
-        :show-file-list="false"
-        :http-request="handleUpload"
-        :disabled="uploading"
-      >
-        <el-button type="primary" :loading="uploading">
-          {{ uploading ? `上传中 ${uploadProgress}%` : '上传文件' }}
-        </el-button>
-      </el-upload>
-    </template>
+  <Page
+    title="文件管理"
+    auto-content-height
+    content-class="flex min-h-0 flex-col"
+  >
     <el-alert
       v-if="failed"
       title="文件列表加载失败，请重试"
@@ -405,8 +397,19 @@ const displayFileName = (row: OssFile) =>
       type="warning"
       :closable="false"
     />
-    <Grid v-else table-title="文件列表">
+    <Grid v-else class="min-h-0 flex-1">
       <template #toolbar-actions>
+        <el-upload
+          v-if="canUpload()"
+          :show-file-list="false"
+          :http-request="handleUpload"
+          :disabled="uploading"
+          class="mr-3"
+        >
+          <el-button type="primary" :loading="uploading">
+            {{ uploading ? `上传中 ${uploadProgress}%` : '上传文件' }}
+          </el-button>
+        </el-upload>
         <el-button
           v-if="canRemove()"
           type="danger"

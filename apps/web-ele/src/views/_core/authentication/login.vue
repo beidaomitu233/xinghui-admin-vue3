@@ -121,9 +121,10 @@ onMounted(() => {
   <component :is="DemoLogin" v-if="DemoLogin" />
   <div
     v-else
-    class="grid items-center gap-8 md:grid-cols-[minmax(0,1fr)_300px] md:gap-12 md:px-5"
+    class="grid items-center gap-8 md:grid-cols-[minmax(0,360px)_280px]"
   >
     <AuthenticationLogin
+      class="min-w-0 md:border-r md:pr-10"
       title="账号密码登录"
       sub-title="欢迎使用 Xinghui Admin"
       :form-schema="formSchema"
@@ -178,6 +179,6 @@ onMounted(() => {
         </button>
       </template>
     </AuthenticationLogin>
-    <WechatEntry class="md:border-l md:pl-8" />
+    <WechatEntry />
   </div>
 </template>

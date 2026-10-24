@@ -1,8 +1,10 @@
 import type { FormSchema } from '#/api/lowcode/forms';
 
+import { reactive } from 'vue';
+
 import { describe, expect, it } from 'vitest';
 
-import { fieldTypes, newField } from '../form-schema';
+import { arrayField, choiceField, fieldTypes, newField } from '../form-schema';
 import { designerToSchema, schemaToDesigner } from './designer-schema';
 
 function at<T>(values: readonly T[] | undefined, index: number): T {
@@ -19,7 +21,11 @@ function example(): FormSchema {
       field.help = '填写帮助';
       field.required = index % 2 === 0;
       field.listVisible = index % 2 !== 0;
-      field.searchable = type !== 'multiselect';
+      field.searchable = !arrayField(type);
+      if (type === 'slider') {
+        field.min = 0;
+        field.max = 100;
+      }
       if (type === 'textarea') field.maxLength = 5000;
       if (type === 'number') {
         field.defaultValue = -0.000_001;
@@ -28,19 +34,49 @@ function example(): FormSchema {
       }
       if (type === 'date') field.defaultValue = '2024-02-29';
       if (type === 'switch') field.defaultValue = false;
-      if (['multiselect', 'select'].includes(type)) {
+      if (choiceField(type)) {
         field.options = [
           { label: '甲', value: 'a' },
           { label: '乙', value: 'b' },
         ];
-        field.defaultValue = type === 'select' ? 'b' : [];
+        field.defaultValue = ['radio', 'select'].includes(type) ? 'b' : [];
       }
       return field;
     }),
   };
 }
 describe('native designer business schema boundary', () => {
-  it('round trips seven types and preserves source, keys, metadata, precise values and string options', () => {
+  it('accepts a reactive saved draft, including array defaults, when saving again', () => {
+    const draft = reactive(example());
+    draft.layout = { labelPosition: 'left', labelWidth: 90 };
+    at(draft.fields, 5).defaultValue = ['a'];
+    const rules = schemaToDesigner(draft);
+    expect(designerToSchema(rules, draft)).toEqual(draft);
+  });
+  it('keeps layout and editable presentation properties across the designer boundary', () => {
+    const original = example();
+    original.layout = { labelPosition: 'top', labelWidth: 100 };
+    at(original.fields, 0).ui = {
+      placeholder: '请输入联系人',
+      clearable: true,
+      readOnly: false,
+      disabled: false,
+      showWordLimit: true,
+      span: 12,
+    };
+    const rules = schemaToDesigner(original);
+    expect(at(rules, 0).col?.span).toBe(12);
+    expect(designerToSchema(rules, original)).toEqual(original);
+    at(rules, 0).props.placeholder = '修改后的提示';
+    at(rules, 0).col = { span: 8 };
+    expect(at(designerToSchema(rules, original).fields, 0).ui).toMatchObject({
+      placeholder: '修改后的提示',
+      span: 8,
+    });
+    at(rules, 0).col = { span: 7 };
+    expect(() => designerToSchema(rules, original)).toThrow('布局');
+  });
+  it('round trips supported types and preserves source, keys, metadata, precise values and string options', () => {
     const original = example();
     const snapshot = structuredClone(original);
     const rules = schemaToDesigner(original);

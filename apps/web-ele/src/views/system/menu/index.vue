@@ -39,7 +39,6 @@ const query: () => Promise<{ items: MenuInfo[]; total: number }> =
     () => JSON.stringify([access.accessToken, canQuery.value, revision]),
   );
 const [Grid, gridApi] = useVbenVxeGrid<MenuInfo>({
-  tableTitle: '菜单树',
   formOptions: {
     collapsed: true,
     submitOnEnter: true,
@@ -111,7 +110,7 @@ const [Grid, gridApi] = useVbenVxeGrid<MenuInfo>({
         sortList: { field: string; order: 'asc' | 'desc' }[];
       }) => sortMenuSiblings(data, sortList[0]?.field, sortList[0]?.order),
     },
-    toolbarConfig: { refresh: true, custom: true, search: true, zoom: true },
+    toolbarConfig: { refresh: true, custom: true, search: true, zoom: false },
     proxyConfig: {
       ajax: {
         query,

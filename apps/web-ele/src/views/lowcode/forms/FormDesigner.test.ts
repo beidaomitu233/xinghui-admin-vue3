@@ -99,9 +99,19 @@ afterEach(() => {
 
 vi.setConfig({ testTimeout: 20_000 });
 describe('native visual form designer', () => {
-  it('uses the official seven-component palette and saves native canvas order, configured defaults and field identity', async () => {
+  it('uses the official grouped palette and saves native canvas order, configured defaults and field identity', async () => {
     const wrapper = await render();
-    expect(wrapper.findAll('._fc-l-item')).toHaveLength(7);
+    expect(wrapper.findAll('._fc-l-item')).toHaveLength(15);
+    for (const label of [
+      '单选框组',
+      '复选框组',
+      '日期范围',
+      '时间范围',
+      '滑块',
+      '评分',
+      '颜色选择',
+    ])
+      expect(wrapper.text()).toContain(label);
     await input(wrapper, '表单名称').setValue('报名表');
     await input(wrapper, '表单标识').setValue('enrollment');
     const palette = wrapper
@@ -116,6 +126,7 @@ describe('native visual form designer', () => {
     await flushPromises();
     await input(wrapper, '字段名称').setValue('备注');
     await input(wrapper, '默认值').setValue('默认备注');
+    await input(wrapper, '占位提示').setValue('仅填写备注');
     await flushPromises();
     const methods = wrapper.getComponent({ name: 'FcDesigner' })
       .vm as unknown as {
@@ -137,6 +148,11 @@ describe('native visual form designer', () => {
       label: '备注',
       defaultValue: '默认备注',
       listVisible: true,
+      ui: { placeholder: '仅填写备注' },
+    });
+    expect(draft.schema.layout).toEqual({
+      labelPosition: 'left',
+      labelWidth: 90,
     });
   });
   it('keeps a rejected draft editable and does not publish on failure', async () => {
@@ -154,7 +170,7 @@ describe('native visual form designer', () => {
     expect(api.publishForm).not.toHaveBeenCalled();
     await button(wrapper, '保存草稿').trigger('click');
     await flushPromises();
-    expect(api.createForm).toHaveBeenCalledTimes(2);
+    await vi.waitFor(() => expect(api.createForm).toHaveBeenCalledTimes(2));
   });
   it('sends one create when two save clicks arrive during asynchronous native validation', async () => {
     let complete: (id: string) => void = () => {};

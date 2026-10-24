@@ -55,7 +55,6 @@ const query: () => Promise<{ items: RoleInfo[]; total: number }> =
     () => JSON.stringify([access.accessToken, canQuery.value, revision]),
   );
 const [Grid, gridApi] = useVbenVxeGrid<RoleInfo>({
-  tableTitle: '角色列表',
   formOptions: {
     collapsed: true,
     submitOnEnter: true,
@@ -106,7 +105,7 @@ const [Grid, gridApi] = useVbenVxeGrid<RoleInfo>({
       { title: '操作', width: 150, slots: { default: 'actions' } },
     ],
     pagerConfig: { pageSize: 10, pageSizes: [10, 20, 50, 100] },
-    toolbarConfig: { refresh: true, custom: true, search: true, zoom: true },
+    toolbarConfig: { refresh: true, custom: true, search: true, zoom: false },
     sortConfig: {
       remote: true,
       multiple: false,

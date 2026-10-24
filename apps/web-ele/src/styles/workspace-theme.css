@@ -2,12 +2,28 @@
    of the persisted accent preset. Existing locale/layout/auth storage is untouched. */
 html {
   --background: 0 0% 100% !important;
-  --background-deep: 216 20.11% 95.47% !important;
+  /* #f2f4f8, independently of the selected accent preset. */
+  --background-deep: 220 30% 96.078431372549% !important;
   --card: 0 0% 100% !important;
+  --el-border-radius-base: 4px;
+  --el-border-radius-small: 3px;
+  --radius: 0.25rem !important;
 }
 
 html.dark {
   --background: 222.34deg 10.43% 12.27% !important;
   --background-deep: 220deg 13.06% 9% !important;
   --card: 222.34deg 10.43% 12.27% !important;
+}
+
+.el-button:not(.is-circle) {
+  border-radius: 4px;
+  box-shadow: none;
+  font-weight: 400;
+}
+
+.vxe-grid .vxe-button:not(.is--circle) {
+  border-radius: 4px;
+  box-shadow: none;
+  font-weight: 400;
 }

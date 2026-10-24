@@ -25,6 +25,7 @@ interface Props {
   layout?: 'center' | 'left' | 'right';
   formClass?: string;
   contentClass?: string;
+  centerIllustration?: boolean;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -32,6 +33,7 @@ const props = withDefaults(defineProps<Props>(), {
   layout: undefined,
   formClass: '',
   contentClass: '',
+  centerIllustration: false,
   copyright: true,
   logo: '',
   logoDark: '',
@@ -157,8 +159,20 @@ const logoSrc = computed(() => {
     </div>
 
     <!-- 中心认证面板 -->
-    <div v-if="authPanelCenter" class="flex-center relative w-full">
+    <div v-if="authPanelCenter" class="flex-center relative w-full py-24">
       <div class="login-background absolute left-0 top-0 size-full"></div>
+      <div
+        v-if="centerIllustration"
+        aria-hidden="true"
+        class="pointer-events-none absolute inset-0 overflow-hidden"
+      >
+        <SloganIcon
+          class="absolute -left-20 top-[12%] w-[480px] opacity-[0.08] xl:left-[4%]"
+        />
+        <SloganIcon
+          class="absolute -right-32 bottom-[8%] w-[520px] rotate-12 opacity-[0.06] xl:right-[2%]"
+        />
+      </div>
       <AuthenticationFormView
         :class="
           cn(
