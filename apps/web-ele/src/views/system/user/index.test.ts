@@ -1,4 +1,5 @@
 import { mount } from '@vue/test-utils';
+import { ref } from 'vue';
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -46,10 +47,11 @@ vi.mock('#/adapter/vxe-table', async (importOriginal) => {
   return {
     ...actual,
     useVbenVxeGrid: (options: GridQuery & { tableTitle?: string }) => {
-      if (options.tableTitle === '用户列表') state.options = options;
+      if (options.tableTitle !== undefined) state.options = options;
       return [
         { template: '<div />' },
         {
+          useStore: () => ref({ showSearchForm: false }),
           grid: {
             getCurrentPage: () => state.live?.page ?? 1,
             getPageSize: () => 10,

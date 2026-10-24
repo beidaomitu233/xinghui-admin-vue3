@@ -6,6 +6,7 @@ import type { EntityDialogMode } from '#/composables/use-entity-dialog';
 import { computed, ref, watch } from 'vue';
 
 import { Page, useVbenModal } from '@vben/common-ui';
+import { ChevronDown, Search } from '@vben/icons';
 import { usePreferences } from '@vben/preferences';
 import { useAccessStore } from '@vben/stores';
 
@@ -34,6 +35,7 @@ const templateLoading = ref(false);
 const exportLoading = ref(false);
 const importSummary = ref<UserImportSummary>();
 const importError = ref('');
+const quickSearch = ref('');
 let queryRevision = 0;
 const [EditModal, modalApi] = useVbenModal({ connectedComponent: UserModal });
 function canOpenDialog(mode: EntityDialogMode) {
@@ -86,42 +88,57 @@ const queryUsers: () => Promise<{ items: UserInfo[]; total: number }> =
   );
 const columns = computed<NonNullable<VxeTableGridOptions<UserInfo>['columns']>>(
   () => [
-    { field: 'username', title: '账号', minWidth: 140, sortable: true },
-    { field: 'nickname', title: '昵称', minWidth: 120, sortable: true },
-    { field: 'mobile', title: '手机号', minWidth: 140, sortable: true },
-    { field: 'email', title: '邮箱', minWidth: 180, sortable: true },
+    { field: 'username', title: '账号', minWidth: 136, sortable: true },
+    { field: 'nickname', title: '昵称', minWidth: 110, sortable: true },
+    { field: 'mobile', title: '手机号', minWidth: 125, sortable: true },
+    { field: 'email', title: '邮箱', minWidth: 170, sortable: true },
     {
       field: 'status',
       title: '状态',
-      width: 100,
+      width: 96,
       sortable: true,
       slots: { default: 'status' },
     },
-    { field: 'createTime', title: '创建时间', width: 180, sortable: true },
+    { field: 'createTime', title: '创建时间', width: 168, sortable: true },
     {
       title: '操作',
-      width: 280,
+      width: 180,
       fixed: isMobile.value ? undefined : 'right',
+      showOverflow: false,
       slots: { default: 'actions' },
     },
   ],
 );
 const [Grid, gridApi] = useVbenVxeGrid<UserInfo>({
-  tableTitle: '用户列表',
+  tableTitle: '',
+  showSearchForm: false,
+  separator: false,
+  class: '!rounded-none !bg-transparent',
+  gridClass: '!p-0',
   formOptions: {
-    collapsed: true,
+    collapsed: false,
+    showCollapseButton: false,
+    actionLayout: 'newLine',
+    actionPosition: 'left',
+    actionButtonsReverse: true,
+    actionWrapperClass: 'border-t mt-1 pt-3',
+    resetButtonOptions: { plain: true },
+    commonConfig: { labelWidth: 60, labelClass: '!justify-start' },
+    wrapperClass: 'grid-cols-1 md:grid-cols-2 xl:grid-cols-3',
     submitOnEnter: true,
     schema: [
       {
         fieldName: 'username',
         label: '账号',
         component: 'Input',
+        componentProps: { placeholder: '输入账号关键词', clearable: true },
         defaultValue: '',
       },
       {
         fieldName: 'mobile',
         label: '手机号',
         component: 'Input',
+        componentProps: { placeholder: '输入手机号', clearable: true },
         defaultValue: '',
       },
       {
@@ -139,11 +156,13 @@ const [Grid, gridApi] = useVbenVxeGrid<UserInfo>({
     ],
     handleSubmit: async () => {
       const values = await gridApi.formApi.getValues();
+      quickSearch.value = String(values.username ?? '');
       gridApi.formApi.setLatestSubmissionValues(values);
       await gridApi.grid.setCurrentPage(1);
       await gridApi.query(values);
     },
     handleReset: async () => {
+      quickSearch.value = '';
       await gridApi.formApi.resetForm();
       const values = await gridApi.formApi.getValues();
       gridApi.formApi.setLatestSubmissionValues(values);
@@ -155,21 +174,35 @@ const [Grid, gridApi] = useVbenVxeGrid<UserInfo>({
     },
   },
   gridOptions: {
+    layouts: [
+      ['Toolbar', 'Form'],
+      ['Table', 'Pager'],
+    ],
     height: 'auto',
+    align: 'left',
+    headerAlign: 'left',
+    round: false,
+    cellConfig: { height: 48 },
+    headerCellConfig: { height: 44 },
     rowConfig: { keyField: 'userId' },
     columns: columns.value,
-    pagerConfig: { pageSize: 10, pageSizes: [10, 20, 50, 100] },
+    pagerConfig: {
+      pageSize: 20,
+      pageSizes: [10, 20, 50, 100],
+      layouts: ['Total', 'Sizes', 'PrevPage', 'Number', 'NextPage'],
+    },
     sortConfig: {
       remote: true,
       multiple: false,
+      trigger: 'cell',
       defaultSort: { field: 'createTime', order: 'desc' },
     },
     toolbarConfig: {
       custom: true,
       refresh: true,
       refreshOptions: { code: 'query' },
-      zoom: true,
-      search: true,
+      zoom: false,
+      search: false,
     },
     proxyConfig: {
       sort: true,
@@ -185,6 +218,17 @@ const [Grid, gridApi] = useVbenVxeGrid<UserInfo>({
     },
   },
 });
+const gridState = gridApi.useStore();
+async function searchAccounts() {
+  const values = {
+    ...(await gridApi.formApi.getValues()),
+    username: quickSearch.value.trim(),
+  };
+  await gridApi.formApi.setValues(values);
+  gridApi.formApi.setLatestSubmissionValues(values);
+  await gridApi.grid.setCurrentPage(1);
+  await gridApi.query(values);
+}
 watch(columns, (nextColumns) =>
   gridApi.setGridOptions({ columns: nextColumns }),
 );
@@ -230,6 +274,7 @@ async function load() {
   await gridApi.query();
 }
 async function showPendingUsers() {
+  quickSearch.value = '';
   const values = { username: '', mobile: '', status: '0' };
   await gridApi.formApi.setValues(values);
   gridApi.formApi.setLatestSubmissionValues(values);
@@ -378,9 +423,10 @@ function downloadImportErrors() {
 <template>
   <Page
     title="用户管理"
-    description="管理账号、角色与登录状态"
+    class="user-management"
+    header-class="!px-5 !py-3"
     auto-content-height
-    content-class="flex min-h-0 flex-col"
+    content-class="flex min-h-0 flex-col !p-5"
   >
     <el-alert v-if="error" :title="error" type="error" show-icon class="mb-4">
       <el-button link @click="load">重试</el-button>
@@ -426,33 +472,40 @@ function downloadImportErrors() {
       </div>
       <ImportGrid :grid-options="{ data: importSummary.rows }" class="mb-4" />
     </template>
-    <Grid class="min-h-0 flex-1">
+    <Grid class="min-h-0 flex-1 !rounded-none !bg-transparent">
       <template #toolbar-actions>
-        <el-button
-          v-if="canQuery"
-          :loading="templateLoading"
-          @click="downloadTemplate"
-        >
-          下载导入模板
+        <el-button v-if="canOpenDialog('create')" type="primary" @click="add">
+          新增用户
         </el-button>
         <el-button
           v-if="can('system:user:add')"
-          type="primary"
           :loading="importLoading"
           @click="chooseImportFile"
         >
           {{ importLoading ? '正在导入' : '导入用户' }}
         </el-button>
-        <el-button
-          v-if="canQuery"
-          :loading="exportLoading"
-          @click="exportCurrentUsers"
-        >
-          导出当前筛选结果
-        </el-button>
-        <el-button v-if="canOpenDialog('create')" type="primary" @click="add">
-          新增用户
-        </el-button>
+        <el-dropdown v-if="canQuery" trigger="click" class="ml-3">
+          <el-button :loading="templateLoading || exportLoading">
+            更多操作
+            <ChevronDown class="ml-2 size-3.5" />
+          </el-button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item
+                :disabled="templateLoading"
+                @click="downloadTemplate"
+              >
+                下载导入模板
+              </el-dropdown-item>
+              <el-dropdown-item
+                :disabled="exportLoading"
+                @click="exportCurrentUsers"
+              >
+                导出筛选结果
+              </el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
         <el-popover
           v-if="can('system:user:add')"
           placement="bottom"
@@ -460,7 +513,7 @@ function downloadImportErrors() {
           trigger="click"
         >
           <template #reference>
-            <el-button link>导入字段说明</el-button>
+            <el-button text class="ml-2">导入说明</el-button>
           </template>
           <p>.xlsx，最多1000行 / 5 MiB。</p>
           <p>角色标识：多个值用逗号分隔。逐行处理，错误行会列出原因。</p>
@@ -476,35 +529,146 @@ function downloadImportErrors() {
           @change="handleImportFile"
         />
       </template>
+      <template #toolbar-tools>
+        <div class="flex items-center gap-2">
+          <el-input
+            v-model="quickSearch"
+            class="w-[200px]"
+            placeholder="搜索账号"
+            aria-label="搜索账号"
+            clearable
+            @keyup.enter="searchAccounts"
+            @clear="searchAccounts"
+          >
+            <template #prefix>
+              <Search class="size-4" />
+            </template>
+          </el-input>
+          <el-tooltip
+            :content="gridState.showSearchForm ? '收起筛选' : '高级筛选'"
+          >
+            <el-button
+              text
+              :type="gridState.showSearchForm ? 'primary' : undefined"
+              :aria-label="gridState.showSearchForm ? '收起筛选' : '高级筛选'"
+              :aria-expanded="!!gridState.showSearchForm"
+              @click="gridApi.toggleSearchForm()"
+            >
+              <i class="vxe-icon-funnel" aria-hidden="true"></i>
+            </el-button>
+          </el-tooltip>
+        </div>
+      </template>
       <template #status="{ row }">
         <el-tag :type="row.status === 1 ? 'success' : 'danger'">
           {{ row.status === 1 ? '启用' : '禁用' }}
         </el-tag>
       </template>
       <template #actions="{ row }">
-        <el-button v-if="canOpenDialog('view')" link @click="view(row)">
-          详情
-        </el-button>
-        <el-button v-if="canOpenDialog('edit')" link @click="edit(row)">
-          编辑
-        </el-button>
-        <el-button
-          v-if="can('system:user:edit')"
-          link
-          @click="resetPassword(row)"
-        >
-          重置密码
-        </el-button>
-        <el-button
-          v-if="can('system:user:remove')"
-          link
-          type="danger"
-          @click="remove(row)"
-        >
-          删除
-        </el-button>
+        <div class="flex items-center gap-2 whitespace-nowrap">
+          <el-button
+            v-if="canOpenDialog('view')"
+            link
+            type="primary"
+            class="!m-0"
+            @click="view(row)"
+          >
+            详情
+          </el-button>
+          <el-button
+            v-if="canOpenDialog('edit')"
+            link
+            type="primary"
+            class="!m-0"
+            @click="edit(row)"
+          >
+            编辑
+          </el-button>
+          <el-dropdown
+            v-if="can('system:user:edit') || can('system:user:remove')"
+            trigger="click"
+            class="!ml-0"
+          >
+            <el-button link type="primary">
+              更多
+              <ChevronDown class="ml-1 size-3" />
+            </el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item
+                  v-if="can('system:user:edit')"
+                  @click="resetPassword(row)"
+                >
+                  重置密码
+                </el-dropdown-item>
+                <el-dropdown-item
+                  v-if="can('system:user:remove')"
+                  @click="remove(row)"
+                >
+                  <span class="text-destructive">删除用户</span>
+                </el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+        </div>
       </template>
     </Grid>
     <EditModal @saved="load" />
   </Page>
 </template>
+
+<style scoped>
+/* Only this business page is the layout sample pending user review. */
+.user-management :deep(.vxe-grid--form-wrapper > div) {
+  margin-bottom: 16px;
+  padding: 20px 20px 16px;
+  border-radius: 0;
+  background: hsl(var(--card));
+}
+
+.user-management :deep(.vxe-toolbar) {
+  background: transparent;
+  padding-bottom: 16px;
+}
+
+.user-management :deep(.vxe-grid--layout-body-content-wrapper) {
+  background: hsl(var(--card));
+}
+
+.user-management :deep(.vxe-tools--operate .vxe-button) {
+  border-color: transparent;
+  border-radius: 4px;
+  background: transparent;
+}
+
+.user-management :deep(.vxe-table) {
+  --vxe-ui-table-header-background-color: hsl(var(--card));
+}
+
+.user-management :deep(.vxe-cell) {
+  padding-right: 20px !important;
+  padding-left: 20px !important;
+}
+
+.user-management :deep(.vxe-pager) {
+  margin-top: 0;
+  border-top: 1px solid hsl(var(--border));
+  padding: 12px 20px;
+}
+
+.user-management :deep(.vxe-pager--total) {
+  margin-right: auto;
+  margin-left: 0;
+}
+
+.user-management :deep(.vxe-pager--sizes) {
+  margin-right: 0;
+}
+
+@media (max-width: 767px) {
+  .user-management :deep(.vxe-toolbar) {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+}
+</style>
