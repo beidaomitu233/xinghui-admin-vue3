@@ -3,6 +3,7 @@ import type { AiPage, AiRestLong } from './ai-application';
 import { requestClient } from '#/api/request';
 
 export type CallEntryType =
+  | 'AGENT_MODEL'
   | 'CONFIGURATION_TEST'
   | 'MODEL_DISCOVERY'
   | 'REQUEST_ATTEMPT';
@@ -21,6 +22,9 @@ export interface CallLogFilters {
   sceneKey?: string;
 }
 export interface CallLogRow {
+  agentSessionId?: null | string;
+  agentRunId?: null | string;
+  agentModelCallId?: null | string;
   callId: string;
   requestId: null | string;
   attemptId: null | string;
