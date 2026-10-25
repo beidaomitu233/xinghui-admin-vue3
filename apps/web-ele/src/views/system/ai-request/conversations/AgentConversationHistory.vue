@@ -17,6 +17,7 @@ import {
 } from 'element-plus';
 
 import { getAgentEvents, listAgentSessions } from '#/api/system/ai-workbench';
+import AgentImagePreview from '#/views/ai/workbench/AgentImagePreview.vue';
 import {
   applyEvents,
   emptyHistory,
@@ -158,6 +159,17 @@ onBeforeUnmount(() => {
                   :text="message.text"
                 />
                 <p v-else class="whitespace-pre-wrap">{{ message.text }}</p>
+                <div
+                  v-if="message.images?.length"
+                  class="mt-3 flex flex-wrap gap-2"
+                >
+                  <AgentImagePreview
+                    v-for="image in message.images"
+                    :key="image.id"
+                    :image="image"
+                    :session-id="selected"
+                  />
+                </div>
               </article>
             </template>
           </div>

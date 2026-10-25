@@ -1,4 +1,5 @@
 import type {
+  AgentImage,
   AgentPreset,
   AgentRun,
   AgentSession,
@@ -28,9 +29,11 @@ import {
   listAgentSessions,
   renameAgentSession,
   submitAgentRun,
+  uploadAgentImage,
 } from '#/api/system/ai-workbench';
 
 import { applyEvents, emptyHistory, isRunning } from './history';
+import { prepareImage } from './prepare-image';
 
 /** Polling only reads durable events. Only a deliberate send/retry can submit a task. */
 export function useWorkbench() {
@@ -45,6 +48,8 @@ export function useWorkbench() {
   const run = ref<AgentRun | null>(null);
   const selected = ref<AgentSession | null>(null);
   const draft = ref('');
+  const attachments = ref<AgentImage[]>([]);
+  const uploading = ref(false);
   const error = ref('');
   const sceneKey = ref('');
   const cancelling = ref(false);
@@ -75,6 +80,7 @@ export function useWorkbench() {
     run.value = null;
     pending.value = null;
     draft.value = '';
+    attachments.value = [];
     error.value = '';
     loading.value = false;
     sending.value = false;
@@ -90,6 +96,7 @@ export function useWorkbench() {
     Object.assign(history, emptyHistory());
     pending.value = null;
     draft.value = '';
+    attachments.value = [];
   }
   async function read(ticket: number) {
     const sessionId = selected.value?.id;
@@ -129,12 +136,14 @@ export function useWorkbench() {
     }
   }
   async function select(session: AgentSession) {
+    if (uploading.value) return;
     stop();
     const ticket = epoch;
     selected.value = session;
     run.value = null;
     pending.value = null;
     draft.value = '';
+    attachments.value = [];
     error.value = '';
     Object.assign(history, emptyHistory());
     loading.value = true;
@@ -147,6 +156,7 @@ export function useWorkbench() {
     }
   }
   async function refresh() {
+    if (uploading.value) return;
     stop();
     const ticket = epoch;
     if (!visible || !allowed.value) return;
@@ -180,7 +190,8 @@ export function useWorkbench() {
     }
   }
   async function create() {
-    if (!allowed.value || loading.value || sending.value) return;
+    if (!allowed.value || loading.value || sending.value || uploading.value)
+      return;
     stop();
     const ticket = epoch;
     loading.value = true;
@@ -193,6 +204,7 @@ export function useWorkbench() {
       run.value = null;
       pending.value = null;
       draft.value = '';
+      attachments.value = [];
       Object.assign(history, emptyHistory());
     } catch {
       if (valid(ticket)) error.value = '新建会话失败，请重试。';
@@ -201,7 +213,8 @@ export function useWorkbench() {
     }
   }
   async function send() {
-    if (!allowed.value || sending.value || loading.value) return;
+    if (!allowed.value || sending.value || loading.value || uploading.value)
+      return;
     if (!pending.value) {
       if (
         !selected.value ||
@@ -216,6 +229,9 @@ export function useWorkbench() {
           input: draft.value.trim(),
           sceneKey: sceneKey.value,
           clientRequestId: crypto.randomUUID(),
+          ...(attachments.value.length > 0
+            ? { imageIds: attachments.value.map((image) => image.id) }
+            : {}),
         },
       };
     }
@@ -232,6 +248,7 @@ export function useWorkbench() {
       if (!valid(ticket)) return;
       pending.value = null;
       draft.value = '';
+      attachments.value = [];
       run.value = admitted.run;
       // A previous terminal run must not suppress polling for this new admission.
       history.status = admitted.run.status;
@@ -292,6 +309,43 @@ export function useWorkbench() {
       item.id === updated.id ? updated : item,
     );
   }
+  async function uploadImage(file: File) {
+    const sessionId = selected.value?.id;
+    if (
+      !sessionId ||
+      !allowed.value ||
+      running.value ||
+      sending.value ||
+      pending.value ||
+      uploading.value
+    )
+      return;
+    if (attachments.value.length >= 4) {
+      error.value = '每次最多添加4张图片。';
+      return;
+    }
+    const ticket = epoch;
+    uploading.value = true;
+    error.value = '';
+    try {
+      const prepared = await prepareImage(file);
+      if (!valid(ticket)) return;
+      const image = await uploadAgentImage(sessionId, prepared);
+      if (valid(ticket)) attachments.value.push(image);
+    } catch (error_) {
+      if (valid(ticket))
+        error.value =
+          error_ instanceof Error && error_.message.startsWith('请选择')
+            ? error_.message
+            : '图片上传失败，请重新选择。';
+    } finally {
+      uploading.value = false;
+    }
+  }
+  function removeImage(id: string) {
+    if (!sending.value && !pending.value)
+      attachments.value = attachments.value.filter((image) => image.id !== id);
+  }
   function activate() {
     if (visible) return;
     visible = true;
@@ -326,6 +380,10 @@ export function useWorkbench() {
     run,
     sceneKey,
     draft,
+    attachments,
+    uploading,
+    uploadImage,
+    removeImage,
     error,
     loading,
     sending,

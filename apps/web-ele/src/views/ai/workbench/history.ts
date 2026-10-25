@@ -1,4 +1,8 @@
-import type { AgentEvent, AgentRunStatus } from '#/api/system/ai-workbench';
+import type {
+  AgentEvent,
+  AgentImage,
+  AgentRunStatus,
+} from '#/api/system/ai-workbench';
 
 export interface ChatMessage {
   id: string;
@@ -6,6 +10,7 @@ export interface ChatMessage {
   role: 'ASSISTANT' | 'TOOL' | 'USER';
   text: string;
   toolState?: string;
+  images?: AgentImage[];
 }
 export interface TaskStep {
   id: string;
@@ -124,6 +129,18 @@ export function applyEvents(history: AgentHistory, events: AgentEvent[]) {
           runId: event.runId,
           role: 'USER',
           text: text(data.text),
+          images: Array.isArray(data.images)
+            ? data.images.filter((image): image is AgentImage =>
+                Boolean(
+                  image &&
+                  typeof image === 'object' &&
+                  typeof image.id === 'string' &&
+                  typeof image.name === 'string' &&
+                  typeof image.mediaType === 'string' &&
+                  typeof image.size === 'number',
+                ),
+              )
+            : [],
         });
 
         break;

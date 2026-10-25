@@ -18,7 +18,7 @@ import {
 import { Loading, useVbenDrawer } from '@vben/common-ui';
 import { useAccessStore } from '@vben/stores';
 
-import { ElAlert, ElButton } from 'element-plus';
+import { ElAlert, ElButton, ElCard } from 'element-plus';
 
 import { useVbenForm } from '#/adapter/form';
 import { useVbenVxeGrid } from '#/adapter/vxe-table';
@@ -523,26 +523,34 @@ onBeforeUnmount(clear);
         type="info"
         :closable="false"
       />
-      <dl v-if="stats" class="call-stats">
-        <div>
-          <dt>上游交互</dt>
-          <dd>{{ exact(stats.calls) }}</dd>
-        </div>
-        <div>
-          <dt>成功 / 失败</dt>
-          <dd>{{ exact(stats.succeeded) }} / {{ exact(stats.failed) }}</dd>
-        </div>
-        <div>
-          <dt>已知输入 Token</dt>
-          <dd>{{ exact(stats.knownInputTokens, '未知') }}</dd>
-          <small>{{ exact(stats.unknownInputCalls) }} 次输入未知</small>
-        </div>
-        <div>
-          <dt>已知输出 Token</dt>
-          <dd>{{ exact(stats.knownOutputTokens, '未知') }}</dd>
-          <small>{{ exact(stats.unknownOutputCalls) }} 次输出未知</small>
-        </div>
-      </dl>
+      <div v-if="stats" class="call-stats">
+        <ElCard shadow="never" :body-style="{ padding: '14px' }">
+          <dl>
+            <dt>上游交互</dt>
+            <dd>{{ exact(stats.calls) }}</dd>
+          </dl>
+        </ElCard>
+        <ElCard shadow="never" :body-style="{ padding: '14px' }">
+          <dl>
+            <dt>成功 / 失败</dt>
+            <dd>{{ exact(stats.succeeded) }} / {{ exact(stats.failed) }}</dd>
+          </dl>
+        </ElCard>
+        <ElCard shadow="never" :body-style="{ padding: '14px' }">
+          <dl>
+            <dt>已知输入 Token</dt>
+            <dd>{{ exact(stats.knownInputTokens, '未知') }}</dd>
+            <small>{{ exact(stats.unknownInputCalls) }} 次输入未知</small>
+          </dl>
+        </ElCard>
+        <ElCard shadow="never" :body-style="{ padding: '14px' }">
+          <dl>
+            <dt>已知输出 Token</dt>
+            <dd>{{ exact(stats.knownOutputTokens, '未知') }}</dd>
+            <small>{{ exact(stats.unknownOutputCalls) }} 次输出未知</small>
+          </dl>
+        </ElCard>
+      </div>
       <Grid>
         <template #form><QueryForm /></template>
         <template #toolbar-actions>
@@ -619,13 +627,6 @@ small {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 12px;
-}
-
-.call-stats div {
-  min-width: 0;
-  padding: 14px;
-  border: 1px solid hsl(var(--border));
-  border-radius: 8px;
 }
 
 .call-stats dd {

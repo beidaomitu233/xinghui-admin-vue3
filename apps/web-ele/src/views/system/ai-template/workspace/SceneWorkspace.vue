@@ -731,6 +731,7 @@ watch(dialogOpen, (open) => workspaceModalApi.setState({ isOpen: open }), {
               :revision="view.revision"
               :version-id="selected.currentVersionId"
               :models="models"
+              :business-models="businessModels"
               :prepare="prepareTrial"
             />
             <ElButton

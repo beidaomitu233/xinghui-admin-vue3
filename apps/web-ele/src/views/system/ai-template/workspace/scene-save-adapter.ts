@@ -138,6 +138,7 @@ export function sceneSaveProblem(error: unknown) {
             sqlBindings: '查询引用',
             initialModel: '使用模型',
             businessModel: '使用模型',
+            businessModels: '使用模型',
             dataObjects: '数据对象或允许字段',
             dataBindings: '数据库引用',
             modelPolicy: '模型及调用设置',
@@ -147,7 +148,7 @@ export function sceneSaveProblem(error: unknown) {
       }
     return new SaveProblem(
       'validation',
-      '配置未通过校验，原有效配置继续使用。',
+      '配置未通过校验，请检查标注字段。',
       fields,
     );
   }

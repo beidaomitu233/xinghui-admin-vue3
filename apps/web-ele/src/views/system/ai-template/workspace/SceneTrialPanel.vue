@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { DatabaseRecord } from '#/api/system/ai-database';
+import type { HubModel } from '#/api/system/ai-model-hub';
 import type {
   SceneDefinition,
   SceneModelOption,
@@ -42,6 +43,7 @@ import {
 import DatabaseRecordPicker from './DatabaseRecordPicker.vue';
 
 const props = defineProps<{
+  businessModels?: HubModel[];
   businessRef?: SceneSubmission['businessRef'];
   definition: SceneDefinition;
   models?: SceneModelOption[];
@@ -66,6 +68,20 @@ const output = ref('');
 const error = ref('');
 const busy = ref(false);
 const modelIndex = ref(0);
+const businessRoute = computed(() => {
+  if (props.definition.businessModels?.length)
+    return props.definition.businessModels;
+  return props.definition.businessModel ? [props.definition.businessModel] : [];
+});
+const businessRouteLabel = computed(() =>
+  businessRoute.value
+    .map(
+      (slug) =>
+        props.businessModels?.find((model) => model.slug === slug)?.name ??
+        '已配置模型',
+    )
+    .join(' → '),
+);
 const activeTab = ref('answer');
 const record = ref<DatabaseRecord | null>(null);
 const contextReady = ref(!props.definition.sqlBindings?.length);
@@ -396,7 +412,7 @@ watch(expanded, (open) => trialDrawerApi.setState({ isOpen: open }), {
       :close-on-click-modal="false"
     >
       <ElForm label-position="top" class="trial-form">
-        <ElFormItem v-if="!definition.businessModel" label="试运行组合">
+        <ElFormItem v-if="businessRoute.length === 0" label="试运行组合">
           <ElSelect
             v-model="modelIndex"
             aria-label="试运行组合"
@@ -410,9 +426,8 @@ watch(expanded, (open) => trialDrawerApi.setState({ isOpen: open }), {
             />
           </ElSelect>
         </ElFormItem>
-        <p v-if="definition.businessModel" class="trial-hint">
-          按业务模型
-          {{ definition.businessModel }} 当前已保存的供应商与策略试运行。
+        <p v-if="businessRoute.length > 0" class="trial-hint">
+          按当前场景的模型顺序与供应商策略试运行：{{ businessRouteLabel }}。
         </p>
         <p v-else class="trial-hint">
           测试所选组合；正式对话按场景优先级自动切换。

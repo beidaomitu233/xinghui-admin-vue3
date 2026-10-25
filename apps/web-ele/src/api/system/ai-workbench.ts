@@ -38,6 +38,13 @@ export interface AgentSubmission {
   input: string;
   sceneKey: string;
   clientRequestId: string;
+  imageIds?: string[];
+}
+export interface AgentImage {
+  id: string;
+  name: string;
+  mediaType: string;
+  size: number;
 }
 export interface AgentAdmission {
   created: boolean;
@@ -75,3 +82,13 @@ export const getAgentRun = (id: string) =>
   requestClient.get<AgentRun>(`${base}/runs/${segment(id)}`);
 export const cancelAgentRun = (id: string) =>
   requestClient.post<AgentRun>(`${base}/runs/${segment(id)}/cancel`, {});
+export const uploadAgentImage = (session: string, file: File) =>
+  requestClient.upload<AgentImage>(
+    `${base}/sessions/${segment(session)}/images`,
+    { file },
+  );
+export const readAgentImage = (session: string, id: string) =>
+  requestClient.get<Blob>(
+    `${base}/sessions/${segment(session)}/images/${segment(id)}`,
+    { responseType: 'blob', responseReturn: 'body' },
+  );

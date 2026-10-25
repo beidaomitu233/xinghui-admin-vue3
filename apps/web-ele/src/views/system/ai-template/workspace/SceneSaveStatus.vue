@@ -9,7 +9,7 @@ const labels: Record<SavePhase, string> = {
   conflict: '版本冲突，本地输入已保留',
   error: '保存失败，本地输入已保留',
   idle: '无待保存修改',
-  invalid: '请修正后保存，原有效配置继续使用',
+  invalid: '请完善场景配置后保存',
   readonly: '只读',
   saved: '已保存',
   saving: '正在保存…',
@@ -20,7 +20,7 @@ const labels: Record<SavePhase, string> = {
   <div class="save-status" role="status" aria-live="polite" :data-phase="phase">
     <span>{{ error || labels[phase] }}</span>
     <ElButton
-      v-if="phase === 'error' || phase === 'invalid'"
+      v-if="phase === 'error'"
       type="primary"
       link
       size="small"

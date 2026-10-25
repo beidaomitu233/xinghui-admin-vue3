@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { UploadFile } from 'element-plus';
+
 import { computed, nextTick, ref, watch } from 'vue';
 
 import { Page } from '@vben/common-ui';
@@ -19,10 +21,12 @@ import {
   ElStep,
   ElSteps,
   ElTag,
+  ElUpload,
 } from 'element-plus';
 
 import { aiErrorMessage } from '#/api/system/ai-runtime-errors';
 
+import AgentImagePreview from './AgentImagePreview.vue';
 import { runLabels } from './history';
 import MarkdownMessage from './MarkdownMessage.vue';
 import { useWorkbench } from './use-workbench';
@@ -35,6 +39,10 @@ const {
   selected,
   sceneKey,
   draft,
+  attachments,
+  uploading,
+  uploadImage,
+  removeImage,
   error,
   loading,
   sending,
@@ -51,6 +59,19 @@ const {
   rename,
 } = useWorkbench();
 const scroll = ref<InstanceType<typeof ElScrollbar>>();
+const uploader = ref<InstanceType<typeof ElUpload>>();
+async function pickedImage(file: UploadFile) {
+  if (file.raw) await uploadImage(file.raw);
+  uploader.value?.clearFiles();
+}
+async function pastedImage(event: ClipboardEvent) {
+  const files = [...(event.clipboardData?.files ?? [])].filter((file) =>
+    file.type.startsWith('image/'),
+  );
+  if (files.length === 0) return;
+  event.preventDefault();
+  for (const file of files) await uploadImage(file);
+}
 const search = ref('');
 const showTasks = ref(true);
 const following = ref(true);
@@ -135,11 +156,14 @@ function enter(event: Event | KeyboardEvent) {
     content-class="flex min-h-0 flex-col gap-4"
   >
     <div class="flex shrink-0 gap-2" aria-label="工作台操作">
-      <ElButton :disabled="!allowed || loading || sending" @click="create">
+      <ElButton
+        :disabled="!allowed || loading || sending || uploading"
+        @click="create"
+      >
         新建会话
       </ElButton>
       <ElButton
-        :disabled="!allowed || sending"
+        :disabled="!allowed || sending || uploading"
         :loading="loading"
         @click="refresh"
       >
@@ -170,7 +194,7 @@ function enter(event: Event | KeyboardEvent) {
               v-for="item in visibleSessions"
               :key="item.id"
               :index="item.id"
-              :disabled="loading || sending"
+              :disabled="loading || sending || uploading"
             >
               <span class="session-title" :title="item.title">
                 {{ item.title }}
@@ -190,7 +214,7 @@ function enter(event: Event | KeyboardEvent) {
           <ElButton
             v-if="selected"
             link
-            :disabled="loading || sending"
+            :disabled="loading || sending || uploading"
             @click="renameCurrent"
           >
             重命名
@@ -201,7 +225,7 @@ function enter(event: Event | KeyboardEvent) {
             placeholder="选择会话"
             aria-label="选择会话"
             filterable
-            :disabled="loading || sending"
+            :disabled="loading || sending || uploading"
             @change="choose"
           >
             <ElOption
@@ -240,7 +264,7 @@ function enter(event: Event | KeyboardEvent) {
               <ElButton
                 v-if="!selected"
                 type="primary"
-                :disabled="loading || sending"
+                :disabled="loading || sending || uploading"
                 @click="create"
               >
                 新建会话
@@ -261,6 +285,17 @@ function enter(event: Event | KeyboardEvent) {
                 :text="message.text"
               />
               <div v-else class="message-text">{{ message.text }}</div>
+              <div
+                v-if="selected && message.images?.length"
+                class="mt-3 flex flex-wrap gap-2"
+              >
+                <AgentImagePreview
+                  v-for="image in message.images"
+                  :key="image.id"
+                  :image="image"
+                  :session-id="selected.id"
+                />
+              </div>
             </article>
             <p v-if="running" class="run-indicator" role="status">
               {{ phase }}
@@ -268,18 +303,64 @@ function enter(event: Event | KeyboardEvent) {
           </div>
         </ElScrollbar>
         <form class="chat-composer" @submit.prevent="send">
+          <div
+            v-if="selected && attachments.length > 0"
+            class="mb-3 flex flex-wrap gap-3"
+            aria-label="待发送图片"
+          >
+            <div
+              v-for="image in attachments"
+              :key="image.id"
+              class="flex items-start gap-1"
+            >
+              <AgentImagePreview :session-id="selected.id" :image="image" />
+              <ElButton
+                link
+                type="danger"
+                :disabled="sending || Boolean(pending)"
+                :aria-label="`移除图片 ${image.name}`"
+                @click="removeImage(image.id)"
+              >
+                移除
+              </ElButton>
+            </div>
+          </div>
           <ElInput
             v-model="draft"
             type="textarea"
             :autosize="{ minRows: 2, maxRows: 6 }"
             :maxlength="32000"
             resize="none"
-            placeholder="描述要完成的业务任务…"
+            placeholder="描述要完成的业务任务，可粘贴图片…"
             aria-label="任务内容"
             :disabled="!selected || running || sending || Boolean(pending)"
             @keydown.enter="enter"
+            @paste="pastedImage"
           />
           <div class="composer-actions">
+            <ElUpload
+              ref="uploader"
+              accept="image/png,image/jpeg,image/webp,image/gif"
+              :auto-upload="false"
+              :show-file-list="false"
+              :disabled="
+                !selected || running || sending || uploading || Boolean(pending)
+              "
+              :on-change="pickedImage"
+            >
+              <ElButton
+                :loading="uploading"
+                :disabled="
+                  !selected ||
+                  running ||
+                  sending ||
+                  uploading ||
+                  Boolean(pending)
+                "
+              >
+                添加图片
+              </ElButton>
+            </ElUpload>
             <ElSelect
               v-model="sceneKey"
               aria-label="Agent提示词"
@@ -312,6 +393,7 @@ function enter(event: Event | KeyboardEvent) {
               :loading="sending"
               :disabled="
                 loading ||
+                uploading ||
                 (!pending && (!selected || !sceneKey || !draft.trim()))
               "
             >

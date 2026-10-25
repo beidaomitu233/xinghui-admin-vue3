@@ -476,8 +476,6 @@ async function generateSql() {
         void cancelSqlAssistance(accepted.requestId).catch(() => {});
       return;
     }
-    if (acceptedId && accepted.requestId !== acceptedId)
-      throw new Error('Unconfirmed admission');
     acceptedId = accepted.requestId;
     pendingStart = undefined;
     generationUnknown.value = false;

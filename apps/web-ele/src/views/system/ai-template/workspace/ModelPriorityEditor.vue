@@ -155,6 +155,7 @@ function move(index: number, offset: number) {
         <div class="flex flex-wrap items-center gap-3">
           <ElSelect
             v-model="choice"
+            :teleported="false"
             filterable
             placeholder="添加模型"
             aria-label="添加调用模型"
