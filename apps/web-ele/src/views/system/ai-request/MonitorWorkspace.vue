@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 
-import { ElTabPane, ElTabs } from 'element-plus';
+import { ElCard, ElTabPane, ElTabs } from 'element-plus';
 
 import CallLogPanel from './CallLogPanel.vue';
 import AgentConversationHistory from './conversations/AgentConversationHistory.vue';
@@ -14,20 +14,22 @@ const agentVisited = ref(false);
 </script>
 <template>
   <section class="monitor-workspace">
-    <ElTabs
-      v-model="tab"
-      class="monitor-tabs"
-      @tab-change="
-        (value) => {
-          if (value === 'logs') logsVisited = true;
-          if (value === 'agent') agentVisited = true;
-        }
-      "
-    >
-      <ElTabPane label="我的对话" name="conversations" />
-      <ElTabPane label="工作台对话" name="agent" />
-      <ElTabPane label="请求日志" name="logs" />
-    </ElTabs>
+    <ElCard class="monitor-navigation" shadow="never">
+      <ElTabs
+        v-model="tab"
+        class="monitor-tabs"
+        @tab-change="
+          (value) => {
+            if (value === 'logs') logsVisited = true;
+            if (value === 'agent') agentVisited = true;
+          }
+        "
+      >
+        <ElTabPane label="对话记录" name="conversations" />
+        <ElTabPane label="工作台对话" name="agent" />
+        <ElTabPane label="请求日志" name="logs" />
+      </ElTabs>
+    </ElCard>
     <div
       v-show="tab === 'conversations'"
       class="monitor-pane monitor-conversations"
@@ -47,6 +49,7 @@ const agentVisited = ref(false);
 .monitor-workspace {
   display: flex;
   flex-direction: column;
+  gap: 16px;
   min-width: 0;
   height: 100%;
   min-height: 0;
@@ -74,6 +77,18 @@ const agentVisited = ref(false);
 
 .monitor-tabs {
   flex: none;
+}
+
+.monitor-navigation {
+  flex: none;
+}
+
+.monitor-navigation :deep(.el-card__body) {
+  padding: 0 16px;
+}
+
+.monitor-navigation :deep(.el-tabs__header) {
+  margin-bottom: 0;
 }
 
 @media (max-width: 767px) {

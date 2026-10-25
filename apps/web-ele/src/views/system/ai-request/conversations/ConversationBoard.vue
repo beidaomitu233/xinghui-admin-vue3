@@ -19,13 +19,12 @@ import {
   ElCollapseItem,
   ElEmpty,
   ElForm,
+  ElFormItem,
   ElInput,
   ElOption,
   ElSelect,
   ElTag,
 } from 'element-plus';
-
-import { useVbenForm } from '#/adapter/form';
 
 import ConversationTimeline from './ConversationTimeline.vue';
 import { ConversationSendFailure, conversationTime } from './view-model';
@@ -149,37 +148,32 @@ const labels: Record<ConversationItem['state'], string> = {
   idle: '',
   replying: '正在回答',
 };
-const [SearchForm] = useVbenForm({
-  submitButtonOptions: { content: '搜索' },
-  showCollapseButton: false,
-  layout: 'vertical',
-  wrapperClass: 'grid-cols-1',
-  resetButtonOptions: { show: false },
-  handleSubmit: (values) => emit('search', values.search ?? ''),
-  schema: [
-    {
-      component: 'Input',
-      fieldName: 'search',
-      label: '搜索对话',
-      componentProps: {
-        clearable: true,
-        placeholder: '搜索对话标题',
-        onClear: () => emit('search', ''),
-      },
-    },
-  ],
-});
+const searchText = ref('');
 </script>
 <template>
   <div class="conversation-board">
     <aside class="conversation-sidebar">
       <header class="sidebar-heading">
-        <h2>{{ scope === 'AUDIT' ? '审计对话' : '我的对话' }}</h2>
+        <h2>{{ scope === 'AUDIT' ? '全部对话' : '我的对话' }}</h2>
         <ElButton v-if="canCreate" type="primary" @click="emit('create')">
           新对话
         </ElButton>
       </header>
-      <SearchForm />
+      <ElForm label-position="top" @submit.prevent="emit('search', searchText)">
+        <ElFormItem label="搜索对话">
+          <ElInput
+            v-model="searchText"
+            aria-label="搜索对话"
+            placeholder="搜索对话标题"
+            clearable
+            @clear="emit('search', '')"
+          >
+            <template #append>
+              <ElButton native-type="submit">搜索</ElButton>
+            </template>
+          </ElInput>
+        </ElFormItem>
+      </ElForm>
       <Loading v-if="listLoading" :spinning="true" text="正在读取会话…" />
       <ElEmpty
         v-else-if="conversations.length === 0"

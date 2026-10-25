@@ -153,7 +153,7 @@ describe('persisted conversation workspace', () => {
     expect(wrapper.get('textarea[aria-label="消息内容"]').element).toBe(
       original,
     );
-    await click(wrapper, '我的对话');
+    await click(wrapper, '对话记录');
     expect(
       (wrapper.get('.monitor-conversations').element as HTMLElement).style
         .display,
@@ -330,8 +330,10 @@ describe('persisted conversation workspace', () => {
     access.accessCodes.push('ai:request:audit');
     const wrapper = render();
     await flushPromises();
-    await selectValue(wrapper, '会话范围', 'AUDIT');
-    await flushPromises();
+    expect(api.list).toHaveBeenCalledWith(
+      expect.objectContaining({ scope: 'AUDIT' }),
+    );
+    expect(wrapper.find('[aria-label="会话范围"]').exists()).toBe(false);
     await click(wrapper, '订单讨论');
     expect(api.detail).toHaveBeenLastCalledWith(
       summary.conversationId,

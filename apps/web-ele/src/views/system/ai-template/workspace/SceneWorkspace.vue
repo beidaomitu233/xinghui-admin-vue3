@@ -600,11 +600,12 @@ onBeforeUnmount(() => {
   unsubscribe();
   autosave.dispose();
 });
+function openCreate() {
+  if (can('add')) createOpen.value = true;
+}
 defineExpose({
   refresh: loadList,
-  openCreate() {
-    if (can('add')) createOpen.value = true;
-  },
+  openCreate,
 });
 const [CreateForm, createFormApi] = useVbenForm({
   showDefaultActions: false,
@@ -687,6 +688,7 @@ watch(dialogOpen, (open) => workspaceModalApi.setState({ isOpen: open }), {
 <template>
   <div class="scene-workspace">
     <SceneSidebar
+      :can-create="can('add')"
       :active-key="view?.sceneKey ?? null"
       :scenes="scenes"
       :loading="loading"
@@ -699,6 +701,7 @@ watch(dialogOpen, (open) => workspaceModalApi.setState({ isOpen: open }), {
       "
       @update:search="search = $event"
       @select="selectScene"
+      @create="openCreate"
     />
     <main class="scene-main" :aria-busy="switching">
       <ElAlert

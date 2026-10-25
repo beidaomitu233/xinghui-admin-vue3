@@ -78,7 +78,7 @@ describe('conversation presentation and scoped draft state', () => {
       canReply: false,
       canCreate: false,
     });
-    expect(wrapper.text()).toContain('审计对话');
+    expect(wrapper.text()).toContain('全部对话');
     expect(wrapper.text()).toContain('请选择会话');
     expect(wrapper.text()).not.toContain('开始新对话');
     expect(wrapper.find('textarea').exists()).toBe(false);
