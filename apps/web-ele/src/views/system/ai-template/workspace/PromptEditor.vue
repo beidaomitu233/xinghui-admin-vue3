@@ -142,7 +142,7 @@ watch(
       type="error"
       :closable="false"
     />
-    <section class="prompt-data" aria-label="数据引用说明">
+    <section v-if="!agent" class="prompt-data" aria-label="数据引用说明">
       <slot name="data"></slot>
       <p
         v-if="fields.dataObjects || fields.dataBindings"

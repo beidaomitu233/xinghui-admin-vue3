@@ -35,6 +35,7 @@ export interface AgentEvent {
   createdAt: string;
 }
 export interface AgentSubmission {
+  mode?: 'EXECUTE' | 'PLAN';
   input: string;
   sceneKey: string;
   clientRequestId: string;
@@ -58,6 +59,8 @@ export const listAgentSessions = () =>
   requestClient.get<AgentSession[]>(`${base}/sessions`);
 export const createAgentSession = (title: string) =>
   requestClient.post<AgentSession>(`${base}/sessions`, { title });
+export const archiveAgentSession = (id: string) =>
+  requestClient.delete(`${base}/sessions/${segment(id)}`);
 export const getAgentSession = (id: string) =>
   requestClient.get<AgentSession>(`${base}/sessions/${segment(id)}`);
 export const renameAgentSession = (
@@ -69,9 +72,14 @@ export const renameAgentSession = (
     title,
     expectedVersion,
   });
-export const getAgentEvents = (id: string, after: string) =>
+export const getAgentEvents = (
+  id: string,
+  after: string,
+  signal?: AbortSignal,
+) =>
   requestClient.get<AgentEvent[]>(`${base}/sessions/${segment(id)}/events`, {
     params: { after },
+    signal,
   });
 export const submitAgentRun = (id: string, data: AgentSubmission) =>
   requestClient.post<AgentAdmission>(

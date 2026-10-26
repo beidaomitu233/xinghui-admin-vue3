@@ -51,11 +51,20 @@
     "marked": "18.1.1",
     "pinia": "catalog:",
     "vue": "catalog:",
-    "vue-router": "catalog:"
+    "vue-router": "catalog:",
+    "@agentscope-ai/design": "1.0.23",
+    "react-dom": "18.3.1",
+    "@agentscope-ai/chat": "1.1.72",
+    "@ant-design/icons": "5.6.1",
+    "react": "18.3.1",
+    "antd": "5.29.1",
+    "lucide-react": "0.562.0"
   },
   "devDependencies": {
     "jsdom": "27.4.0",
     "unplugin-element-plus": "catalog:",
-    "unplugin-vue-components": "catalog:"
+    "unplugin-vue-components": "catalog:",
+    "@types/react": "18.3.27",
+    "@types/react-dom": "18.3.7"
   }
 }

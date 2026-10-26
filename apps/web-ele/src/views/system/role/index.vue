@@ -220,7 +220,7 @@ watch([() => access.accessToken, canQuery], async () => {
           :active-value="1"
           :inactive-value="0"
           :disabled="!can('system:role:edit') || mutating"
-          @change="(value) => status(row, value)"
+          @change="(value: boolean | number | string) => status(row, value)"
         />
       </template>
       <template #actions="{ row }">
