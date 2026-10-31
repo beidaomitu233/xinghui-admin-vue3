@@ -46,7 +46,7 @@ const messages: Record<string, string> = {
   INVALID_RESPONSE: '生成结果未完成。',
   MISSING_VARIABLE: '缺少必填输入。',
   MODEL_UNAVAILABLE: '模型暂不可用。',
-  NETWORK_ERROR: '连接中断，请查询原请求。',
+  NETWORK_ERROR: '暂时无法连接模型服务，请稍后重试。',
   NOT_FOUND: '请求不存在或无权访问。',
   NO_USABLE_KEY: '模型暂不可用。',
   OUTPUT_LIMIT: '已达到本次生成预算。',

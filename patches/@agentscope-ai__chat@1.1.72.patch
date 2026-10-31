@@ -1,0 +1,195 @@
+diff --git a/components/AgentScopeRuntimeWebUI/core/Chat/hooks/useChatRequest.tsx b/components/AgentScopeRuntimeWebUI/core/Chat/hooks/useChatRequest.tsx
+index b8db5b9fcfb65e6955d14e75c00c55e89786ec39..0b5a3a1fbe99a6f4b4e7a85f2a6014fe9820899c 100644
+--- a/components/AgentScopeRuntimeWebUI/core/Chat/hooks/useChatRequest.tsx
++++ b/components/AgentScopeRuntimeWebUI/core/Chat/hooks/useChatRequest.tsx
+@@ -154,7 +154,8 @@ export default function useChatRequest(options: UseChatRequestOptions) {
+ 
+           if (
+             res.status !== AgentScopeRuntimeRunStatus.Failed &&
+-            !res.output?.some((msg) => msg.content?.length)
++            !res.output?.some((msg) => msg.content?.length) &&
++            !apiOptionsRef.current.emitResponseWithoutContent
+           )
+             continue;
+ 
+diff --git a/components/AgentScopeRuntimeWebUI/core/Layout/index.tsx b/components/AgentScopeRuntimeWebUI/core/Layout/index.tsx
+index 3c843a3db2073e02b8744590030e9ebae1c523e1..f0f524904b870fb304b789378c77efba62e23892 100644
+--- a/components/AgentScopeRuntimeWebUI/core/Layout/index.tsx
++++ b/components/AgentScopeRuntimeWebUI/core/Layout/index.tsx
+@@ -25,6 +25,7 @@ function Layout(props: IProps, ref: React.Ref<any>) {
+   const { session } = useChatAnywhereOptions(v => ({ session: v.session }));
+   const { collapsed } = useContext(ChatAnyWhereLayoutContext);
+   const showLeft = !narrowMode && session && session.multiple && !session.hideBuiltInSessionList;
++  const showHeader = !!rightHeader || (narrowMode && session?.multiple && !session.hideBuiltInSessionList);
+ 
+   return <>
+     <Style />
+@@ -37,12 +38,12 @@ function Layout(props: IProps, ref: React.Ref<any>) {
+         </div>
+       }
+       <div className={cls(`${prefixCls}-right`, {
+-        [`${prefixCls}-right-has-header`]: !!rightHeader,
++        [`${prefixCls}-right-has-header`]: showHeader,
+       })} style={{
+         background: background,
+       }}>
+         {
+-          !!rightHeader && <Header />
++          showHeader && <Header />
+         }
+         <Chat />
+       </div>
+diff --git a/components/AgentScopeRuntimeWebUI/core/types/IChatAnywhere.ts b/components/AgentScopeRuntimeWebUI/core/types/IChatAnywhere.ts
+index bcd6e40d723c3e8be5c3ff49008de9dbc20fb382..e036f1f7bcbb59d8c1ff027ed3649c1b1766c6d7 100644
+--- a/components/AgentScopeRuntimeWebUI/core/types/IChatAnywhere.ts
++++ b/components/AgentScopeRuntimeWebUI/core/types/IChatAnywhere.ts
+@@ -56,6 +56,8 @@ export interface IAgentScopeRuntimeWebUIAPIOptions {
+    * @descriptionEn Whether to include history messages in request
+    */
+   enableHistoryMessages?: boolean;
++  /** Allow response slots to render progress/approval metadata before assistant text exists. */
++  emitResponseWithoutContent?: boolean;
+ 
+   /**
+    * @description 自定义流式数据解析函数（默认 JSON.parse）
+diff --git a/lib/AgentScopeRuntimeWebUI/core/Chat/hooks/useChatRequest.js b/lib/AgentScopeRuntimeWebUI/core/Chat/hooks/useChatRequest.js
+index ddd4ef0c9cd65dc3cad90cad2ff2cb16b6425d80..cb290c951bfd3161e9838918de9867b423f77f34 100644
+--- a/lib/AgentScopeRuntimeWebUI/core/Chat/hooks/useChatRequest.js
++++ b/lib/AgentScopeRuntimeWebUI/core/Chat/hooks/useChatRequest.js
+@@ -200,7 +200,7 @@ export default function useChatRequest(options) {
+             responseParser = apiOptionsRef.current.responseParser || JSON.parse;
+             chunkData = responseParser(chunk.data);
+             _res = agentScopeRuntimeResponseBuilder.handle(chunkData);
+-            if (!(_res.status !== AgentScopeRuntimeRunStatus.Failed && !((_res$output = _res.output) !== null && _res$output !== void 0 && _res$output.some(function (msg) {
++            if (!(!apiOptionsRef.current.emitResponseWithoutContent && _res.status !== AgentScopeRuntimeRunStatus.Failed && !((_res$output = _res.output) !== null && _res$output !== void 0 && _res$output.some(function (msg) {
+               var _msg$content;
+               return (_msg$content = msg.content) === null || _msg$content === void 0 ? void 0 : _msg$content.length;
+             })))) {
+diff --git a/lib/AgentScopeRuntimeWebUI/core/Layout/index.js b/lib/AgentScopeRuntimeWebUI/core/Layout/index.js
+index 3cc81d67c6234a76250d6bcf90701eff2670ba34..56b7eda4ad68cd9ea53bace0c4af51f6d666a209 100644
+--- a/lib/AgentScopeRuntimeWebUI/core/Layout/index.js
++++ b/lib/AgentScopeRuntimeWebUI/core/Layout/index.js
+@@ -37,6 +37,7 @@ function Layout(props, ref) {
+   var _useContext = useContext(ChatAnyWhereLayoutContext),
+     collapsed = _useContext.collapsed;
+   var showLeft = !narrowMode && session && session.multiple && !session.hideBuiltInSessionList;
++  var showHeader = !!rightHeader || (narrowMode && session && session.multiple && !session.hideBuiltInSessionList);
+   return /*#__PURE__*/_jsxs(_Fragment, {
+     children: [/*#__PURE__*/_jsx(Style, {}), /*#__PURE__*/_jsxs("div", {
+       className: cls("".concat(prefixCls), className),
+@@ -44,11 +45,11 @@ function Layout(props, ref) {
+         className: cls("".concat(prefixCls, "-left"), _defineProperty({}, "".concat(prefixCls, "-left-collapsed"), collapsed)),
+         children: /*#__PURE__*/_jsx(Sessions, {})
+       }), /*#__PURE__*/_jsxs("div", {
+-        className: cls("".concat(prefixCls, "-right"), _defineProperty({}, "".concat(prefixCls, "-right-has-header"), !!rightHeader)),
++        className: cls("".concat(prefixCls, "-right"), _defineProperty({}, "".concat(prefixCls, "-right-has-header"), showHeader)),
+         style: {
+           background: background
+         },
+-        children: [!!rightHeader && /*#__PURE__*/_jsx(Header, {}), /*#__PURE__*/_jsx(Chat, {})]
++        children: [showHeader && /*#__PURE__*/_jsx(Header, {}), /*#__PURE__*/_jsx(Chat, {})]
+       })]
+     }), /*#__PURE__*/_jsx(Ref, {
+       ref: ref
+diff --git a/lib/AgentScopeRuntimeWebUI/core/Sessions/index.js b/lib/AgentScopeRuntimeWebUI/core/Sessions/index.js
+index cf010f15ae21362a1c70b2fd95b0465ffd32b6cf..f5ca8452ada47a22f501d41ee419f0d868c9e595 100644
+--- a/lib/AgentScopeRuntimeWebUI/core/Sessions/index.js
++++ b/lib/AgentScopeRuntimeWebUI/core/Sessions/index.js
+@@ -77,6 +77,9 @@ export function InnerHeader(_ref) {
+   });
+ }
+ export function InnerAdder(props) {
++  var newChatLabel = useChatAnywhereOptions(function (v) {
++    return v.session.newChatLabel;
++  });
+   var loading = useContextSelector(ChatAnywhereInputContext, function (v) {
+     return v.loading;
+   });
+@@ -109,11 +112,14 @@ export function InnerAdder(props) {
+           }
+         }, _callee);
+       })),
+-      children: "New Chat"
++      children: newChatLabel || "New Chat"
+     })
+   });
+ }
+ export function InnerList(props) {
++  var renderList = useChatAnywhereOptions(function (v) {
++    return v.session.renderList;
++  });
+   var prefixCls = useProviderContext().getPrefixCls('chat-anywhere-sessions');
+   var sessions = useContextSelector(ChatAnywhereSessionsContext, function (v) {
+     return v.sessions;
+@@ -137,7 +143,7 @@ export function InnerList(props) {
+   return /*#__PURE__*/_jsx("div", {
+     className: "".concat(prefixCls, "-list"),
+     style: props.style,
+-    children: /*#__PURE__*/_jsx(HistoryPanel, {
++    children: renderList || /*#__PURE__*/_jsx(HistoryPanel, {
+       items: items,
+       menu: [{
+         key: 'delete',
+diff --git a/lib/AgentScopeRuntimeWebUI/core/types/IChatAnywhere.d.ts b/lib/AgentScopeRuntimeWebUI/core/types/IChatAnywhere.d.ts
+index 3068df5390d53736bbf7f531135889c24b3c7704..a9c28f575eb4e4a17bb2767b5a1ef3ed54651ad1 100644
+--- a/lib/AgentScopeRuntimeWebUI/core/types/IChatAnywhere.d.ts
++++ b/lib/AgentScopeRuntimeWebUI/core/types/IChatAnywhere.d.ts
+@@ -50,6 +50,8 @@ export interface IAgentScopeRuntimeWebUIAPIOptions {
+      * @descriptionEn Whether to include history messages in request
+      */
+     enableHistoryMessages?: boolean;
++    /** Allow response slots to render progress/approval metadata before assistant text exists. */
++    emitResponseWithoutContent?: boolean;
+     /**
+      * @description 自定义流式数据解析函数（默认 JSON.parse）
+      * @descriptionEn Custom parser for stream chunks (default JSON.parse)
+@@ -552,6 +554,10 @@ export interface IAgentScopeRuntimeWebUISessionAPI {
+  * @descriptionEn Session configuration options
+  */
+ export interface IAgentScopeRuntimeWebUISessionOptions {
++    /** Optional list slot inside the native collapsible session panel. */
++    renderList?: React.ReactElement;
++    /** Localized label for the native new-session button. */
++    newChatLabel?: string;
+     /**
+      * @description 是否支持多会话
+      * @descriptionEn Whether to support multiple sessions
+diff --git a/lib/Conversations/Item.js b/lib/Conversations/Item.js
+index c907907f09aaa5102f5fc73885a0505865ee3320..d89adcc13335346894eeb98185a8cbeabade3ddf 100644
+--- a/lib/Conversations/Item.js
++++ b/lib/Conversations/Item.js
+@@ -211,6 +211,7 @@ function Input(_ref) {
+     v = _useState10[0],
+     sv = _useState10[1];
+   var ref = useRef();
++  var cancelled = useRef(false);
+   useEffect(function () {
+     ref.current.focus();
+   }, []);
+@@ -219,6 +220,7 @@ function Input(_ref) {
+   }, [value]);
+   return /*#__PURE__*/_jsx("input", {
+     ref: ref,
++    "aria-label": "对话名称",
+     className: "".concat(prefixCls, "-label-edit"),
+     value: v,
+     onClick: function onClick(e) {
+@@ -227,8 +229,17 @@ function Input(_ref) {
+     onChange: function onChange(e) {
+       return sv(e.target.value);
+     },
++    onKeyDown: function onKeyDown(e) {
++      e.stopPropagation();
++      if (e.nativeEvent.isComposing || e.keyCode === 229) return;
++      if (e.key === 'Enter') e.currentTarget.blur();
++      if (e.key === 'Escape') {
++        cancelled.current = true;
++        setEditable(false);
++      }
++    },
+     onBlur: function onBlur() {
+-      return _onBlur(v);
++      if (!cancelled.current) return _onBlur(v);
+     }
+   });
+ }

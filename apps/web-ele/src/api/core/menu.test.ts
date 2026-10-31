@@ -5,6 +5,52 @@ import { normalizeNavigationMenus, transformMenusToRoutes } from './menu';
 vi.mock('#/api/request', () => ({ requestClient: { get: vi.fn() } }));
 
 describe('backend menu conversion', () => {
+  it('places the AI hub first only when the permission-filtered server returned it', () => {
+    const menus = normalizeNavigationMenus([
+      {
+        menuId: 'home',
+        menuType: 'C',
+        component: 'dashboard/workspace/index',
+        path: '/workspace',
+      },
+      {
+        menuId: 'ai',
+        menuType: 'M',
+        path: '/ai',
+        children: [
+          {
+            menuId: 'hub',
+            menuType: 'C',
+            component: 'ai/workbench/index',
+            path: 'workbench',
+          },
+          {
+            menuId: 'models',
+            menuType: 'C',
+            component: 'system/ai-config/index',
+            path: 'configurations',
+          },
+        ],
+      },
+    ]);
+    expect(menus.map((menu) => menu.menuId)).toEqual(['hub', 'home', 'ai']);
+    expect(menus[0]).toMatchObject({
+      menuName: 'AI 中台',
+      path: '/ai/workbench',
+      orderNum: -30,
+    });
+    expect(menus[2]?.children?.map((menu) => menu.menuId)).toEqual(['models']);
+    expect(transformMenusToRoutes(menus)[0]?.meta?.keepAlive).toBe(true);
+    expect(
+      normalizeNavigationMenus([
+        {
+          menuId: 'home',
+          menuType: 'C',
+          component: 'dashboard/workspace/index',
+        },
+      ]).map((menu) => menu.menuId),
+    ).toEqual(['home']);
+  });
   it('promotes only authorized existing home pages before directories without mutating grants', () => {
     const authorized = [
       {

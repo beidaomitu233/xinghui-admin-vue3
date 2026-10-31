@@ -9,6 +9,7 @@ import type { AgentHistory } from './history';
 import type { AgentImage, AgentSession } from '#/api/system/ai-workbench';
 
 import { requestClient } from '#/api/request';
+import { aiErrorMessage } from '#/api/system/ai-runtime-errors';
 import {
   archiveAgentSession,
   cancelAgentRun,
@@ -74,7 +75,8 @@ export class HubAdapter {
     },
     updateSession: async (draft) => {
       if (draft.id && draft.name) {
-        const value = await getAgentSession(draft.id);
+        const value =
+          this.sessions.get(draft.id) || (await getAgentSession(draft.id));
         await renameAgentSession(
           draft.id,
           draft.name.slice(0, 160),
@@ -100,6 +102,7 @@ export class HubAdapter {
     const s = await getAgentSession(id);
     if (s.activeRunId) await cancelAgentRun(s.activeRunId);
   }
+
   close() {
     this.abort.forEach((c) => c.abort());
     this.images.forEach((url) => URL.revokeObjectURL(url));
@@ -195,12 +198,13 @@ export class HubAdapter {
           (c) => c.runId === run,
         ),
         session,
+        errorCode: history.errorCode || undefined,
       },
       ...(history.errorCode
         ? {
             error: {
-              code: history.errorCode,
-              message: '本轮任务未完成，可检查进度后重试。',
+              code: aiErrorMessage(history.errorCode),
+              message: '本轮任务未完成，已有步骤和结果会保留。',
             },
           }
         : {}),
@@ -264,6 +268,9 @@ export class HubAdapter {
     this.pending.delete(session);
     if (signal?.aborted) await cancelAgentRun(admission.run.id);
     return this.stream(session, admission.run.id, signal);
+  }
+  sessionUpdatedAt(id: string) {
+    return this.sessions.get(id)?.updatedAt;
   }
   async upload(file: File) {
     if (!this.current) throw new Error('请先创建对话后添加图片。');

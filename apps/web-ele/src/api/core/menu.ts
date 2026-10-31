@@ -26,6 +26,16 @@ export function normalizeNavigationMenus(menus: BackendMenu[]): BackendMenu[] {
         ...menu,
         ...(menu.children ? { children: walk(menu.children) } : {}),
       };
+      if (menu.menuType === 'C' && menu.component === 'ai/workbench/index') {
+        homes.push({
+          ...copy,
+          menuName: 'AI 中台',
+          path: '/ai/workbench',
+          orderNum: -30,
+          meta: { ...copy.meta, title: 'AI 中台', keepAlive: true },
+        });
+        return [];
+      }
       if (
         menu.menuType === 'C' &&
         ['dashboard/analytics/index', 'dashboard/workspace/index'].includes(

@@ -82,6 +82,11 @@ watch(
   height: 100%;
   min-height: 360px;
 }
+.hub-chat :deep([class$='-sessions-header-left'] img) {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+}
 .hub-loading {
   position: absolute;
   inset: 48px;

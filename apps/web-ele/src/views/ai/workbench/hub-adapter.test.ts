@@ -100,10 +100,19 @@ describe('official chat protocol adapter', () => {
     expect(result.messages).toHaveLength(4);
     const responses = result.messages
       ?.filter((m) => m.role === 'assistant')
-      .map((m) => m.cards?.[0]?.data as { error?: unknown; status: string });
+      .map(
+        (m) =>
+          m.cards?.[0]?.data as {
+            error?: { code: string; message: string };
+            status: string;
+            usage?: { errorCode?: string };
+          },
+      );
     expect(responses?.map((r) => r.status)).toEqual(['completed', 'failed']);
     expect(responses?.[0]?.error).toBeUndefined();
-    expect(responses?.[1]?.error).toBeDefined();
+    expect(responses?.[1]?.error?.code).not.toBe('MODEL_UNAVAILABLE');
+    expect(responses?.[1]?.error?.message).toContain('已有步骤和结果会保留');
+    expect(responses?.[1]?.usage?.errorCode).toBe('MODEL_UNAVAILABLE');
     expect(api.submit).not.toHaveBeenCalled();
   });
   it('delivers a pending change before any assistant text so user confirmation cannot deadlock', async () => {

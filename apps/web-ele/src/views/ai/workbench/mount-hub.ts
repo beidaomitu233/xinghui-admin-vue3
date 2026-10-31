@@ -28,8 +28,10 @@ import { createRoot } from 'react-dom/client';
 
 import { requestClient } from '#/api/request';
 import { listAgentPresets } from '#/api/system/ai-workbench';
+import { localLogo } from '#/local-assets';
 
 import { HubAdapter } from './hub-adapter';
+import { HubSessions } from './hub-sessions';
 
 const statusLabels: Record<string, string> = {
   EXECUTED: '已执行',
@@ -345,16 +347,7 @@ export async function mountHub(element: HTMLElement, dark: boolean) {
       darkMode: dark,
       colorPrimary: '#2563eb',
       colorBgBase: dark ? '#171717' : '#ffffff',
-      leftHeader: h(
-        Flex,
-        {
-          align: 'center',
-          gap: 10,
-          style: { height: 40, whiteSpace: 'nowrap' },
-        },
-        h(Sparkles, { size: 22 }),
-        h('strong', null, 'AI 中台'),
-      ),
+      leftHeader: { logo: localLogo, title: 'AI 中台' },
       typography: { baseFontSize: 15, baseLineHeight: 1.75 },
       bubbleList: { userMessageAnchors: { enabled: true } },
     },
@@ -365,7 +358,12 @@ export async function mountHub(element: HTMLElement, dark: boolean) {
         choices.length > 0 ? '' : '请先在提示词配置中配置 Agent 场景和模型。',
       prompts: [],
     },
-    session: { multiple: true, api: adapter.sessionAPI },
+    session: {
+      multiple: true,
+      api: adapter.sessionAPI,
+      newChatLabel: '新建对话',
+      renderList: h(HubSessions, { adapter }),
+    },
     api: {
       fetch: ({ input, signal }) => adapter.send(input, signal),
       cancel: ({ session_id }) => {
@@ -374,6 +372,7 @@ export async function mountHub(element: HTMLElement, dark: boolean) {
       reconnect: ({ session_id, signal }) =>
         adapter.reconnect(session_id, signal),
       enableHistoryMessages: false,
+      emitResponseWithoutContent: true,
     },
     sender: {
       placeholder: '描述任务，或添加图片…',
