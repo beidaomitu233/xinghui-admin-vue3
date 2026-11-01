@@ -18,6 +18,8 @@ import {
   saveBusinessConfig,
 } from '#/api/system/business-config';
 
+import BusinessTestPanel from './BusinessTestPanel.vue';
+
 const access = useAccessStore();
 const route = useRoute();
 const canRead = computed(() =>
@@ -464,6 +466,16 @@ async function save(section: SectionForm) {
     section.saving = false;
   }
 }
+function hasDraft(section: SectionForm) {
+  return (
+    !section.value ||
+    section.enabled !== section.value.enabled ||
+    JSON.stringify(section.parameters) !==
+      JSON.stringify(section.value.parameters) ||
+    Object.values(section.secrets).some(Boolean) ||
+    Object.values(section.clear).some(Boolean)
+  );
+}
 function status(section: SectionForm) {
   const state = section.value?.effectiveState;
   if (section.loading) return '读取中';
@@ -486,7 +498,7 @@ onMounted(async () => {
 });
 </script>
 <template>
-  <Page title="系统业务配置">
+  <Page title="业务配置">
     <el-empty v-if="!canRead" description="没有业务配置查询权限" />
     <div v-else>
       <div class="min-w-0 space-y-5">
@@ -508,49 +520,79 @@ onMounted(async () => {
               </el-tag>
             </div>
           </template>
-          <el-alert
-            v-if="section.failed"
-            class="mb-4"
-            :title="`读取${section.title}失败，请重试。`"
-            type="error"
-          />
-          <el-alert
-            v-if="
-              ['sms', 'mail'].includes(section.key) && providerChanged(section)
-            "
-            class="mb-4"
-            title="接入信息已变更，请填写新密钥。"
-            type="info"
-          />
-          <Loading :spinning="section.loading" :text="`读取${section.title}…`">
-            <div class="max-w-3xl">
-              <component :is="forms[section.key]!.Form" />
-            </div>
-          </Loading>
-          <div
-            class="mt-2 flex flex-wrap items-center gap-3 border-t pt-4 md:pl-36"
-          >
-            <el-button
-              v-if="canEdit"
-              type="primary"
-              :loading="section.saving"
-              :disabled="section.loading || !section.value"
-              @click="save(section)"
-            >
-              保存配置
-            </el-button>
-            <el-button
-              :disabled="section.loading || section.saving"
-              @click="reload(section)"
-            >
-              重新加载
-            </el-button>
-            <span v-if="section.value" class="text-xs text-muted-foreground">
-              版本 {{ section.value.revision }}
-            </span>
+          <div class="business-config-layout">
+            <section class="min-w-0">
+              <el-alert
+                v-if="section.failed"
+                class="mb-4"
+                :title="`读取${section.title}失败，请重试。`"
+                type="error"
+              />
+              <el-alert
+                v-if="
+                  ['sms', 'mail'].includes(section.key) &&
+                  providerChanged(section)
+                "
+                class="mb-4"
+                title="接入信息已变更，请填写新密钥。"
+                type="info"
+              />
+              <Loading
+                :spinning="section.loading"
+                :text="`读取${section.title}…`"
+              >
+                <div class="max-w-3xl">
+                  <component :is="forms[section.key]!.Form" />
+                </div>
+              </Loading>
+              <div
+                class="mt-2 flex flex-wrap items-center gap-3 border-t pt-4 md:pl-[152px]"
+              >
+                <el-button
+                  v-if="canEdit"
+                  type="primary"
+                  :loading="section.saving"
+                  :disabled="section.loading || !section.value"
+                  @click="save(section)"
+                >
+                  保存配置
+                </el-button>
+                <el-button
+                  :disabled="section.loading || section.saving"
+                  @click="reload(section)"
+                >
+                  重新加载
+                </el-button>
+                <span
+                  v-if="section.value"
+                  class="text-xs text-muted-foreground"
+                >
+                  版本 {{ section.value.revision }}
+                </span>
+              </div>
+            </section>
+            <BusinessTestPanel
+              :section="section.key"
+              :config="section.value"
+              :dirty="hasDraft(section)"
+              :editable="canEdit"
+            />
           </div>
         </el-card>
       </div>
     </div>
   </Page>
 </template>
+
+<style scoped>
+.business-config-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
+  gap: 28px;
+}
+@media (max-width: 1100px) {
+  .business-config-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+</style>

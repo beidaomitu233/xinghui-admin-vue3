@@ -3,7 +3,7 @@ import { createApp, watchEffect } from 'vue';
 import { registerAccessDirective } from '@vben/access';
 import { registerLoadingDirective } from '@vben/common-ui';
 import { preferences } from '@vben/preferences';
-import { initStores } from '@vben/stores';
+import { initStores, useTabbarStore } from '@vben/stores';
 import '@vben/styles';
 import '@vben/styles/ele';
 
@@ -51,6 +51,16 @@ async function bootstrap(namespace: string) {
 
   // 配置 pinia-tore
   await initStores(app, { namespace });
+  // Retired prompt editors must not remain as stale tabs in this Agent product.
+  const tabs = useTabbarStore();
+  const retired = new Set([
+    '/ai/applications',
+    '/ai/prompts',
+    '/ai/templates',
+    '/system/ai-prompt',
+  ]);
+  for (const tab of tabs.getTabs)
+    if (retired.has(tab.path)) await tabs.closeTab(tab, router);
 
   // 安装权限指令
   registerAccessDirective(app);

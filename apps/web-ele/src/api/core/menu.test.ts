@@ -5,6 +5,49 @@ import { normalizeNavigationMenus, transformMenusToRoutes } from './menu';
 vi.mock('#/api/request', () => ({ requestClient: { get: vi.fn() } }));
 
 describe('backend menu conversion', () => {
+  it('consolidates the Agent product settings without adding menu grants', () => {
+    const menus = normalizeNavigationMenus([
+      {
+        menuId: 'ai',
+        menuType: 'M',
+        children: [
+          {
+            menuId: 'prompt',
+            menuType: 'C',
+            component: 'system/ai-template/index',
+          },
+          {
+            menuId: 'models',
+            menuType: 'C',
+            component: 'system/ai-config/index',
+          },
+        ],
+      },
+      {
+        menuId: 'business',
+        menuType: 'C',
+        menuName: '系统业务配置',
+        component: 'system/business-config/index',
+      },
+    ]);
+    expect(menus[0]?.children?.map((item) => item.menuId)).toEqual(['models']);
+    expect(menus[1]?.menuName).toBe('业务配置');
+    expect(normalizeNavigationMenus([])).toEqual([]);
+    const promptOnly = normalizeNavigationMenus([
+      {
+        menuId: 'prompt-only',
+        menuType: 'C',
+        component: 'system/ai-template/index',
+      },
+    ]);
+    expect(promptOnly).toMatchObject([
+      {
+        menuId: 'prompt-only',
+        component: 'system/ai-config/index',
+        path: '/ai/configurations',
+      },
+    ]);
+  });
   it('places the AI hub first only when the permission-filtered server returned it', () => {
     const menus = normalizeNavigationMenus([
       {

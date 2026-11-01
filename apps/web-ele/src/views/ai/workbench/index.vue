@@ -38,6 +38,7 @@ async function mount() {
     const value = await mountHub(
       host.value,
       document.documentElement.classList.contains('dark'),
+      access.accessCodes,
     );
     if (disposed) value.dispose();
     else handle = value;
@@ -82,10 +83,44 @@ watch(
   height: 100%;
   min-height: 360px;
 }
-.hub-chat :deep([class$='-sessions-header-left'] img) {
-  width: 28px;
-  height: 28px;
-  flex-shrink: 0;
+/* Adjust native component spacing; keep its layout, messages and interactions. */
+.hub-chat :deep([class$='-conversations-list'] [class*='-conversations-item']) {
+  padding-inline-start: 0;
+}
+.hub-chat :deep([class$='-conversations-content']) {
+  padding-inline-start: 8px;
+}
+.hub-chat :deep([class$='-welcome-prompts-prompts']) {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  width: min(720px, 100%);
+  margin-top: 28px;
+}
+.hub-chat :deep([class$='-welcome-prompts-prompt']) {
+  height: 56px;
+}
+.hub-chat :deep([class$='-welcome-prompts-prompt-icon']) {
+  display: none;
+}
+.hub-chat :deep(.hub-answer) {
+  padding: 18px 22px;
+  background: hsl(var(--muted) / 45%);
+  border: 1px solid hsl(var(--border) / 65%);
+  border-radius: 12px;
+}
+.hub-chat :deep(.hub-task-output) {
+  max-width: 760px;
+  margin-top: 14px;
+}
+.hub-chat :deep(.hub-phase-description) {
+  font-size: 13px;
+  color: hsl(var(--muted-foreground));
+}
+@media (max-width: 780px) {
+  .hub-chat :deep([class$='-welcome-prompts-prompts']) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 .hub-loading {
   position: absolute;

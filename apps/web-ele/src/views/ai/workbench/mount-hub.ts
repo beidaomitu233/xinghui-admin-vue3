@@ -1,4 +1,7 @@
-import type { IAgentScopeRuntimeWebUIOptions } from '@agentscope-ai/chat';
+import type {
+  IAgentScopeRuntimeWebUIOptions,
+  IAgentScopeRuntimeWebUIRef,
+} from '@agentscope-ai/chat';
 
 import type { HubChange } from './hub-adapter';
 
@@ -6,6 +9,8 @@ import type { AgentPreset } from '#/api/system/ai-workbench';
 
 import {
   AgentScopeRuntimeWebUI,
+  Markdown,
+  useChatAnywhereInput,
   useChatAnywhereSessions,
   useChatAnywhereSessionsState,
 } from '@agentscope-ai/chat';
@@ -23,14 +28,14 @@ import {
   Tag,
 } from 'antd';
 import { Sparkles } from 'lucide-react';
-import { createElement as h, useEffect, useState } from 'react';
+import { createRef, createElement as h, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 
 import { requestClient } from '#/api/request';
 import { listAgentPresets } from '#/api/system/ai-workbench';
-import { localLogo } from '#/local-assets';
 
 import { HubAdapter } from './hub-adapter';
+import { recommendations } from './hub-recommendations';
 import { HubSessions } from './hub-sessions';
 
 const statusLabels: Record<string, string> = {
@@ -76,6 +81,8 @@ const operationLabels: Record<string, string> = {
   updateItem: '修改字典条目',
   changeStatus: '修改任务状态',
   run: '执行任务',
+  publish: '发布表单',
+  markRead: '标记已读',
 };
 const displayValue = (value: unknown) => {
   if (value === undefined || value === null) return '—';
@@ -165,7 +172,7 @@ function ChangeCard({ value, session }: { session: string; value: HubChange }) {
       setBusy(false);
     }
   };
-  return h(
+  const details = h(
     Card,
     {
       size: 'small',
@@ -241,49 +248,167 @@ function ChangeCard({ value, session }: { session: string; value: HubChange }) {
         )
       : null,
   );
+  return state === 'PENDING' || state === 'FAILED'
+    ? details
+    : h(Collapse, {
+        size: 'small',
+        style: { marginTop: 12, maxWidth: 720 },
+        items: [
+          {
+            key: change.id,
+            label: `${operationLabels[operation] || operation} · ${String(preview.name || '业务数据')}`,
+            extra: h(Tag, null, statusLabels[state] || state),
+            children: details,
+          },
+        ],
+      });
 }
 function stepStatus(status: string): 'finish' | 'process' | 'wait' {
   if (status === 'COMPLETED') return 'finish';
   return status === 'IN_PROGRESS' ? 'process' : 'wait';
 }
-function TaskOutput({ data }: { data: { usage?: Record<string, unknown> } }) {
-  const steps = (data.usage?.steps || []) as {
+function TaskOutput({
+  data,
+  onExecute,
+  isLatest,
+}: {
+  data: { usage?: Record<string, unknown> };
+  isLatest: () => boolean;
+  onExecute: () => void;
+}) {
+  const { loading } = useChatAnywhereInput((value) => ({
+    loading: value.loading,
+  }));
+  const usage = data.usage || {};
+  if (
+    !usage.runStatus &&
+    !usage.plan &&
+    !(usage.steps as unknown[])?.length &&
+    !(usage.changes as unknown[])?.length
+  )
+    return null;
+  const steps = (usage.steps || []) as {
     id: string;
     status: string;
     title: string;
   }[];
-  const changes = (data.usage?.changes || []) as HubChange[];
-  const session = String(data.usage?.session || '');
+  const changes = (usage.changes || []) as HubChange[];
+  const waiting = changes.some(
+    (change) =>
+      change.status === 'PENDING' && Date.now() < Date.parse(change.expiresAt),
+  );
+  const running = ['CANCELLING', 'QUEUED', 'RUNNING'].includes(
+    String(usage.runStatus),
+  );
+  const planOnly = usage.mode === 'PLAN';
+  let phase = '分析任务';
+  if (waiting) phase = '等待确认';
+  else
+    switch (usage.runStatus) {
+      case 'CANCELLED':
+      case 'INTERRUPTED': {
+        phase = '已停止';
+        break;
+      }
+      case 'COMPLETED': {
+        phase = planOnly ? '计划已就绪' : '已完成';
+        break;
+      }
+      case 'FAILED': {
+        phase = '执行未完成';
+        break;
+      }
+      case 'QUEUED': {
+        phase = '等待开始';
+        break;
+      }
+      default: {
+        if (usage.phase === 'TOOL') phase = '处理业务数据';
+      }
+    }
+  let phaseDescription = '本轮任务已结束。';
+  if (waiting) phaseDescription = '请核对下方变更，确认后继续处理。';
+  else if (running) phaseDescription = '正在根据当前任务处理。';
+  else if (planOnly)
+    phaseDescription = '可继续执行计划，具体变更仍会逐项确认。';
+  let color = 'default';
+  if (waiting) color = 'gold';
+  else if (running) color = 'processing';
+  const completed = steps.filter((step) => step.status === 'COMPLETED').length;
   return h(
     'section',
-    null,
-    steps.length > 0
-      ? h(Collapse, {
-          size: 'small',
-          ghost: true,
-          items: [
+    { className: 'hub-task-output' },
+    h(
+      Card,
+      {
+        size: 'small',
+        title: h(
+          Flex,
+          { gap: 8, align: 'center' },
+          '任务进度',
+          h(Tag, { color }, phase),
+        ),
+        extra: steps.length > 0 ? `${completed}/${steps.length}` : null,
+      },
+      steps.length > 0
+        ? h(Steps, {
+            direction: 'vertical',
+            size: 'small',
+            items: steps.map((step) => ({
+              title: step.title,
+              status: stepStatus(step.status),
+            })),
+          })
+        : h('span', { className: 'hub-phase-description' }, phaseDescription),
+      usage.plan
+        ? h(Collapse, {
+            ghost: true,
+            size: 'small',
+              defaultActiveKey: [],
+            items: [
+              {
+                key: 'plan',
+                label: '任务计划',
+                children: h(Markdown, {
+                  content: String(usage.plan),
+                  allowHtml: false,
+                  disableImage: true,
+                }),
+              },
+            ],
+          })
+        : null,
+      planOnly && usage.runStatus === 'COMPLETED' && isLatest()
+        ? h(
+            Button,
             {
-              key: 'steps',
-              label: `任务进度 · ${steps.filter((s) => s.status === 'COMPLETED').length}/${steps.length}`,
-              children: h(Steps, {
-                direction: 'vertical',
-                size: 'small',
-                items: steps.map((s) => ({
-                  title: s.title,
-                  status: stepStatus(s.status),
-                })),
-              }),
+              type: 'primary',
+              disabled: Boolean(loading),
+              style: { marginTop: 12 },
+              onClick: onExecute,
             },
-          ],
-        })
-      : null,
-    ...changes.map((value) => h(ChangeCard, { key: value.id, value, session })),
+            '执行计划',
+          )
+        : null,
+    ),
+    ...changes.map((value) =>
+      h(ChangeCard, {
+        key: value.id,
+        value,
+        session: String(usage.session || ''),
+      }),
+    ),
   );
 }
 
-export async function mountHub(element: HTMLElement, dark: boolean) {
+export async function mountHub(
+  element: HTMLElement,
+  dark: boolean,
+  permissions: string[],
+) {
   const adapter = new HubAdapter();
   const root = createRoot(element);
+  const ui = createRef<IAgentScopeRuntimeWebUIRef>();
   let choices: AgentPreset[] = [];
   try {
     choices = await listAgentPresets();
@@ -292,11 +417,17 @@ export async function mountHub(element: HTMLElement, dark: boolean) {
   }
   adapter.scene = choices[0]?.sceneKey || '';
   let ensureSession = async () => {};
+  let setRunMode = (value: 'EXECUTE' | 'PLAN') => {
+    adapter.mode = value;
+  };
   function Controls() {
     const sessions = useChatAnywhereSessions();
     const { currentSessionId } = useChatAnywhereSessionsState();
     const [mode, setMode] = useState(adapter.mode);
-    const [scene, setScene] = useState(adapter.scene);
+    setRunMode = (value) => {
+      adapter.mode = value;
+      setMode(value);
+    };
     ensureSession = async () => {
       if (!sessions.getCurrentSessionId())
         await sessions.createSession({ name: '新对话' });
@@ -312,30 +443,14 @@ export async function mountHub(element: HTMLElement, dark: boolean) {
         value: mode,
         size: 'small',
         variant: 'borderless',
-        'aria-label': '任务模式',
+        'aria-label': '运行方式',
         options: [
-          { label: '执行', value: 'EXECUTE' },
-          { label: '计划', value: 'PLAN' },
+          { label: '直接处理', value: 'EXECUTE' },
+          { label: '仅制定计划', value: 'PLAN' },
         ],
         onChange: (value: unknown) => {
           if (value === 'PLAN' || value === 'EXECUTE') {
-            adapter.mode = value;
-            setMode(value);
-          }
-        },
-      }),
-      h(Select, {
-        value: scene || undefined,
-        size: 'small',
-        variant: 'borderless',
-        'aria-label': 'Agent场景',
-        placeholder: '配置Agent场景',
-        style: { minWidth: 160, maxWidth: 260 },
-        options: choices.map((p) => ({ label: p.name, value: p.sceneKey })),
-        onChange: (value: unknown) => {
-          if (typeof value === 'string') {
-            adapter.scene = value;
-            setScene(value);
+            setRunMode(value);
           }
         },
       }),
@@ -347,7 +462,8 @@ export async function mountHub(element: HTMLElement, dark: boolean) {
       darkMode: dark,
       colorPrimary: '#2563eb',
       colorBgBase: dark ? '#171717' : '#ffffff',
-      leftHeader: { logo: localLogo, title: 'AI 中台' },
+      leftHeader: { logo: '', title: '' },
+      rightHeader: h(Controls),
       typography: { baseFontSize: 15, baseLineHeight: 1.75 },
       bubbleList: { userMessageAnchors: { enabled: true } },
     },
@@ -355,8 +471,8 @@ export async function mountHub(element: HTMLElement, dark: boolean) {
       avatar: h(Sparkles, { size: 36 }),
       greeting: '今天想完成什么？',
       description:
-        choices.length > 0 ? '' : '请先在提示词配置中配置 Agent 场景和模型。',
-      prompts: [],
+        choices.length > 0 ? '' : '请先在 AI 配置中设置中台提示词和模型。',
+      prompts: recommendations(permissions),
     },
     session: {
       multiple: true,
@@ -380,7 +496,6 @@ export async function mountHub(element: HTMLElement, dark: boolean) {
       showCharacterCount: false,
       allowSpeech: false,
       longTextUpload: false,
-      prefix: h(Controls),
       attachments: {
         accept: 'image/png,image/jpeg,image/webp,image/gif',
         multiple: true,
@@ -402,15 +517,35 @@ export async function mountHub(element: HTMLElement, dark: boolean) {
       },
     },
     response: {
+      render: ({ data, fallback }) =>
+        data.error ||
+        data.output?.some(
+          (item) =>
+            item.type === 'message' &&
+            item.content?.some(
+              (content) => content.type === 'text' && content.text?.trim(),
+            ),
+        )
+          ? h('div', { className: 'hub-answer' }, fallback())
+          : null,
       append: [
         {
           id: 'business-result',
-          render: ({ data }) => h(TaskOutput, { data }),
+          render: ({ data }) =>
+            h(TaskOutput, {
+              data,
+              isLatest: () =>
+                adapter.isLatestRun(String(data.usage?.session || ''), data.id),
+              onExecute: () => {
+                setRunMode('EXECUTE');
+                ui.current?.input.submit({ query: '按刚才的计划继续执行。' });
+              },
+            }),
         },
       ],
     },
   };
-  root.render(h(AgentScopeRuntimeWebUI, { options }));
+  root.render(h(AgentScopeRuntimeWebUI, { options, ref: ui }));
   return {
     dispose: () => {
       adapter.close();
@@ -422,7 +557,9 @@ export async function mountHub(element: HTMLElement, dark: boolean) {
         darkMode,
         colorBgBase: darkMode ? '#171717' : '#ffffff',
       };
-      root.render(h(AgentScopeRuntimeWebUI, { options: { ...options } }));
+      root.render(
+        h(AgentScopeRuntimeWebUI, { options: { ...options }, ref: ui }),
+      );
     },
   };
 }

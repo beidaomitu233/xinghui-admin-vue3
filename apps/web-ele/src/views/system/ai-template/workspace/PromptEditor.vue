@@ -117,7 +117,7 @@ watch(
 </script>
 <template>
   <div class="prompt-editor">
-    <Form class="prompt-metadata">
+    <Form v-if="!agent" class="prompt-metadata">
       <template #model>
         <ModelPriorityEditor
           :value="value"
@@ -128,6 +128,16 @@ watch(
         />
       </template>
     </Form>
+    <div v-if="agent" class="mb-5">
+      <h3 class="mb-3 text-sm font-medium">模型调用顺序</h3>
+      <ModelPriorityEditor
+        :value="value"
+        :models="businessModels ?? []"
+        :legacy-models="models"
+        :readonly="readonly || Boolean(saving)"
+        @change="changeModels"
+      />
+    </div>
     <ElAlert
       v-for="field in [
         'name',

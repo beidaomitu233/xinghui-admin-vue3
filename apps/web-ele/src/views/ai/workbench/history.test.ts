@@ -11,6 +11,23 @@ const event = (
   runId = 'run-a',
 ): AgentEvent => ({ id, runId, type, data, createdAt: '2026-10-24T00:00:00Z' });
 describe('durable public Agent history', () => {
+  it('retains the explicit plan and run mode, then clears them for the next task', () => {
+    const history = emptyHistory();
+    applyEvents(history, [
+      event('1', 'RUN_STATE', { status: 'QUEUED', mode: 'PLAN' }),
+      event('2', 'PLAN_DOCUMENT', {
+        markdown: '## 任务计划\n1. 查询商品\n2. 生成具体预览',
+      }),
+      event('3', 'RUN_STATE', { status: 'COMPLETED' }),
+    ]);
+    expect(history.mode).toBe('PLAN');
+    expect(history.plan).toContain('生成具体预览');
+    applyEvents(history, [
+      event('4', 'RUN_STATE', { status: 'QUEUED', mode: 'EXECUTE' }, 'run-b'),
+    ]);
+    expect(history.mode).toBe('EXECUTE');
+    expect(history.plan).toBe('');
+  });
   it('keeps exact long cursors and does not duplicate replayed text or tools', () => {
     const history = emptyHistory();
     const first = event('9007199254740993001', 'TEXT_DELTA', {

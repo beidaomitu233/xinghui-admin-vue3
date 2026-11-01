@@ -6,7 +6,7 @@ import {
   useChatAnywhereSessionsState,
 } from '@agentscope-ai/chat';
 import { Empty, Flex, Input, message } from 'antd';
-import { Pencil, Trash2 } from 'lucide-react';
+import { Pencil, Search, Trash2 } from 'lucide-react';
 import { createElement as h, useState } from 'react';
 
 /** Extend the native HistoryPanel; selection, inline editing and grouping stay with AgentScope. */
@@ -47,6 +47,9 @@ export function HubSessions({ adapter }: { adapter: HubAdapter }) {
       placeholder: '搜索对话',
       'aria-label': '搜索对话',
       allowClear: true,
+      prefix: h(Search, { size: 15, style: { opacity: 0.5 } }),
+      variant: 'filled',
+      style: { borderRadius: 8 },
       value: search,
       onChange: (event) => setSearch(event.target.value),
     }),

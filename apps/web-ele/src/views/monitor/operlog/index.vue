@@ -6,6 +6,7 @@ import { computed, ref, watch } from 'vue';
 import { Page, useVbenModal } from '@vben/common-ui';
 import { useAccessStore } from '@vben/stores';
 
+import dayjs from 'dayjs';
 import { ElMessage, ElMessageBox } from 'element-plus';
 
 import { createVbenGridQuery, useVbenVxeGrid } from '#/adapter/vxe-table';
@@ -166,30 +167,65 @@ const [Grid, gridApi] = useVbenVxeGrid<OperLogInfo>({
     rowConfig: { keyField: 'operId' },
     checkboxConfig: { reserve: true, highlight: true },
     columns: [
-      { type: 'checkbox', width: 50 },
-      { field: 'operId', title: '日志 ID', width: 90 },
-      { field: 'title', title: '系统模块', minWidth: 120, sortable: true },
+      { type: 'checkbox', width: 44 },
+      {
+        field: 'operTime',
+        title: '操作时间',
+        width: 175,
+        sortable: true,
+        formatter: ({ cellValue }: { cellValue: string }) =>
+          dayjs(cellValue).isValid()
+            ? dayjs(cellValue).format('YYYY-MM-DD HH:mm:ss')
+            : '—',
+      },
+      { field: 'operName', title: '操作人员', width: 120, sortable: true },
+      {
+        field: 'businessAction',
+        title: '业务动作',
+        minWidth: 175,
+        slots: { default: 'businessAction' },
+      },
+      {
+        field: 'businessTarget',
+        title: '操作对象',
+        minWidth: 240,
+        slots: { default: 'businessTarget' },
+        showOverflow: 'tooltip',
+      },
+      { field: 'operationSource', title: '来源', width: 95 },
+      {
+        field: 'status',
+        title: '执行结果',
+        width: 95,
+        sortable: true,
+        slots: { default: 'status' },
+      },
+      { field: 'costTime', title: '耗时(ms)', width: 95, sortable: true },
+      {
+        field: 'operId',
+        title: '日志 ID',
+        width: 180,
+        showOverflow: 'tooltip',
+      },
+      {
+        field: 'title',
+        title: '系统模块',
+        width: 130,
+        sortable: true,
+        visible: false,
+      },
       {
         field: 'businessType',
         title: '操作类型',
         width: 100,
         sortable: true,
+        visible: false,
         slots: { default: 'businessType' },
       },
-      { field: 'operName', title: '操作人员', width: 120, sortable: true },
-      { field: 'operIp', title: '操作 IP', width: 140 },
-      {
-        field: 'status',
-        title: '状态',
-        width: 85,
-        sortable: true,
-        slots: { default: 'status' },
-      },
-      { field: 'costTime', title: '耗时(ms)', width: 100, sortable: true },
-      { field: 'operTime', title: '操作时间', width: 180, sortable: true },
+      { field: 'operIp', title: '操作 IP', width: 140, visible: false },
       {
         title: '操作',
-        width: 80,
+        width: 75,
         fixed: 'right',
         slots: { default: 'actions' },
       },
@@ -319,6 +355,17 @@ watch([() => accessStore.accessToken, canQuery], async () => {
           清空
         </el-button>
       </template>
+      <template #businessAction="{ row }">
+        {{
+          row.businessAction ||
+          `${businessTypeName(row.businessType)} · ${row.title}`
+        }}
+      </template>
+      <template #businessTarget="{ row }">
+        <span :class="{ 'text-muted-foreground': !row.businessTarget }">
+          {{ row.businessTarget || '原日志未记录对象' }}
+        </span>
+      </template>
       <template #businessType="{ row }">
         <el-tag :type="businessTypeColor(row.businessType)">
           {{ businessTypeName(row.businessType) }}
@@ -326,7 +373,7 @@ watch([() => accessStore.accessToken, canQuery], async () => {
       </template>
       <template #status="{ row }">
         <el-tag :type="row.status === 0 ? 'success' : 'danger'">
-          {{ row.status === 0 ? '成功' : '失败' }}
+          {{ row.businessResult || (row.status === 0 ? '成功' : '失败') }}
         </el-tag>
       </template>
       <template #actions="{ row }">
@@ -354,15 +401,19 @@ watch([() => accessStore.accessToken, canQuery], async () => {
         <el-descriptions-item label="操作人员">
           {{ detail.operName }}
         </el-descriptions-item>
-        <el-descriptions-item label="部门名称">
-          {{ detail.deptName }}
+        <el-descriptions-item label="业务动作">
+          {{ detail.businessAction || detail.title }}
+        </el-descriptions-item>
+        <el-descriptions-item label="操作对象" :span="2">
+          {{ detail.businessTarget || '原日志未记录对象' }}
+        </el-descriptions-item>
+        <el-descriptions-item label="操作来源">
+          {{ detail.operationSource || '管理接口' }}
         </el-descriptions-item>
         <el-descriptions-item label="操作 IP">
           {{ detail.operIp }}
         </el-descriptions-item>
-        <el-descriptions-item label="操作地点">
-          {{ detail.operLocation }}
-        </el-descriptions-item>
+
         <el-descriptions-item label="操作状态">
           <el-tag :type="detail.status === 0 ? 'success' : 'danger'">
             {{ detail.status === 0 ? '成功' : '失败' }}
@@ -372,7 +423,7 @@ watch([() => accessStore.accessToken, canQuery], async () => {
           {{ detail.costTime }} ms
         </el-descriptions-item>
         <el-descriptions-item label="操作时间">
-          {{ detail.operTime }}
+          {{ dayjs(detail.operTime).format('YYYY-MM-DD HH:mm:ss') }}
         </el-descriptions-item>
         <el-descriptions-item label="操作方法" :span="2">
           <div class="break-all">{{ detail.method }}</div>

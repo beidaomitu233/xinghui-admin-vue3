@@ -58,13 +58,16 @@
     "@ant-design/icons": "5.6.1",
     "react": "18.3.1",
     "antd": "5.29.1",
-    "lucide-react": "0.562.0"
+    "lucide-react": "0.562.0",
+    "@vueuse/integrations": "catalog:",
+    "qrcode": "catalog:"
   },
   "devDependencies": {
     "jsdom": "27.4.0",
     "unplugin-element-plus": "catalog:",
     "unplugin-vue-components": "catalog:",
     "@types/react": "18.3.27",
-    "@types/react-dom": "18.3.7"
+    "@types/react-dom": "18.3.7",
+    "@types/qrcode": "catalog:"
   }
 }

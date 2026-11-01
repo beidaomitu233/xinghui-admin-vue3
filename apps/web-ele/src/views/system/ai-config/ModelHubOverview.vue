@@ -26,7 +26,6 @@ const emit = defineEmits<{
 }>();
 type Filter = 'all' | 'disabled' | 'needs' | 'protected' | 'ready' | 'weak';
 const filter = ref<Filter>('all');
-const audit = ref(false);
 const enabled = computed(() => props.models.filter((model) => model.enabled));
 const ready = computed(() =>
   enabled.value.filter((model) => model.health.ready),
@@ -125,12 +124,6 @@ const filters = computed(() => [
 const filtered = computed(
   () => filters.value.find((item) => item.value === filter.value)?.models ?? [],
 );
-const noticeCount = computed(
-  () =>
-    Number(Boolean(keyIssue.value)) +
-    Number(needs.value.length > 0) +
-    Number(weak.value.length > 0),
-);
 function status(model: HubModel) {
   if (!model.enabled) return '已停用';
   return model.health.ready ? '就绪' : '待配置';
@@ -147,7 +140,7 @@ const [Grid, gridApi] = useVbenVxeGrid<HubModel>({
     proxyConfig: { enabled: false },
     columns: [
       {
-        title: '模型 / 调用名称',
+        title: '模型',
         minWidth: 170,
         field: 'name',
         sortable: true,
@@ -191,25 +184,12 @@ function selectFilter(value: unknown) {
         <h2>模型汇总</h2>
         <p>模型可用性与供应商接入状态</p>
       </div>
-      <ElButton @click="audit = !audit">配置巡检</ElButton>
     </header>
     <ElAlert
       v-if="!complete"
       title="部分列表尚未读全；供应商统计与筛选结果仅含已读取项目，模型总览指标使用服务端汇总。"
       type="warning"
       :closable="false"
-    />
-    <ElAlert
-      v-if="audit"
-      :title="
-        noticeCount
-          ? `发现 ${noticeCount} 类待处理配置，请从右侧提醒继续处理。`
-          : '已读取配置未发现待处理项。'
-      "
-      description="巡检只检查当前配置及已有验证记录，不发起模型或网络验证。"
-      :type="noticeCount ? 'warning' : 'info'"
-      closable
-      @close="audit = false"
     />
     <div class="overview-metrics">
       <button type="button" @click="filter = 'ready'">
@@ -218,15 +198,13 @@ function selectFilter(value: unknown) {
           {{ summary?.readyModels ?? '—' }}
           <small>/ {{ summary?.totalModels ?? '—' }}</small>
         </strong>
-        <em>{{ summary?.enabledModels ?? '—' }} 个已启用</em>
       </button>
       <button type="button" @click="emit('suppliers')">
-        <span>{{ complete ? '可用渠道' : '可用渠道（已加载）' }}</span>
+        <span>{{ complete ? '已验证渠道' : '已验证渠道（已加载）' }}</span>
         <strong>
           {{ readyChannels.length }}
           <small>/ {{ channels.length }}</small>
         </strong>
-        <em>按已有验证记录统计</em>
       </button>
       <button type="button" @click="filter = 'protected'">
         <span>多供应商保障</span>
@@ -234,7 +212,6 @@ function selectFilter(value: unknown) {
           {{ summary?.multiProviderModels ?? '—' }}
           <small>/ {{ summary?.enabledModels ?? '—' }}</small>
         </strong>
-        <em>{{ summary?.assuranceNeededModels ?? '—' }} 个待完善</em>
       </button>
       <button
         type="button"
@@ -249,7 +226,6 @@ function selectFilter(value: unknown) {
           {{ verifiedKeyCount }}
           <small>/ {{ keyCount }}</small>
         </strong>
-        <em>未验证项不计入可用</em>
       </button>
     </div>
     <div class="overview-layout">
@@ -281,7 +257,6 @@ function selectFilter(value: unknown) {
             >
               {{ row.name }}
             </ElButton>
-            <code class="overview-call-name">{{ row.slug }}</code>
           </template>
           <template #cell1="{ row }">
             {{ row.health.distinctProviders }}
@@ -330,43 +305,6 @@ function selectFilter(value: unknown) {
           </ElButton>
         </ElEmpty>
       </section>
-      <aside class="overview-notices" aria-label="配置提醒">
-        <h3>配置提醒</h3>
-        <article v-if="keyIssue">
-          <h4>Key 配置需处理</h4>
-          <p>存在未配置或尚未验证成功的 Key。</p>
-          <ElButton
-            link
-            type="primary"
-            @click="emit('selectSupplier', keyIssue.configId)"
-          >
-            处理 Key →
-          </ElButton>
-        </article>
-        <article v-if="needs.length > 0">
-          <h4>模型等待接入</h4>
-          <p>{{ needs.length }} 个已启用模型没有可用供应商。</p>
-          <ElButton link type="primary" @click="filter = 'needs'">
-            补充接入 →
-          </ElButton>
-        </article>
-        <article v-if="weak.length > 0">
-          <h4>完善备用供应商</h4>
-          <p>{{ weak.length }} 个模型尚未形成自动切换保障。</p>
-          <ElButton link type="primary" @click="filter = 'weak'">
-            查看模型 →
-          </ElButton>
-        </article>
-        <article v-if="disabled.length > 0">
-          <h4>已停用模型</h4>
-          <p>{{ disabled.length }} 个模型当前不参与调用。</p>
-          <ElButton link @click="filter = 'disabled'">查看模型 →</ElButton>
-        </article>
-        <article v-if="!noticeCount && disabled.length === 0">
-          <h4>当前配置无需处理</h4>
-          <p>以已读取配置和已有验证记录为准。</p>
-        </article>
-      </aside>
     </div>
   </div>
 </template>
@@ -448,7 +386,7 @@ function selectFilter(value: unknown) {
 
 .overview-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 210px;
+  grid-template-columns: minmax(0, 1fr);
   gap: 24px;
 }
 

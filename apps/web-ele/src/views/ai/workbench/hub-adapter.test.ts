@@ -96,7 +96,11 @@ describe('official chat protocol adapter', () => {
         errorCode: 'MODEL_UNAVAILABLE',
       }),
     ]);
-    const result = await adapter().load(session.id);
+    const chat = adapter();
+    const result = await chat.load(session.id);
+    expect(chat.isLatestRun(session.id, 'run-1')).toBe(false);
+    expect(chat.isLatestRun(session.id, 'run-2')).toBe(true);
+    expect(chat.isLatestRun('another-session', 'run-2')).toBe(false);
     expect(result.messages).toHaveLength(4);
     const responses = result.messages
       ?.filter((m) => m.role === 'assistant')

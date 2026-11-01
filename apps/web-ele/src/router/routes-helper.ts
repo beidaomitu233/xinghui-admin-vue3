@@ -253,16 +253,21 @@ function createRecoverablePage(loader: () => Promise<Component>, name: string) {
         requestId++;
       });
       return () => {
-        if (page.value) return h(page.value, attrs, slots);
-        if (loading.value) {
-          return h(
+        // Keep the transition's DOM target stable while the lazy page resolves.
+        // Replacing the wrapper root after mount loses out-in/KeepAlive hooks.
+        let content;
+        if (page.value) content = h(page.value, attrs, slots);
+        else if (loading.value) {
+          content = h(
             'section',
             { role: 'status', class: 'p-8' },
             '正在加载页面…',
           );
+        } else {
+          // Browsers cache rejected imports; a fresh document retries resources.
+          content = h(RouteError, { retry: () => window.location.reload() });
         }
-        // Browsers cache rejected imports; a fresh document retries resources.
-        return h(RouteError, { retry: () => window.location.reload() });
+        return h('div', { class: 'h-full min-h-0' }, [content]);
       };
     },
   });

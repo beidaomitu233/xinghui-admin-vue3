@@ -7,19 +7,21 @@ defineProps<{
   busy?: boolean;
   canAddChannel: boolean;
   canAddModel: boolean;
+  canReadModels: boolean;
   count: string;
   query: string;
-  view: 'models' | 'suppliers';
+  view: 'agent' | 'models' | 'suppliers';
 }>();
 const emit = defineEmits<{
   addChannel: [];
   addModel: [];
   search: [query: string];
-  selectView: [view: 'models' | 'suppliers'];
+  selectView: [view: 'agent' | 'models' | 'suppliers'];
 }>();
 const panes = [
   { value: 'models', label: '模型' },
   { value: 'suppliers', label: '供应商' },
+  { value: 'agent', label: '中台设置' },
 ] as const;
 </script>
 
@@ -28,28 +30,34 @@ const panes = [
     auto-content-height
     header-class="flex-wrap gap-3"
     title="AI 配置"
-    description="管理业务模型、供应商与接入渠道"
+    description="管理模型、供应商与中台助手"
   >
     <section class="model-hub" aria-label="AI 配置工作区">
-      <div class="hub-workspace">
+      <div
+        class="hub-workspace"
+        :class="{ 'is-agent-settings': view === 'agent' }"
+      >
         <aside class="hub-sidebar">
           <div class="hub-sidebar-heading">
             <ElTabs
               :model-value="view"
               aria-label="管理对象"
-              @tab-change="emit('selectView', $event as 'models' | 'suppliers')"
+              @tab-change="
+                emit('selectView', $event as 'agent' | 'models' | 'suppliers')
+              "
             >
               <ElTabPane
                 v-for="item in panes"
                 :key="item.value"
                 :name="item.value"
                 :label="item.label"
-                :disabled="busy"
+                :disabled="busy || (item.value !== 'agent' && !canReadModels)"
               />
             </ElTabs>
-            <span class="hub-count">{{ count }}</span>
+            <span v-if="view !== 'agent'" class="hub-count">{{ count }}</span>
           </div>
           <ElInput
+            v-if="view !== 'agent'"
             :model-value="query"
             :aria-label="view === 'models' ? '搜索模型' : '搜索供应商或渠道'"
             :placeholder="view === 'models' ? '搜索模型' : '搜索供应商或渠道'"
@@ -59,7 +67,10 @@ const panes = [
             @update:model-value="emit('search', $event)"
           />
           <ElButton
-            v-if="view === 'models' ? canAddModel : canAddChannel"
+            v-if="
+              view !== 'agent' &&
+              (view === 'models' ? canAddModel : canAddChannel)
+            "
             type="primary"
             :disabled="busy"
             @click="view === 'models' ? emit('addModel') : emit('addChannel')"
@@ -67,21 +78,25 @@ const panes = [
             {{ view === 'models' ? '添加模型' : '添加渠道' }}
           </ElButton>
           <nav
+            v-if="view !== 'agent'"
             class="hub-list"
             :aria-label="view === 'models' ? '业务模型' : '供应商渠道'"
           >
             <slot name="sidebar"></slot>
           </nav>
-          <footer class="hub-sidebar-footer">
-            <slot v-if="view === 'models'" name="model-actions"></slot>
-            <slot name="sidebar-footer"></slot>
-          </footer>
         </aside>
         <section
           class="hub-detail"
-          :aria-label="view === 'models' ? '当前模型配置' : '当前供应商配置'"
+          :aria-label="
+            view === 'agent'
+              ? '中台设置'
+              : view === 'models'
+                ? '当前模型配置'
+                : '当前供应商配置'
+          "
         >
-          <slot></slot>
+          <slot v-if="view === 'agent'" name="agent"></slot>
+          <slot v-else></slot>
         </section>
       </div>
     </section>
@@ -133,9 +148,19 @@ const panes = [
   border-radius: 10px;
 }
 
+.hub-workspace.is-agent-settings {
+  flex-direction: column;
+}
+.is-agent-settings .hub-sidebar {
+  flex: 0 0 auto;
+  padding: 12px 24px 0;
+  border-right: 0;
+  border-bottom: 1px solid hsl(var(--border));
+}
+
 .hub-sidebar {
   display: flex;
-  flex: 0 0 240px;
+  flex: 0 0 250px;
   flex-direction: column;
   gap: 18px;
   min-width: 0;

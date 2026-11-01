@@ -4,7 +4,7 @@ import type { AiSettingsView } from '#/api/system/ai-settings';
 import { flushPromises, mount } from '@vue/test-utils';
 import { reactive } from 'vue';
 
-import ElementPlus, { ElMessageBox, ElSwitch } from 'element-plus';
+import ElementPlus, { ElMessageBox, ElSelect, ElSwitch } from 'element-plus';
 import {
   afterEach,
   beforeAll,
@@ -546,7 +546,8 @@ describe('model-centered AI configuration from the approved prototype', () => {
     expect(
       wrapper.get('.overview-metrics button:nth-child(4) strong').text(),
     ).toBe('0 / 1');
-    expect(wrapper.text()).toContain('模型等待接入');
+    expect(wrapper.text()).toContain('待配置');
+    expect(wrapper.find('.overview-notices').exists()).toBe(false);
   });
   it('switches the left sidebar to suppliers and places masked keys before endpoint and catalog with stored metadata only', async () => {
     const wrapper = await render();
@@ -614,7 +615,14 @@ describe('model-centered AI configuration from the approved prototype', () => {
   it('saves an edited route and strategy against exact upstream models rather than display names', async () => {
     const wrapper = await render();
     await chooseModel(wrapper);
-    await selectValue(wrapper, '业务模型调用策略', 'ROUND_ROBIN');
+    expect(
+      wrapper
+        .findAllComponents(ElSelect)
+        .some((control) => control.props('ariaLabel') === '业务模型调用策略'),
+    ).toBe(false);
+    await clickTab('供应商');
+    await flushPromises();
+    await selectValue(wrapper, '客服业务模型 调度策略', 'ROUND_ROBIN');
     await flushPromises();
     expect(api.update.mock.calls[0]?.[1]).toMatchObject({
       strategy: 'ROUND_ROBIN',

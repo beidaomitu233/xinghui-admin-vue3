@@ -20,6 +20,13 @@ interface BackendMenu {
 /** Rearrange only pages already returned by the permission-filtered API. */
 export function normalizeNavigationMenus(menus: BackendMenu[]): BackendMenu[] {
   const homes: BackendMenu[] = [];
+  const containsModelMenu = (nodes: BackendMenu[]): boolean =>
+    nodes.some(
+      (menu) =>
+        menu.component === 'system/ai-config/index' ||
+        containsModelMenu(menu.children || []),
+    );
+  const hasModelMenu = containsModelMenu(menus);
   const walk = (nodes: BackendMenu[]): BackendMenu[] =>
     nodes.flatMap((menu) => {
       const copy = {
@@ -50,6 +57,25 @@ export function normalizeNavigationMenus(menus: BackendMenu[]): BackendMenu[] {
         });
         return [];
       }
+      if (
+        menu.menuType === 'C' &&
+        menu.component === 'system/ai-template/index'
+      ) {
+        if (hasModelMenu) return [];
+        return [
+          {
+            ...copy,
+            component: 'system/ai-config/index',
+            menuName: 'AI配置',
+            path: '/ai/configurations',
+          },
+        ];
+      }
+      if (
+        menu.menuType === 'C' &&
+        menu.component === 'system/business-config/index'
+      )
+        copy.menuName = '业务配置';
       // This also covers an already migrated server tree whose role still has
       // the former parent grant. An empty directory must not become a page.
       if (

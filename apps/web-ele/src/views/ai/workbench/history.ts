@@ -24,6 +24,8 @@ export interface AgentHistory {
   status: AgentRunStatus | null;
   errorCode: null | string;
   phase: string;
+  mode: 'EXECUTE' | 'PLAN' | null;
+  plan: string;
   activeTool: string;
   steps: TaskStep[];
 }
@@ -34,6 +36,8 @@ export const emptyHistory = (): AgentHistory => ({
   status: null,
   errorCode: null,
   phase: '',
+  mode: null,
+  plan: '',
   activeTool: '',
   steps: [],
 });
@@ -72,6 +76,8 @@ export function applyEvents(history: AgentHistory, events: AgentEvent[]) {
       history.steps = [];
       history.errorCode = null;
       history.phase = '';
+      history.mode = null;
+      history.plan = '';
       history.activeTool = '';
       history.status = null;
     }
@@ -81,11 +87,17 @@ export function applyEvents(history: AgentHistory, events: AgentEvent[]) {
 
         break;
       }
+      case 'PLAN_DOCUMENT': {
+        history.plan = text(data.markdown);
+        break;
+      }
       case 'RUN_STATE': {
         const status = text(data.status);
         if (Object.hasOwn(runLabels, status))
           history.status = status as AgentRunStatus;
         history.errorCode = text(data.errorCode) || null;
+        if (data.mode === 'PLAN' || data.mode === 'EXECUTE')
+          history.mode = data.mode;
 
         break;
       }

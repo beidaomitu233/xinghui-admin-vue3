@@ -1,6 +1,10 @@
 import { requestClient } from '#/api/request';
 
 export interface OperLogInfo {
+  businessAction?: string;
+  businessTarget?: null | string;
+  businessResult?: string;
+  operationSource?: string;
   operId: string;
   title: string;
   businessType: number;

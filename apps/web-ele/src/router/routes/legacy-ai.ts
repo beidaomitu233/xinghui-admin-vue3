@@ -4,9 +4,10 @@ import type { RouteRecordRaw } from 'vue-router';
 const redirects: [string, string][] = [
   ['/ai/model', '/ai/configurations'],
   ['/system/ai-model', '/ai/configurations'],
-  ['/ai/applications', '/ai/templates'],
-  ['/ai/prompts', '/ai/templates'],
-  ['/system/ai-prompt', '/ai/templates'],
+  ['/ai/templates', '/ai/configurations'],
+  ['/ai/applications', '/ai/configurations'],
+  ['/ai/prompts', '/ai/configurations'],
+  ['/system/ai-prompt', '/ai/configurations'],
 ];
 export const legacyAiRoutes: RouteRecordRaw[] = redirects.map(
   ([path, target], index) => ({

@@ -108,6 +108,9 @@ export class HubAdapter {
     this.images.forEach((url) => URL.revokeObjectURL(url));
     this.images.clear();
   }
+  isLatestRun(session: string, run: string) {
+    return this.histories.get(session)?.currentRunId === run;
+  }
   async list(): Promise<Session[]> {
     const sessions = await listAgentSessions();
     this.sessions = new Map(sessions.map((s) => [s.id, s]));
@@ -198,6 +201,10 @@ export class HubAdapter {
           (c) => c.runId === run,
         ),
         session,
+        phase: history.phase,
+        runStatus: history.status,
+        mode: history.mode,
+        plan: history.plan,
         errorCode: history.errorCode || undefined,
       },
       ...(history.errorCode
@@ -212,8 +219,7 @@ export class HubAdapter {
   }
   async send(input: unknown[], signal?: AbortSignal): Promise<Response> {
     signal?.throwIfAborted();
-    if (!this.scene)
-      throw new Error('请先在提示词配置中设置 Agent 场景和模型。');
+    if (!this.scene) throw new Error('请先在 AI 配置中设置中台提示词和模型。');
     const last = input.at(-1) as
       | undefined
       | { content?: { image_url?: string; text?: string; type: string }[] };

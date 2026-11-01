@@ -68,6 +68,7 @@ import {
   settingsProviders,
 } from '#/api/system/ai-settings';
 
+import AgentSettings from './AgentSettings.vue';
 import ChannelWorkspace from './ChannelWorkspace.vue';
 import {
   hubModelChange,
@@ -81,8 +82,12 @@ import ModelHubOverview from './ModelHubOverview.vue';
 import ModelHubSupplier from './ModelHubSupplier.vue';
 import SupplierModelSelect from './SupplierModelSelect.vue';
 
-const emit = defineEmits<{ routing: [] }>();
+const agentSettings = ref<InstanceType<typeof AgentSettings>>();
 const access = useAccessStore();
+const agentOpen = ref(
+  !access.accessCodes.includes('ai:config:list') &&
+    access.accessCodes.includes('ai:scene:query'),
+);
 const can = (action: string) =>
   access.accessCodes.includes(`ai:config:${action}`);
 const identity = computed(() =>
@@ -269,9 +274,6 @@ function switchReason(reason: string) {
   if (reason === 'FALLBACK_MODEL') return '切换备用接入';
   return reason ? '已记录切换原因' : '—';
 }
-const canRouting = computed(
-  () => can('query') && access.accessCodes.includes('ai:scene:query'),
-);
 function providerName(code: string) {
   return (
     providers.value.find((provider) => provider.code === code)?.name ?? code
@@ -923,11 +925,17 @@ function beforeUnload(event: BeforeUnloadEvent) {
     event.returnValue = '';
   }
 }
-async function showRouting() {
-  if (await leave()) emit('routing');
+async function selectWorkspace(next: 'agent' | 'models' | 'suppliers') {
+  if (busy.value) return;
+  if (agentOpen.value && !(await agentSettings.value?.requestLeave())) return;
+  if (next === 'agent' && !(await leave())) return;
+  agentOpen.value = next === 'agent';
+  if (next !== 'agent') changeView(next);
 }
 onBeforeRouteLeave(leave);
 watch(identity, () => {
+  agentOpen.value =
+    !can('list') && access.accessCodes.includes('ai:scene:query');
   generation++;
   selection++;
   testGeneration++;
@@ -1008,21 +1016,20 @@ watch(
 
 <template>
   <ModelHubLayout
-    :view="view"
+    :view="agentOpen ? 'agent' : view"
     :query="query"
     :count="count"
+    :can-read-models="can('list')"
     :can-add-channel="can('add')"
     :can-add-model="can('add')"
     :busy="busy"
-    @select-view="changeView"
+    @select-view="selectWorkspace"
     @search="query = $event"
     @add-channel="editor?.open()"
     @add-model="openModel()"
   >
-    <template #model-actions>
-      <ElButton v-if="canRouting" link :disabled="busy" @click="showRouting">
-        场景调用顺序
-      </ElButton>
+    <template #agent>
+      <AgentSettings ref="agentSettings" :models="models" />
     </template>
     <template #sidebar>
       <template v-if="view === 'models'">
@@ -1100,15 +1107,7 @@ watch(
         </button>
       </template>
     </template>
-    <template #sidebar-footer>
-      {{ count }} 个{{ view === 'models' ? '模型' : '渠道' }} ·
-      {{
-        view === 'models'
-          ? models.filter((model) => model.enabled).length
-          : channels.filter((channel) => channel.active).length
-      }}
-      个已启用{{ complete ? '' : '（已读取）' }}
-    </template>
+
     <ElAlert
       v-if="error"
       :title="error"
