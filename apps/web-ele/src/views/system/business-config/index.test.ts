@@ -6,7 +6,7 @@ import type {
 import { flushPromises, mount } from '@vue/test-utils';
 
 import ElementPlus from 'element-plus';
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { initComponentAdapter } from '#/adapter/component';
 import { initSetupVbenForm } from '#/adapter/form';
@@ -69,9 +69,16 @@ function config(section: BusinessSection): BusinessConfig {
     secretsConfigured: {},
   };
 }
+const wrappers: ReturnType<typeof mount>[] = [];
 function page() {
-  return mount(ConfigPage, { global: { plugins: [ElementPlus] } });
+  const wrapper = mount(ConfigPage, { global: { plugins: [ElementPlus] } });
+  wrappers.push(wrapper);
+  return wrapper;
 }
+afterEach(async () => {
+  wrappers.splice(0).forEach((wrapper) => wrapper.unmount());
+  await flushPromises();
+});
 beforeAll(async () => {
   await initComponentAdapter();
   await initSetupVbenForm();
