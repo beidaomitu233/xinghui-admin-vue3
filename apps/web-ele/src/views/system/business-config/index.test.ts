@@ -83,10 +83,6 @@ function page() {
   wrappers.push(wrapper);
   return wrapper;
 }
-afterEach(async () => {
-  wrappers.splice(0).forEach((wrapper) => wrapper.unmount());
-  await flushPromises();
-});
 beforeAll(async () => {
   await initComponentAdapter();
   await initSetupVbenForm();
@@ -97,6 +93,10 @@ beforeAll(async () => {
     import('element-plus/es/components/switch/index'),
     import('element-plus/es/components/switch/style/css'),
   ]);
+});
+afterEach(async () => {
+  wrappers.splice(0).forEach((wrapper) => wrapper.unmount());
+  await flushPromises();
 });
 describe('business configuration sections', () => {
   beforeEach(() => {

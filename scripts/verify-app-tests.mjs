@@ -26,7 +26,6 @@ const required = [
   '/src/views/system/ai-model/index.test.ts',
   '/src/views/system/ai-config/form.test.ts',
   '/src/views/system/ai-config/ModelHubWorkspace.test.ts',
-  '/src/views/system/ai-config/SceneRoutingWorkspace.test.ts',
   '/src/views/system/ai-config/SimpleSettingsPanel.test.ts',
   '/src/views/system/ai-application/KeyPolicyEditor.test.ts',
   '/src/views/system/ai-request/RequestLogPanel.test.ts',
