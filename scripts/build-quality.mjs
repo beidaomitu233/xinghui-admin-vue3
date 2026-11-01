@@ -26,7 +26,8 @@ try {
       stdio: 'inherit',
       env: {
         ...process.env,
-        NODE_OPTIONS: process.env.NODE_OPTIONS ?? '--max-old-space-size=2048',
+        NODE_OPTIONS:
+          process.env.XINGHUI_BUILD_NODE_OPTIONS ?? '--max-old-space-size=4096',
       },
       shell: process.platform === 'win32',
     },

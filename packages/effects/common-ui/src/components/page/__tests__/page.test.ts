@@ -53,10 +53,10 @@ describe('page.vue', () => {
       props: {
         contentClass: 'custom-class',
       },
+      slots: { default: '<p>Business content</p>' },
     });
 
-    const contentDiv = wrapper.find('.p-4');
-    expect(contentDiv.classes()).toContain('custom-class');
+    expect(wrapper.get('.custom-class').text()).toBe('Business content');
   });
 
   it('does not render title slot if title prop is provided', () => {
