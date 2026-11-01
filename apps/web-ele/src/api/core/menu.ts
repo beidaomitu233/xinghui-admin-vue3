@@ -27,13 +27,57 @@ export function normalizeNavigationMenus(menus: BackendMenu[]): BackendMenu[] {
         containsModelMenu(menu.children || []),
     );
   const hasModelMenu = containsModelMenu(menus);
-  const walk = (nodes: BackendMenu[]): BackendMenu[] =>
-    nodes.flatMap((menu) => {
-      const copy = {
+  const groups: Record<string, BackendMenu> = {
+    business: {
+      menuId: 'hub-group-business',
+      menuName: '业务',
+      menuType: 'M',
+      path: '/business',
+      icon: 'lucide:users',
+      orderNum: 10,
+      children: [],
+    },
+    system: {
+      menuId: 'hub-group-system',
+      menuName: '系统',
+      menuType: 'M',
+      path: '/settings',
+      icon: 'lucide:settings',
+      orderNum: 20,
+      children: [],
+    },
+    operations: {
+      menuId: 'hub-group-operations',
+      menuName: '运维',
+      menuType: 'M',
+      path: '/operations',
+      icon: 'lucide:activity',
+      orderNum: 30,
+      children: [],
+    },
+  };
+  const walk = (nodes: BackendMenu[], parentPath = '', hidden = false) => {
+    for (const menu of nodes) {
+      if (menu.menuType === 'F') continue;
+      const path = resolveMenuPath(menu.path || '', parentPath);
+      const hide =
+        hidden ||
+        String(menu.visible) === '1' ||
+        menu.meta?.hideInMenu === true;
+      if (menu.menuType === 'M') {
+        walk(menu.children || [], path, hide);
+        continue;
+      }
+      const copy: BackendMenu = {
         ...menu,
-        ...(menu.children ? { children: walk(menu.children) } : {}),
+        path,
+        meta: {
+          title: menu.menuName || menu.meta?.title || '',
+          ...menu.meta,
+          ...(hide ? { hideInMenu: true } : {}),
+        },
       };
-      if (menu.menuType === 'C' && menu.component === 'ai/workbench/index') {
+      if (menu.component === 'ai/workbench/index') {
         homes.push({
           ...copy,
           menuName: 'AI 中台',
@@ -41,12 +85,11 @@ export function normalizeNavigationMenus(menus: BackendMenu[]): BackendMenu[] {
           orderNum: -30,
           meta: { ...copy.meta, title: 'AI 中台', keepAlive: true },
         });
-        return [];
+        continue;
       }
       if (
-        menu.menuType === 'C' &&
         ['dashboard/analytics/index', 'dashboard/workspace/index'].includes(
-          menu.component ?? '',
+          menu.component || '',
         )
       ) {
         const workspace = menu.component === 'dashboard/workspace/index';
@@ -55,37 +98,43 @@ export function normalizeNavigationMenus(menus: BackendMenu[]): BackendMenu[] {
           path: workspace ? '/workspace' : '/analytics',
           orderNum: workspace ? -20 : -10,
         });
-        return [];
+        continue;
       }
-      if (
-        menu.menuType === 'C' &&
-        menu.component === 'system/ai-template/index'
-      ) {
-        if (hasModelMenu) return [];
-        return [
-          {
-            ...copy,
-            component: 'system/ai-config/index',
-            menuName: 'AI配置',
-            path: '/ai/configurations',
-          },
-        ];
+      if (menu.component === 'system/ai-template/index') {
+        if (hasModelMenu) continue;
+        copy.component = 'system/ai-config/index';
+        copy.menuName = 'AI配置';
+        copy.path = '/ai/configurations';
       }
-      if (
-        menu.menuType === 'C' &&
-        menu.component === 'system/business-config/index'
-      )
+      if (copy.component === 'system/business-config/index')
         copy.menuName = '业务配置';
-      // This also covers an already migrated server tree whose role still has
-      // the former parent grant. An empty directory must not become a page.
+      const component = copy.component || '';
+      let group = 'business';
       if (
-        menu.menuType === 'M' &&
-        !copy.children?.some((child) => child.menuType !== 'F')
+        [
+          'system/ai-config/index',
+          'system/config/index',
+          'system/dict/index',
+          'system/menu/index',
+        ].includes(component)
       )
-        return [];
-      return [copy];
-    });
-  const remaining = walk(menus);
+        group = 'system';
+      if (/^monitor\/|^system\/job|^system\/ai-request/.test(component))
+        group = 'operations';
+      groups[group]?.children?.push(copy);
+    }
+  };
+  walk(menus);
+  const remaining = Object.values(groups)
+    .filter((group) => group.children?.length)
+    .map((group) => ({
+      ...group,
+      visible: group.children?.every(
+        (child) => String(child.visible) === '1' || child.meta?.hideInMenu,
+      )
+        ? '1'
+        : '0',
+    }));
   return [...homes, ...remaining].toSorted(
     (a, b) =>
       (a.orderNum ?? a.meta?.order ?? 0) - (b.orderNum ?? b.meta?.order ?? 0),

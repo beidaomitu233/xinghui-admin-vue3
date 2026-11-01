@@ -35,6 +35,7 @@ import { requestClient } from '#/api/request';
 import { listAgentPresets } from '#/api/system/ai-workbench';
 
 import { HubAdapter } from './hub-adapter';
+import { HubRequestActions } from './hub-message-actions';
 import { recommendations } from './hub-recommendations';
 import { HubSessions } from './hub-sessions';
 
@@ -364,7 +365,7 @@ function TaskOutput({
         ? h(Collapse, {
             ghost: true,
             size: 'small',
-              defaultActiveKey: [],
+            defaultActiveKey: [],
             items: [
               {
                 key: 'plan',
@@ -462,6 +463,7 @@ export async function mountHub(
       darkMode: dark,
       colorPrimary: '#2563eb',
       colorBgBase: dark ? '#171717' : '#ffffff',
+      background: dark ? '#171717' : '#ffffff',
       leftHeader: { logo: '', title: '' },
       rightHeader: h(Controls),
       typography: { baseFontSize: 15, baseLineHeight: 1.75 },
@@ -516,6 +518,18 @@ export async function mountHub(
         },
       },
     },
+    request: {
+      append: [
+        {
+          id: 'user-message-actions',
+          render: ({ data }) =>
+            h(HubRequestActions, {
+              data,
+              onSubmit: (draft) => ui.current?.input.submit(draft),
+            }),
+        },
+      ],
+    },
     response: {
       render: ({ data, fallback }) =>
         data.error ||
@@ -556,6 +570,7 @@ export async function mountHub(
         ...options.theme,
         darkMode,
         colorBgBase: darkMode ? '#171717' : '#ffffff',
+        background: darkMode ? '#171717' : '#ffffff',
       };
       root.render(
         h(AgentScopeRuntimeWebUI, { options: { ...options }, ref: ui }),

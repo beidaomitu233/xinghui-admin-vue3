@@ -1,7 +1,12 @@
 <script setup lang="ts">
+import type {
+  ConversationDetail,
+  ConversationSummary,
+} from '#/api/system/ai-conversation';
 import type { AgentSession } from '#/api/system/ai-workbench';
 
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
+import { useRoute } from 'vue-router';
 
 import { useAccessStore } from '@vben/stores';
 
@@ -9,6 +14,7 @@ import {
   ElAlert,
   ElButton,
   ElEmpty,
+  ElInput,
   ElMenu,
   ElMenuItem,
   ElScrollbar,
@@ -16,6 +22,10 @@ import {
   ElTag,
 } from 'element-plus';
 
+import {
+  getConversation,
+  listConversations,
+} from '#/api/system/ai-conversation';
 import { getAgentEvents, listAgentSessions } from '#/api/system/ai-workbench';
 import AgentImagePreview from '#/views/ai/workbench/AgentImagePreview.vue';
 import {
@@ -25,68 +35,178 @@ import {
 } from '#/views/ai/workbench/history';
 import MarkdownMessage from '#/views/ai/workbench/MarkdownMessage.vue';
 
+import { conversationMessage } from './adapter';
+import ConversationTimeline from './ConversationTimeline.vue';
+
 const props = defineProps<{ active: boolean }>();
+const route = useRoute();
 const access = useAccessStore();
-const allowed = computed(
-  () =>
-    Boolean(access.accessToken) &&
-    access.accessCodes.includes('ai:agent:invoke'),
+const can = (code: string) =>
+  Boolean(access.accessToken) && access.accessCodes.includes(code);
+const scope = computed(() =>
+  can('ai:request:list') && can('ai:request:audit') ? 'AUDIT' : 'OWN',
 );
+const agentAllowed = computed(() => can('ai:agent:invoke'));
+const legacyAllowed = computed(
+  () => can('ai:scene:invoke') || can('ai:request:list'),
+);
+const allowed = computed(() => agentAllowed.value || legacyAllowed.value);
 const sessions = ref<AgentSession[]>([]);
+const legacy = ref<ConversationSummary[]>([]);
+const legacyDetail = ref<ConversationDetail>();
+const page = ref(1);
+const total = ref('0');
 const selected = ref('');
+const search = ref('');
+const appliedSearch = ref('');
 const history = reactive(emptyHistory());
+const listLoading = ref(false);
 const loading = ref(false);
+const moreLoading = ref(false);
 const error = ref('');
 let generation = 0;
+let selection = 0;
 let alive = true;
 const valid = (ticket: number) =>
   alive && ticket === generation && props.active && allowed.value;
-async function read(id: string) {
-  const ticket = ++generation;
-  selected.value = id;
+const items = computed(() =>
+  [
+    ...sessions.value.map((item) => ({
+      key: `agent:${item.id}`,
+      title: item.title,
+      updatedAt: item.updatedAt,
+      source: '中台',
+    })),
+    ...legacy.value.map((item) => ({
+      key: `legacy:${item.conversationId}`,
+      title: item.title,
+      updatedAt: item.updatedAt,
+      source: item.sceneName,
+    })),
+  ]
+    .filter((item) =>
+      item.title
+        .toLocaleLowerCase()
+        .includes(appliedSearch.value.toLocaleLowerCase()),
+    )
+    .toSorted((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt)),
+);
+const current = computed(() =>
+  items.value.find((item) => item.key === selected.value),
+);
+const isLegacy = computed(() => selected.value.startsWith('legacy:'));
+const agentSession = computed(() => selected.value.slice(6));
+async function read(key: string) {
+  const ticket = generation;
+  const request = ++selection;
+  selected.value = key;
   loading.value = true;
-  error.value = '';
+  legacyDetail.value = undefined;
   Object.assign(history, emptyHistory());
   try {
-    for (;;) {
-      const events = await getAgentEvents(id, history.cursor);
-      if (!valid(ticket)) return;
-      applyEvents(history, events);
-      if (events.length < 200) break;
+    if (key.startsWith('legacy:')) {
+      const value = await getConversation(key.slice(7), scope.value);
+      if (valid(ticket) && request === selection) legacyDetail.value = value;
+    } else {
+      for (;;) {
+        const events = await getAgentEvents(key.slice(6), history.cursor);
+        if (!valid(ticket) || request !== selection) return;
+        applyEvents(history, events);
+        if (events.length < 200) break;
+      }
     }
   } catch {
-    if (valid(ticket)) error.value = '对话记录加载失败，请重试。';
+    if (valid(ticket) && request === selection)
+      error.value = '对话记录加载失败，请重试。';
   } finally {
-    if (valid(ticket)) loading.value = false;
+    if (valid(ticket) && request === selection) loading.value = false;
   }
 }
 async function refresh() {
   const ticket = ++generation;
-  loading.value = true;
+  selection++;
+  listLoading.value = true;
   error.value = '';
   try {
-    const result = await listAgentSessions();
+    const [agents, conversations] = await Promise.allSettled([
+      agentAllowed.value ? listAgentSessions() : Promise.resolve([]),
+      legacyAllowed.value
+        ? listConversations({
+            scope: scope.value,
+            search: appliedSearch.value,
+            pageNum: 1,
+            pageSize: 20,
+          })
+        : Promise.resolve({ records: [], total: '0' }),
+    ]);
     if (!valid(ticket)) return;
-    sessions.value = result;
-    const id = result.some((item) => item.id === selected.value)
+    sessions.value = agents.status === 'fulfilled' ? agents.value : [];
+    legacy.value =
+      conversations.status === 'fulfilled' ? conversations.value.records : [];
+    total.value =
+      conversations.status === 'fulfilled' ? conversations.value.total : '0';
+    page.value = 1;
+    if (agents.status === 'rejected' || conversations.status === 'rejected')
+      error.value = '部分对话列表读取失败，可重试。';
+    const linked =
+      typeof route.query.conversation === 'string' && legacyAllowed.value
+        ? `legacy:${route.query.conversation}`
+        : '';
+    const key = items.value.some((item) => item.key === selected.value)
       ? selected.value
-      : result[0]?.id;
-    if (id) await read(id);
-    else Object.assign(history, emptyHistory());
-  } catch {
-    if (valid(ticket)) error.value = '会话列表加载失败，请重试。';
+      : linked || items.value[0]?.key;
+    if (key) await read(key);
+    else {
+      selected.value = '';
+      legacyDetail.value = undefined;
+      Object.assign(history, emptyHistory());
+      loading.value = false;
+    }
   } finally {
-    if (valid(ticket)) loading.value = false;
+    if (valid(ticket)) listLoading.value = false;
   }
 }
+async function more() {
+  if (moreLoading.value || listLoading.value) return;
+  const ticket = generation;
+  moreLoading.value = true;
+  try {
+    const value = await listConversations({
+      scope: scope.value,
+      search: appliedSearch.value,
+      pageNum: page.value + 1,
+      pageSize: 20,
+    });
+    if (!valid(ticket)) return;
+    const known = new Set(legacy.value.map((item) => item.conversationId));
+    legacy.value.push(
+      ...value.records.filter((item) => !known.has(item.conversationId)),
+    );
+    page.value++;
+    total.value = value.total;
+  } catch {
+    if (valid(ticket)) error.value = '更多对话读取失败，请重试。';
+  } finally {
+    if (valid(ticket)) moreLoading.value = false;
+  }
+}
+function searchConversations() {
+  appliedSearch.value = search.value.trim();
+  void refresh();
+}
 watch(
-  () => [props.active, access.accessToken, allowed.value],
+  () => [props.active, access.accessToken, ...access.accessCodes],
   () => {
     generation++;
+    selection++;
     sessions.value = [];
+    legacy.value = [];
+    legacyDetail.value = undefined;
     selected.value = '';
-    loading.value = false;
     error.value = '';
+    loading.value = false;
+    listLoading.value = false;
+    moreLoading.value = false;
     Object.assign(history, emptyHistory());
     if (props.active && allowed.value) void refresh();
   },
@@ -95,51 +215,75 @@ watch(
 onBeforeUnmount(() => {
   alive = false;
   generation++;
+  selection++;
 });
 </script>
-
 <template>
-  <section class="agent-history" aria-label="工作台对话记录">
-    <div class="flex shrink-0 items-center justify-between gap-3">
-      <span class="text-muted-foreground">工作台会话</span>
-      <ElButton :loading="loading" :disabled="!allowed" @click="refresh">
-        刷新
-      </ElButton>
-    </div>
-    <ElAlert v-if="error" :title="error" type="error" :closable="false" />
-    <ElEmpty v-if="!allowed" description="暂无工作台会话访问权限" />
+  <section class="agent-history" aria-label="对话记录">
+    <ElAlert v-if="error" :title="error" type="error" :closable="false">
+      <ElButton link @click="refresh">重试</ElButton>
+    </ElAlert>
+    <ElEmpty v-if="!allowed" description="暂无对话记录访问权限" />
     <div v-else class="history-layout">
-      <ElScrollbar class="history-sessions">
-        <ElMenu :default-active="selected" @select="read">
-          <ElMenuItem
-            v-for="item in sessions"
-            :key="item.id"
-            :index="item.id"
-            :title="item.title"
+      <div class="history-sessions flex min-h-0 flex-col">
+        <form class="p-4" @submit.prevent="searchConversations">
+          <ElInput
+            v-model="search"
+            aria-label="搜索对话记录"
+            placeholder="搜索对话"
+            clearable
+            @clear="searchConversations"
           >
-            <span class="truncate">{{ item.title }}</span>
-          </ElMenuItem>
-        </ElMenu>
-        <ElEmpty
-          v-if="!loading && sessions.length === 0"
-          :image-size="56"
-          description="暂无会话"
-        />
-      </ElScrollbar>
+            <template #append>
+              <ElButton native-type="submit">搜索</ElButton>
+            </template>
+          </ElInput>
+        </form>
+        <ElScrollbar class="min-h-0 flex-1">
+          <ElSkeleton v-if="listLoading" :rows="4" animated class="p-4" />
+          <ElMenu v-else :default-active="selected" @select="read">
+            <ElMenuItem
+              v-for="item in items"
+              :key="item.key"
+              :index="item.key"
+              :title="item.title"
+            >
+              <span class="truncate">{{ item.title }}</span>
+            </ElMenuItem>
+          </ElMenu>
+          <ElEmpty
+            v-if="!listLoading && items.length === 0"
+            :image-size="56"
+            description="暂无会话"
+          />
+          <ElButton
+            v-if="legacy.length < Number(total)"
+            class="m-4"
+            :loading="moreLoading"
+            @click="more"
+          >
+            加载更多
+          </ElButton>
+        </ElScrollbar>
+      </div>
       <div class="history-thread">
         <header
           class="flex items-center justify-between gap-3 border-b px-5 py-4"
         >
-          <h2>
-            {{
-              sessions.find((item) => item.id === selected)?.title ?? '对话记录'
-            }}
-          </h2>
-          <ElTag v-if="history.status" size="small">
+          <h2>{{ current?.title || '对话记录' }}</h2>
+          <ElTag v-if="!isLegacy && history.status" size="small">
             {{ runLabels[history.status] }}
           </ElTag>
         </header>
-        <ElScrollbar class="min-h-0 flex-1">
+        <ConversationTimeline
+          v-if="isLegacy"
+          :messages="(legacyDetail?.messages || []).map(conversationMessage)"
+          :history-unavailable="
+            legacyDetail?.conversation.history === 'LEGACY_NO_BODY'
+          "
+          :loading="loading"
+        />
+        <ElScrollbar v-else class="min-h-0 flex-1">
           <div class="history-messages">
             <ElSkeleton v-if="loading" :rows="4" animated />
             <ElEmpty
@@ -149,7 +293,10 @@ onBeforeUnmount(() => {
             />
             <template v-for="message in history.messages" :key="message.id">
               <article
-                v-if="message.role !== 'TOOL' && message.text.trim()"
+                v-if="
+                  message.role !== 'TOOL' &&
+                  (message.text.trim() || message.images?.length)
+                "
                 class="history-message"
                 :class="{ 'user-message': message.role === 'USER' }"
               >
@@ -167,7 +314,7 @@ onBeforeUnmount(() => {
                     v-for="image in message.images"
                     :key="image.id"
                     :image="image"
-                    :session-id="selected"
+                    :session-id="agentSession"
                   />
                 </div>
               </article>
@@ -178,7 +325,6 @@ onBeforeUnmount(() => {
     </div>
   </section>
 </template>
-
 <style scoped>
 .agent-history {
   display: flex;

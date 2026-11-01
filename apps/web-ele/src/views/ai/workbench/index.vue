@@ -88,7 +88,7 @@ watch(
   padding-inline-start: 0;
 }
 .hub-chat :deep([class$='-conversations-content']) {
-  padding-inline-start: 8px;
+  padding-inline-start: calc(8px + 1em);
 }
 .hub-chat :deep([class$='-welcome-prompts-prompts']) {
   display: grid;
@@ -104,10 +104,18 @@ watch(
   display: none;
 }
 .hub-chat :deep(.hub-answer) {
-  padding: 18px 22px;
-  background: hsl(var(--muted) / 45%);
-  border: 1px solid hsl(var(--border) / 65%);
-  border-radius: 12px;
+  padding-block: 12px;
+}
+.hub-chat :deep([data-role='user'] [class$='-bubble-content-filled']) {
+  padding: 12px 20px;
+  background: #edf3ff;
+  border-radius: 22px;
+}
+.hub-chat :deep(.hub-message-actions) {
+  margin-top: 8px;
+}
+:global(.dark) .hub-chat :deep([data-role='user'] [class$='-bubble-content-filled']) {
+  background: #23324d;
 }
 .hub-chat :deep(.hub-task-output) {
   max-width: 760px;

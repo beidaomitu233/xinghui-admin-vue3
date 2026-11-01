@@ -30,8 +30,14 @@ describe('backend menu conversion', () => {
         component: 'system/business-config/index',
       },
     ]);
-    expect(menus[0]?.children?.map((item) => item.menuId)).toEqual(['models']);
-    expect(menus[1]?.menuName).toBe('业务配置');
+    expect(
+      menus
+        .find((menu) => menu.menuName === '系统')
+        ?.children?.map((item) => item.menuId),
+    ).toEqual(['models']);
+    expect(
+      menus.find((menu) => menu.menuName === '业务')?.children?.[0]?.menuName,
+    ).toBe('业务配置');
     expect(normalizeNavigationMenus([])).toEqual([]);
     const promptOnly = normalizeNavigationMenus([
       {
@@ -40,7 +46,7 @@ describe('backend menu conversion', () => {
         component: 'system/ai-template/index',
       },
     ]);
-    expect(promptOnly).toMatchObject([
+    expect(promptOnly[0]?.children).toMatchObject([
       {
         menuId: 'prompt-only',
         component: 'system/ai-config/index',
@@ -76,7 +82,11 @@ describe('backend menu conversion', () => {
         ],
       },
     ]);
-    expect(menus.map((menu) => menu.menuId)).toEqual(['hub', 'home', 'ai']);
+    expect(menus.map((menu) => menu.menuId)).toEqual([
+      'hub',
+      'home',
+      'hub-group-system',
+    ]);
     expect(menus[0]).toMatchObject({
       menuName: 'AI 中台',
       path: '/ai/workbench',
@@ -144,7 +154,7 @@ describe('backend menu conversion', () => {
           ],
         },
       ]).map((menu) => menu.menuId),
-    ).toEqual(['system']);
+    ).toEqual(['hub-group-business']);
     expect(normalizeNavigationMenus([])).toEqual([]);
   });
   it('also drops empty directories in an already migrated server response', () => {
@@ -187,9 +197,105 @@ describe('backend menu conversion', () => {
         ],
       },
     ]);
-    expect(result.map((menu) => menu.menuId)).toEqual(['home', 'ops']);
+    expect(result.map((menu) => menu.menuId)).toEqual([
+      'home',
+      'hub-group-operations',
+    ]);
     expect(result[1]?.children?.map((menu) => menu.menuId)).toEqual(['jobs']);
     expect(transformMenusToRoutes(result)[1]?.component).toBe('BasicLayout');
+  });
+  it('groups existing authorized pages into three categories and preserves absolute paths and hidden ancestry', () => {
+    const result = normalizeNavigationMenus([
+      {
+        menuId: 'old-system',
+        menuType: 'M',
+        path: '/system',
+        children: [
+          {
+            menuId: 'user',
+            menuType: 'C',
+            path: 'user',
+            component: 'system/user/index',
+          },
+          {
+            menuId: 'role',
+            menuType: 'C',
+            path: 'role',
+            component: 'system/role/index',
+          },
+          {
+            menuId: 'menu',
+            menuType: 'C',
+            path: 'menu',
+            component: 'system/menu/index',
+          },
+          {
+            menuId: 'dict',
+            menuType: 'C',
+            path: 'dict',
+            component: 'system/dict/index',
+          },
+          {
+            menuId: 'config',
+            menuType: 'C',
+            path: 'config',
+            component: 'system/config/index',
+          },
+        ],
+      },
+      {
+        menuId: 'old-ai',
+        menuType: 'M',
+        path: '/ai',
+        children: [
+          {
+            menuId: 'model',
+            menuType: 'C',
+            path: 'configurations',
+            component: 'system/ai-config/index',
+          },
+          {
+            menuId: 'calls',
+            menuType: 'C',
+            path: 'requests',
+            component: 'system/ai-request/index',
+          },
+        ],
+      },
+      {
+        menuId: 'hidden',
+        menuType: 'M',
+        path: '/private',
+        visible: 1,
+        children: [
+          {
+            menuId: 'private',
+            menuType: 'C',
+            path: 'page',
+            component: 'custom/index',
+          },
+        ],
+      },
+    ]);
+    expect(result.map((item) => item.menuName)).toEqual([
+      '业务',
+      '系统',
+      '运维',
+    ]);
+    expect(result[0]?.children?.map((item) => item.menuId)).toEqual([
+      'user',
+      'role',
+      'private',
+    ]);
+    expect(result[1]?.children?.map((item) => item.menuId)).toEqual([
+      'menu',
+      'dict',
+      'config',
+      'model',
+    ]);
+    expect(result[2]?.children?.map((item) => item.menuId)).toEqual(['calls']);
+    expect(result[0]?.children?.[0]?.path).toBe('/system/user');
+    expect(result[0]?.children?.[2]?.meta?.hideInMenu).toBe(true);
   });
   it('keeps IDs stable and unique across identical labels and excludes buttons', () => {
     const menus = [

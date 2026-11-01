@@ -1,16 +1,29 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { onMounted, ref } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
+
+import { useAccessStore } from '@vben/stores';
 
 import { ElCard, ElTabPane, ElTabs } from 'element-plus';
 
 import CallLogPanel from './CallLogPanel.vue';
 import AgentConversationHistory from './conversations/AgentConversationHistory.vue';
-import ConversationWorkspace from './conversations/ConversationWorkspace.vue';
 
-defineProps<{ initialKeySettings?: boolean }>();
+const props = defineProps<{ initialKeySettings?: boolean }>();
+const access = useAccessStore();
+const route = useRoute();
+const router = useRouter();
+onMounted(() => {
+  if (
+    (props.initialKeySettings || route.query.settings === 'keys') &&
+    access.accessCodes.some((code) =>
+      /^ai:(?:config|model):(?:list|query|add|edit|test|enable)$/.test(code),
+    )
+  )
+    void router.replace('/ai/configurations');
+});
 const tab = ref('conversations');
 const logsVisited = ref(false);
-const agentVisited = ref(false);
 </script>
 <template>
   <section class="monitor-workspace">
@@ -21,12 +34,10 @@ const agentVisited = ref(false);
         @tab-change="
           (value) => {
             if (value === 'logs') logsVisited = true;
-            if (value === 'agent') agentVisited = true;
           }
         "
       >
         <ElTabPane label="对话记录" name="conversations" />
-        <ElTabPane label="工作台对话" name="agent" />
         <ElTabPane label="请求日志" name="logs" />
       </ElTabs>
     </ElCard>
@@ -34,13 +45,10 @@ const agentVisited = ref(false);
       v-show="tab === 'conversations'"
       class="monitor-pane monitor-conversations"
     >
-      <ConversationWorkspace :initial-key-settings="initialKeySettings" />
+      <AgentConversationHistory :active="tab === 'conversations'" />
     </div>
     <div v-if="logsVisited" v-show="tab === 'logs'" class="monitor-pane">
       <CallLogPanel :active="tab === 'logs'" />
-    </div>
-    <div v-if="agentVisited" v-show="tab === 'agent'" class="monitor-pane">
-      <AgentConversationHistory :active="tab === 'agent'" />
     </div>
   </section>
 </template>

@@ -53,6 +53,16 @@ export interface AgentAdmission {
 }
 const base = '/system/ai/workbench';
 const segment = (id: string) => encodeURIComponent(id);
+export interface AgentCapability {
+  resource: string;
+  name: string;
+  description?: string;
+  operations: string[];
+  recordOperations?: string[];
+  readOnly: boolean;
+}
+export const listAgentCapabilities = () =>
+  requestClient.get<AgentCapability[]>(`${base}/capabilities`);
 export const listAgentPresets = () =>
   requestClient.get<AgentPreset[]>(`${base}/presets`);
 export const listAgentSessions = () =>

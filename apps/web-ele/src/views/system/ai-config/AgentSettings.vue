@@ -40,6 +40,7 @@ import {
   cloneScene,
   sceneSaveProblem,
 } from '../ai-template/workspace/scene-save-adapter';
+import AgentCapabilities from './AgentCapabilities.vue';
 
 defineProps<{ models: HubModel[] }>();
 const access = useAccessStore();
@@ -351,6 +352,7 @@ defineExpose({ requestLeave });
           />
         </ElFormItem>
       </ElForm>
+      <AgentCapabilities />
     </div>
     <ElEmpty v-else description="尚未设置中台助手">
       <ElButton
