@@ -1,7 +1,7 @@
-import { flushPromises, mount } from '@vue/test-utils';
+import { DOMWrapper, flushPromises, mount } from '@vue/test-utils';
 
 import { ElCollapse } from 'element-plus';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { radioValue, selectValue } from '#/test-utils/element-controls';
 
@@ -47,12 +47,26 @@ const render = (
   mount(DatabaseBindingEditor, {
     props: { value, readonly: false, preparePreview },
   });
+/** 编辑/预览已迁移到 useVbenDrawer，内容 teleport 到 document.body；入口按钮仍在 wrapper 内。 */
 const click = async (wrapper: ReturnType<typeof render>, text: string) => {
-  const button = wrapper.findAll('button').find((item) => item.text() === text);
-  if (!button) throw new Error(`Missing ${text}`);
-  await button.trigger('click');
+  const scopes: ParentNode[] = [wrapper.element, document.body];
+  let target: HTMLButtonElement | undefined;
+  for (const scope of scopes) {
+    target = [...scope.querySelectorAll<HTMLButtonElement>('button')].find(
+      (element) => element.textContent?.trim() === text,
+    );
+    if (target) break;
+  }
+  if (!target) throw new Error(`Missing ${text}`);
+  await new DOMWrapper(target).trigger('click');
   await flushPromises();
 };
+/** 抽屉内的输入框渲染在 document.body。 */
+function field(selector: string): DOMWrapper<Element> {
+  const target = document.querySelector(selector);
+  if (!target) throw new Error(`Missing element: ${selector}`);
+  return new DOMWrapper(target);
+}
 beforeEach(() => {
   vi.clearAllMocks();
   api.tables.mockResolvedValue({
@@ -97,6 +111,10 @@ beforeEach(() => {
     },
   ]);
 });
+
+afterEach(() => {
+  document.body.innerHTML = '';
+});
 describe('actual database bindings', () => {
   it('clears table filters when switching to an exact row and keeps a valid Unicode alias', async () => {
     const wrapper = render();
@@ -107,7 +125,7 @@ describe('actual database bindings', () => {
     wrapper.getComponent(ElCollapse).vm.$emit('update:modelValue', ['filters']);
     await flushPromises();
     await click(wrapper, '增加条件');
-    await wrapper.get('input[aria-label="筛选值"]').setValue('42');
+    await field('input[aria-label="筛选值"]').setValue('42');
     await radioValue(wrapper, '取数方式', 'ROW');
     expect(wrapper.findComponent(ElCollapse).exists()).toBe(false);
     wrapper.getComponent(DatabaseRecordPicker).vm.$emit('update:modelValue', {
@@ -117,7 +135,7 @@ describe('actual database bindings', () => {
       businessRef: null,
     });
     await flushPromises();
-    await wrapper.get('input[aria-label="引用名称"]').setValue('2026.订单');
+    await field('input[aria-label="引用名称"]').setValue('2026.订单');
     await click(wrapper, '保存并插入提示词');
     const saved = wrapper.emitted('change')?.at(-1)?.[0] as {
       filters: unknown[];
@@ -160,8 +178,8 @@ describe('actual database bindings', () => {
     wrapper.getComponent(ElCollapse).vm.$emit('update:modelValue', ['filters']);
     await flushPromises();
     await click(wrapper, '增加条件');
-    await wrapper.get('input[aria-label="筛选值"]').setValue('42');
-    await wrapper.get('input[aria-label="最多取数行数"]').setValue('35');
+    await field('input[aria-label="筛选值"]').setValue('42');
+    await field('input[aria-label="最多取数行数"]').setValue('35');
     await click(wrapper, '保存并插入提示词');
     expect(wrapper.emitted('change')?.[0]?.[0]).toEqual([
       expect.objectContaining({
@@ -222,9 +240,9 @@ describe('actual database bindings', () => {
       bindings: [binding],
       businessRef: null,
     });
-    expect(wrapper.text()).toContain('真实订单名称');
-    expect(wrapper.text()).toContain('null');
-    expect(wrapper.text()).toContain('截断');
+    expect(document.body.textContent).toContain('真实订单名称');
+    expect(document.body.textContent).toContain('null');
+    expect(document.body.textContent).toContain('截断');
     wrapper.unmount();
   });
 });

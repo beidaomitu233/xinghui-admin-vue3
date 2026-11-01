@@ -101,8 +101,15 @@ export interface TestResult {
   };
 }
 const root = (kind: Kind) => `/system/ai/${kind}`;
-export const listDefinitions = (kind: Kind, pageNum = 1, pageSize = 20) =>
-  requestClient.get<Page>(root(kind), { params: { pageNum, pageSize } });
+export const listDefinitions = (
+  kind: Kind,
+  pageNum = 1,
+  pageSize = 20,
+  sorting: { order?: 'asc' | 'desc'; orderBy?: string } = {},
+) =>
+  requestClient.get<Page>(root(kind), {
+    params: { pageNum, pageSize, ...sorting },
+  });
 export const getDefinition = (kind: Kind, id: string) =>
   requestClient.get<View>(`${root(kind)}/${id}`);
 export const createDefinition = (
@@ -167,8 +174,12 @@ export interface LegacyScene {
   published_model_id: null | string;
   published_revision: null | number;
 }
-export const listLegacyScenes = (pageNum = 1) =>
+export const listLegacyScenes = (
+  pageNum = 1,
+  pageSize = 20,
+  sorting: { order?: 'asc' | 'desc'; orderBy?: string } = {},
+) =>
   requestClient.get<{ records: LegacyScene[]; total: string }>(
     '/system/ai/templates/legacy-scenes',
-    { params: { pageNum, pageSize: 20 } },
+    { params: { pageNum, pageSize, ...sorting } },
   );

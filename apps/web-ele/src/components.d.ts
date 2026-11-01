@@ -12,43 +12,41 @@ export {};
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
-    AdminPageHeader: typeof import('./components/admin-page-header.vue')['default']
     ElAlert: typeof import('element-plus/es')['ElAlert']
-    ElBadge: typeof import('element-plus/es')['ElBadge']
     ElButton: typeof import('element-plus/es')['ElButton']
+    ElButtonGroup: typeof import('element-plus/es')['ElButtonGroup']
     ElCard: typeof import('element-plus/es')['ElCard']
     ElCheckbox: typeof import('element-plus/es')['ElCheckbox']
     ElCheckboxGroup: typeof import('element-plus/es')['ElCheckboxGroup']
-    ElCol: typeof import('element-plus/es')['ElCol']
     ElCollapse: typeof import('element-plus/es')['ElCollapse']
     ElCollapseItem: typeof import('element-plus/es')['ElCollapseItem']
-    ElDatePicker: typeof import('element-plus/es')['ElDatePicker']
     ElDescriptions: typeof import('element-plus/es')['ElDescriptions']
     ElDescriptionsItem: typeof import('element-plus/es')['ElDescriptionsItem']
     ElDialog: typeof import('element-plus/es')['ElDialog']
-    ElDrawer: typeof import('element-plus/es')['ElDrawer']
+    ElDropdown: typeof import('element-plus/es')['ElDropdown']
+    ElDropdownItem: typeof import('element-plus/es')['ElDropdownItem']
+    ElDropdownMenu: typeof import('element-plus/es')['ElDropdownMenu']
     ElEmpty: typeof import('element-plus/es')['ElEmpty']
     ElForm: typeof import('element-plus/es')['ElForm']
     ElFormItem: typeof import('element-plus/es')['ElFormItem']
     ElInput: typeof import('element-plus/es')['ElInput']
     ElInputNumber: typeof import('element-plus/es')['ElInputNumber']
+    ElMenu: typeof import('element-plus/es')['ElMenu']
+    ElMenuItem: typeof import('element-plus/es')['ElMenuItem']
     ElOption: typeof import('element-plus/es')['ElOption']
-    ElPagination: typeof import('element-plus/es')['ElPagination']
     ElPopover: typeof import('element-plus/es')['ElPopover']
-    ElRadio: typeof import('element-plus/es')['ElRadio']
-    ElRadioButton: typeof import('element-plus/es')['ElRadioButton']
-    ElRadioGroup: typeof import('element-plus/es')['ElRadioGroup']
     ElResult: typeof import('element-plus/es')['ElResult']
-    ElRow: typeof import('element-plus/es')['ElRow']
+    ElScrollbar: typeof import('element-plus/es')['ElScrollbar']
     ElSelect: typeof import('element-plus/es')['ElSelect']
+    ElSkeleton: typeof import('element-plus/es')['ElSkeleton']
     ElSwitch: typeof import('element-plus/es')['ElSwitch']
     ElTable: typeof import('element-plus/es')['ElTable']
     ElTableColumn: typeof import('element-plus/es')['ElTableColumn']
     ElTabPane: typeof import('element-plus/es')['ElTabPane']
     ElTabs: typeof import('element-plus/es')['ElTabs']
     ElTag: typeof import('element-plus/es')['ElTag']
+    ElTooltip: typeof import('element-plus/es')['ElTooltip']
     ElTree: typeof import('element-plus/es')['ElTree']
-    ElTreeSelect: typeof import('element-plus/es')['ElTreeSelect']
     ElUpload: typeof import('element-plus/es')['ElUpload']
     PageHint: typeof import('./components/page-hint.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
@@ -61,43 +59,41 @@ declare module 'vue' {
 
 // For TSX support
 declare global {
-  const AdminPageHeader: (typeof import('./components/admin-page-header.vue'))['default'];
   const ElAlert: (typeof import('element-plus/es'))['ElAlert'];
-  const ElBadge: (typeof import('element-plus/es'))['ElBadge'];
   const ElButton: (typeof import('element-plus/es'))['ElButton'];
+  const ElButtonGroup: (typeof import('element-plus/es'))['ElButtonGroup'];
   const ElCard: (typeof import('element-plus/es'))['ElCard'];
   const ElCheckbox: (typeof import('element-plus/es'))['ElCheckbox'];
   const ElCheckboxGroup: (typeof import('element-plus/es'))['ElCheckboxGroup'];
-  const ElCol: (typeof import('element-plus/es'))['ElCol'];
   const ElCollapse: (typeof import('element-plus/es'))['ElCollapse'];
   const ElCollapseItem: (typeof import('element-plus/es'))['ElCollapseItem'];
-  const ElDatePicker: (typeof import('element-plus/es'))['ElDatePicker'];
   const ElDescriptions: (typeof import('element-plus/es'))['ElDescriptions'];
   const ElDescriptionsItem: (typeof import('element-plus/es'))['ElDescriptionsItem'];
   const ElDialog: (typeof import('element-plus/es'))['ElDialog'];
-  const ElDrawer: (typeof import('element-plus/es'))['ElDrawer'];
+  const ElDropdown: (typeof import('element-plus/es'))['ElDropdown'];
+  const ElDropdownItem: (typeof import('element-plus/es'))['ElDropdownItem'];
+  const ElDropdownMenu: (typeof import('element-plus/es'))['ElDropdownMenu'];
   const ElEmpty: (typeof import('element-plus/es'))['ElEmpty'];
   const ElForm: (typeof import('element-plus/es'))['ElForm'];
   const ElFormItem: (typeof import('element-plus/es'))['ElFormItem'];
   const ElInput: (typeof import('element-plus/es'))['ElInput'];
   const ElInputNumber: (typeof import('element-plus/es'))['ElInputNumber'];
+  const ElMenu: (typeof import('element-plus/es'))['ElMenu'];
+  const ElMenuItem: (typeof import('element-plus/es'))['ElMenuItem'];
   const ElOption: (typeof import('element-plus/es'))['ElOption'];
-  const ElPagination: (typeof import('element-plus/es'))['ElPagination'];
   const ElPopover: (typeof import('element-plus/es'))['ElPopover'];
-  const ElRadio: (typeof import('element-plus/es'))['ElRadio'];
-  const ElRadioButton: (typeof import('element-plus/es'))['ElRadioButton'];
-  const ElRadioGroup: (typeof import('element-plus/es'))['ElRadioGroup'];
   const ElResult: (typeof import('element-plus/es'))['ElResult'];
-  const ElRow: (typeof import('element-plus/es'))['ElRow'];
+  const ElScrollbar: (typeof import('element-plus/es'))['ElScrollbar'];
   const ElSelect: (typeof import('element-plus/es'))['ElSelect'];
+  const ElSkeleton: (typeof import('element-plus/es'))['ElSkeleton'];
   const ElSwitch: (typeof import('element-plus/es'))['ElSwitch'];
   const ElTable: (typeof import('element-plus/es'))['ElTable'];
   const ElTableColumn: (typeof import('element-plus/es'))['ElTableColumn'];
   const ElTabPane: (typeof import('element-plus/es'))['ElTabPane'];
   const ElTabs: (typeof import('element-plus/es'))['ElTabs'];
   const ElTag: (typeof import('element-plus/es'))['ElTag'];
+  const ElTooltip: (typeof import('element-plus/es'))['ElTooltip'];
   const ElTree: (typeof import('element-plus/es'))['ElTree'];
-  const ElTreeSelect: (typeof import('element-plus/es'))['ElTreeSelect'];
   const ElUpload: (typeof import('element-plus/es'))['ElUpload'];
   const PageHint: (typeof import('./components/page-hint.vue'))['default'];
   const RouterLink: (typeof import('vue-router'))['RouterLink'];

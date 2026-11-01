@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { useRoute, useRouter } from 'vue-router';
 
+import { Page } from '@vben/common-ui';
+
 const route = useRoute();
 const router = useRouter();
 function reopen() {
@@ -11,5 +13,7 @@ function reopen() {
 }
 </script>
 <template>
-  <div class="p-6"><el-button @click="reopen">打开通知中心</el-button></div>
+  <Page title="通知中心">
+    <el-button @click="reopen">打开通知中心</el-button>
+  </Page>
 </template>

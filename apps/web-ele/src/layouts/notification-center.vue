@@ -1,17 +1,20 @@
 <script lang="ts" setup>
+import type { VxeTableGridOptions } from '#/adapter/vxe-table';
 import type {
   NotificationId,
   PersonalNotification,
 } from '#/api/system/personal-notification';
 
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 
+import { useVbenModal } from '@vben/common-ui';
 import { useUserStore } from '@vben/stores';
 
 import dayjs from 'dayjs';
 import { ElMessage } from 'element-plus';
 
+import { useVbenVxeGrid } from '#/adapter/vxe-table';
 import {
   getMyNotification,
   listMyNotifications,
@@ -26,17 +29,11 @@ import {
 
 const props = defineProps<{ notificationId?: number | string }>();
 const emit = defineEmits<{ navigate: [] }>();
-const pageSize = 10;
 const route = useRoute();
 const router = useRouter();
 const userStore = useUserStore();
 const notificationStore = usePersonalNotificationStore();
 
-const rows = ref<PersonalNotification[]>([]);
-const total = ref(0);
-const pageNum = ref(1);
-const unreadOnly = ref(false);
-const loading = ref(false);
 const failed = ref(false);
 const selectedIds = ref<NotificationId[]>([]);
 const detailVisible = ref(false);
@@ -59,64 +56,192 @@ let listVersion = 0;
 let detailVersion = 0;
 onBeforeUnmount(() => {
   listVersion += 1;
+  latestListQuery = Promise.resolve({ items: [], total: 0 });
   detailVersion += 1;
 });
 
+let refreshVersion = 0;
+type GridResult = { items: PersonalNotification[]; total: number };
+let latestListQuery: Promise<GridResult> = Promise.resolve({
+  items: [],
+  total: 0,
+});
+function listParameters(
+  pageNum: number,
+  pageSize: number,
+  sort: undefined | { field: string; order?: null | string },
+  values: Record<string, unknown> = {},
+) {
+  return {
+    pageNum,
+    pageSize,
+    unreadOnly: values?.unreadOnly === true ? true : undefined,
+    orderBy: sort?.order ? sort.field : 'createTime',
+    order: sort?.order === 'asc' ? ('asc' as const) : ('desc' as const),
+  };
+}
+const gridOptions: VxeTableGridOptions<PersonalNotification> = {
+  height: 440,
+  rowConfig: { keyField: 'id' },
+  columns: [
+    { type: 'checkbox', width: 50 },
+    { field: 'title', title: '通知标题', minWidth: 220, sortable: true },
+    {
+      field: 'readTime',
+      title: '状态',
+      width: 100,
+      sortable: true,
+      slots: { default: 'readState' },
+    },
+    {
+      field: 'createTime',
+      title: '收到时间',
+      minWidth: 180,
+      sortable: true,
+      formatter: ({ row }) => formatTime(row.createTime),
+    },
+    {
+      field: 'actions',
+      title: '操作',
+      width: 180,
+      fixed: 'right',
+      slots: { default: 'actions' },
+    },
+  ],
+  checkboxConfig: { checkMethod: ({ row }) => row.readTime === null },
+  pagerConfig: { pageSize: 10, pageSizes: [10, 20, 50, 100] },
+  sortConfig: {
+    remote: true,
+    multiple: false,
+    defaultSort: { field: 'createTime', order: 'desc' },
+  },
+  toolbarConfig: {
+    refresh: true,
+    refreshOptions: { code: 'query' },
+    custom: true,
+    search: true,
+  },
+  proxyConfig: {
+    sort: true,
+    ajax: {
+      query: ({ page, sort }, values) => {
+        const run = ++listVersion;
+        failed.value = false;
+        selectedIds.value = [];
+        latestListQuery = (async (): Promise<GridResult> => {
+          let parameters = listParameters(
+            page.currentPage,
+            page.pageSize,
+            sort,
+            values,
+          );
+          for (;;) {
+            const requestRefresh = refreshVersion;
+            let response:
+              | Awaited<ReturnType<typeof listMyNotifications>>
+              | undefined;
+            let failure: unknown;
+            try {
+              response = await listMyNotifications(parameters);
+            } catch (error) {
+              failure = error;
+            }
+            if (run !== listVersion) return latestListQuery;
+            if (gridApi.grid.getCurrentPage) {
+              const submitted = gridApi.formApi.getLatestSubmissionValues();
+              const current = listParameters(
+                gridApi.grid.getCurrentPage(),
+                gridApi.grid.getPageSize(),
+                gridApi.grid.getSortColumns()[0],
+                submitted,
+              );
+              if (JSON.stringify(current) !== JSON.stringify(parameters)) {
+                parameters = current;
+                continue;
+              }
+            }
+            if (requestRefresh !== refreshVersion) continue;
+            if (failure) {
+              failed.value = true;
+              throw failure;
+            }
+            if (!response) throw new Error('列表未返回结果');
+            return response;
+          }
+        })();
+        return latestListQuery;
+      },
+    },
+  },
+};
+const [Grid, gridApi] = useVbenVxeGrid<PersonalNotification>({
+  gridOptions,
+  gridEvents: {
+    checkboxChange: ({ records }: { records: PersonalNotification[] }) =>
+      updateSelection(records),
+    checkboxAll: ({ records }: { records: PersonalNotification[] }) =>
+      updateSelection(records),
+  },
+  formOptions: {
+    showCollapseButton: false,
+    schema: [
+      {
+        fieldName: 'unreadOnly',
+        component: 'Select',
+        label: '通知状态',
+        defaultValue: false,
+        componentProps: {
+          options: [
+            { label: '全部', value: false },
+            { label: '仅未读', value: true },
+          ],
+        },
+      },
+    ],
+    handleSubmit: async () => {
+      const values = await gridApi.formApi.getValues();
+      gridApi.formApi.setLatestSubmissionValues(values);
+      await gridApi.grid.setCurrentPage(1);
+      await gridApi.query(values);
+    },
+    handleReset: async () => {
+      await gridApi.formApi.resetForm();
+      const values = await gridApi.formApi.getValues();
+      gridApi.formApi.setLatestSubmissionValues(values);
+      await gridApi.grid.clearSort();
+      // eslint-disable-next-line unicorn/no-array-sort -- Native Vxe header API.
+      await gridApi.grid.sort({ field: 'createTime', order: 'desc' });
+      await gridApi.grid.setCurrentPage(1);
+      await gridApi.query(values);
+    },
+  },
+});
 async function loadList() {
-  const version = ++listVersion;
-  loading.value = true;
-  failed.value = false;
-  selectedIds.value = [];
-  try {
-    const result = await listMyNotifications({
-      pageNum: pageNum.value,
-      pageSize,
-      unreadOnly: unreadOnly.value ? true : undefined,
-    });
-    if (version !== listVersion) return;
-    rows.value = result.items;
-    total.value = result.total;
-  } catch {
-    if (version !== listVersion) return;
-    rows.value = [];
-    total.value = 0;
-    failed.value = true;
-  } finally {
-    if (version === listVersion) loading.value = false;
-  }
+  refreshVersion++;
+  await gridApi.query();
 }
-
-async function refreshAll() {
-  await Promise.all([loadList(), notificationStore.refreshUnreadCount()]);
-}
-
-function changeFilter(value: unknown) {
-  unreadOnly.value = value === true;
-  pageNum.value = 1;
-  void loadList();
-}
-
-function changePage(value: number) {
-  pageNum.value = value;
-  void loadList();
-}
-
-function canSelect(row: PersonalNotification) {
-  return row.readTime === null;
-}
-
 function updateSelection(selection: PersonalNotification[]) {
   selectedIds.value = selection
     .filter((item) => item.readTime === null)
     .map((item) => item.id);
 }
-
+const [DetailModal, detailModalApi] = useVbenModal({
+  title: '通知详情',
+  class: 'w-[min(680px,94vw)]',
+  showConfirmButton: false,
+  onOpenChange: (opened) => {
+    detailVisible.value = opened;
+    if (!opened) void closeDetail();
+  },
+});
+watch(detailLoading, (loading) => detailModalApi.setState({ loading }));
 async function openDetail(id: NotificationId) {
   const version = ++detailVersion;
   detailId.value = id;
   detail.value = undefined;
   detailFailed.value = false;
   detailVisible.value = true;
+  detailModalApi.open();
   detailLoading.value = true;
   try {
     const result = await getMyNotification(id);
@@ -160,6 +285,7 @@ watch(
       detailVersion += 1;
       detailLoading.value = false;
       detailVisible.value = true;
+      detailModalApi.open();
       detailId.value = undefined;
       detail.value = undefined;
       detailFailed.value = true;
@@ -293,186 +419,106 @@ function formatTime(value: string) {
   const parsed = dayjs(value);
   return parsed.isValid() ? parsed.format('YYYY-MM-DD HH:mm:ss') : value;
 }
-
-onMounted(() => {
-  void loadList();
-});
 </script>
 
 <template>
   <section class="min-w-0" aria-label="通知中心">
-    <div class="min-w-0 space-y-4">
-      <el-card>
-        <template #header>
-          <div class="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <strong>收件箱</strong>
-              <span class="ml-2 text-sm">共 {{ total }} 条</span>
-            </div>
-            <div class="flex flex-wrap items-center gap-2">
-              <el-radio-group
-                :model-value="unreadOnly"
-                size="small"
-                @update:model-value="changeFilter"
-              >
-                <el-radio-button :value="false">全部</el-radio-button>
-                <el-radio-button :value="true">仅未读</el-radio-button>
-              </el-radio-group>
-              <el-button :loading="loading" @click="refreshAll">刷新</el-button>
-              <el-button
-                :disabled="selectedIds.length === 0"
-                :loading="markingBatch"
-                type="primary"
-                @click="markSelectedRead"
-              >
-                批量标记已读（{{ selectedIds.length }}）
-              </el-button>
-            </div>
-          </div>
-        </template>
-
-        <el-alert
-          v-if="failed"
-          class="mb-4"
-          title="通知加载失败，请重试"
-          type="error"
-          closable
+    <el-alert
+      v-if="failed"
+      title="通知加载失败，请重试"
+      type="error"
+      closable
+      class="mb-3"
+    >
+      <el-button @click="loadList">重新加载</el-button>
+    </el-alert>
+    <Grid table-title="收件箱">
+      <template #toolbar-actions>
+        <el-button
+          :disabled="selectedIds.length === 0"
+          :loading="markingBatch"
+          type="primary"
+          @click="markSelectedRead"
         >
-          <template #default>
-            <el-button link type="primary" @click="loadList">
-              重新加载
-            </el-button>
-          </template>
-        </el-alert>
-
-        <el-table
-          v-loading="loading"
-          :data="rows"
-          empty-text="暂无通知"
-          row-key="id"
-          stripe
-          @selection-change="updateSelection"
+          批量标记已读（{{ selectedIds.length }}）
+        </el-button>
+      </template>
+      <template #readState="{ row }">
+        <el-tag :type="row.readTime === null ? 'warning' : 'info'">
+          {{ row.readTime === null ? '未读' : '已读' }}
+        </el-tag>
+      </template>
+      <template #actions="{ row }">
+        <el-button link type="primary" @click="openDetail(row.id)">
+          查看详情
+        </el-button>
+        <el-button
+          v-if="row.readTime === null"
+          link
+          type="primary"
+          :loading="markingId === row.id"
+          @click="markOneRead(row)"
         >
-          <el-table-column
-            type="selection"
-            width="50"
-            :selectable="canSelect"
-          />
-          <el-table-column
-            prop="title"
-            label="通知标题"
-            min-width="220"
-            show-overflow-tooltip
-          />
-          <el-table-column label="状态" width="90" align="center">
-            <template #default="{ row }">
-              <el-tag :type="row.readTime === null ? 'warning' : 'info'">
-                {{ row.readTime === null ? '未读' : '已读' }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column label="收到时间" min-width="180">
-            <template #default="{ row }">
-              {{ formatTime(row.createTime) }}
-            </template>
-          </el-table-column>
-          <el-table-column label="操作" width="180" fixed="right">
-            <template #default="{ row }">
-              <el-button link type="primary" @click="openDetail(row.id)">
-                查看详情
-              </el-button>
-              <el-button
-                v-if="row.readTime === null"
-                link
-                type="primary"
-                :loading="markingId === row.id"
-                @click="markOneRead(row)"
-              >
-                标为已读
-              </el-button>
-            </template>
-          </el-table-column>
-        </el-table>
-
-        <div v-if="total > pageSize" class="mt-4 flex justify-end">
-          <el-pagination
-            :current-page="pageNum"
-            :page-size="pageSize"
-            :total="total"
-            layout="total, prev, pager, next"
-            @current-change="changePage"
-          />
-        </div>
-      </el-card>
-
-      <el-dialog
-        v-model="detailVisible"
-        title="通知详情"
-        width="min(680px, 92vw)"
-        @closed="closeDetail"
+          标为已读
+        </el-button>
+      </template>
+    </Grid>
+    <DetailModal>
+      <el-alert
+        v-if="detailFailed"
+        title="通知已失效或无访问权限"
+        type="error"
+        closable
       >
-        <div
-          v-if="detailLoading"
-          class="py-8 text-center text-muted-foreground"
-        >
-          正在加载通知…
+        <template #default>
+          <el-button link type="primary" @click="retryDetail">重试</el-button>
+        </template>
+      </el-alert>
+      <template v-else-if="detail">
+        <h2 class="mb-2 text-lg font-semibold">{{ detail.title }}</h2>
+        <p class="mb-4 text-sm text-muted-foreground">
+          收到时间：{{ formatTime(detail.createTime) }}
+        </p>
+        <div class="whitespace-pre-wrap break-words leading-7">
+          {{ detail.body }}
         </div>
-        <el-alert
-          v-else-if="detailFailed"
-          title="通知已失效或无访问权限"
-          type="error"
-          closable
-        >
-          <template #default>
-            <el-button link type="primary" @click="retryDetail">重试</el-button>
+        <div class="mt-5 rounded bg-muted p-3 text-sm text-muted-foreground">
+          <template v-if="detail.target">
+            <span v-if="targetResolution.kind === 'internal'">
+              {{
+                targetResolution.policy === 'list'
+                  ? '此通知关联了已登记的站内列表页。'
+                  : '打开前将校验目标记录是否存在及当前账号权限。'
+              }}
+            </span>
+            <span v-else-if="targetResolution.kind === 'external'">
+              此通知包含外部目标，系统不会自动打开外部链接。
+            </span>
+            <span v-else-if="targetResolution.kind === 'unavailable'">
+              该通知的关联页面暂时无法打开，请联系管理员。
+            </span>
+            <span v-else>此通知关联的目标目前不可用。</span>
           </template>
-        </el-alert>
-        <template v-else-if="detail">
-          <h2 class="mb-2 text-lg font-semibold">{{ detail.title }}</h2>
-          <p class="mb-4 text-sm text-muted-foreground">
-            收到时间：{{ formatTime(detail.createTime) }}
-          </p>
-          <div class="whitespace-pre-wrap break-words leading-7">
-            {{ detail.body }}
-          </div>
-          <div class="mt-5 rounded bg-muted p-3 text-sm text-muted-foreground">
-            <template v-if="detail.target">
-              <span v-if="targetResolution.kind === 'internal'">
-                {{
-                  targetResolution.policy === 'list'
-                    ? '此通知关联了已登记的站内列表页。'
-                    : '打开前将校验目标记录是否存在及当前账号权限。'
-                }}
-              </span>
-              <span v-else-if="targetResolution.kind === 'external'">
-                此通知包含外部目标，系统不会自动打开外部链接。
-              </span>
-              <span v-else-if="targetResolution.kind === 'unavailable'">
-                该通知的关联页面暂时无法打开，请联系管理员。
-              </span>
-              <span v-else>此通知关联的目标目前不可用。</span>
-            </template>
-            <span v-else>此通知没有关联业务页面。</span>
-          </div>
-        </template>
-        <template #footer>
-          <el-button @click="detailVisible = false">关闭</el-button>
-          <el-button
-            v-if="detail && detail.readTime === null"
-            :loading="markingId === detail.id"
-            @click="markOneRead(detail)"
-          >
-            标记已读
-          </el-button>
-          <el-button
-            v-if="detail?.target"
-            type="primary"
-            @click="openBusinessTarget"
-          >
-            打开关联页面
-          </el-button>
-        </template>
-      </el-dialog>
-    </div>
+          <span v-else>此通知没有关联业务页面。</span>
+        </div>
+      </template>
+      <template #footer>
+        <el-button @click="detailModalApi.close()">关闭</el-button>
+        <el-button
+          v-if="detail && detail.readTime === null"
+          :loading="markingId === detail.id"
+          @click="markOneRead(detail)"
+        >
+          标记已读
+        </el-button>
+        <el-button
+          v-if="detail?.target"
+          type="primary"
+          @click="openBusinessTarget"
+        >
+          打开关联页面
+        </el-button>
+      </template>
+    </DetailModal>
   </section>
 </template>

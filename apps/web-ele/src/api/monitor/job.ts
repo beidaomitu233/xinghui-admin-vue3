@@ -44,7 +44,23 @@ export interface JobFire {
   resultSummary: null | string;
 }
 
-export function getJobList(params: Record<string, unknown>) {
+export interface JobListParams {
+  jobGroup?: string;
+  jobName?: string;
+  order: 'asc' | 'desc';
+  orderBy:
+    | 'createTime'
+    | 'jobGroup'
+    | 'jobName'
+    | 'nextFireTime'
+    | 'status'
+    | 'updateTime';
+  pageNum: number;
+  pageSize: number;
+  status?: string;
+}
+
+export function getJobList(params: JobListParams) {
   return requestClient.get<{
     records: JobInfo[];
     rows?: JobInfo[];

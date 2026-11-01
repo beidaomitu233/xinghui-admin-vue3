@@ -7,6 +7,7 @@ import { promptSegments, variableToken } from './prompt-tokens';
 
 const props = defineProps<{
   modelValue: string;
+  placeholder?: string;
   readonly: boolean;
   variables: PromptVariable[];
 }>();
@@ -197,7 +198,9 @@ defineExpose({ insertVariable });
       class="prompt-input"
       aria-label="提示词"
       spellcheck="false"
-      placeholder="描述要完成的任务，在需要业务数据的位置插入引用…"
+      :placeholder="
+        placeholder ?? '描述要完成的任务，在需要业务数据的位置插入引用…'
+      "
       @beforeinput="beforeInput"
       @input="onInput"
       @compositionstart="startComposition"

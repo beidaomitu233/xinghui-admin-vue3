@@ -25,6 +25,7 @@ export interface SceneModelPolicy {
   timeoutSeconds: number;
 }
 export interface SceneDefinition {
+  businessModels?: string[];
   businessModel?: null | string;
   sqlBindings?: QueryBinding[];
   initialModel?: ModelReference | null;
@@ -47,7 +48,7 @@ export interface SceneEntry {
   availability: SceneAvailability;
   currentVersionId: null | string;
   formId: null | string;
-  kind: 'GENERAL' | 'RECORD_SUMMARY';
+  kind: 'AGENT' | 'GENERAL' | 'RECORD_SUMMARY';
   name: string;
   revision: number;
   sceneKey: string;

@@ -1,6 +1,10 @@
 import { requestClient } from '#/api/request';
 
 export interface OperLogInfo {
+  businessAction?: string;
+  businessTarget?: null | string;
+  businessResult?: string;
+  operationSource?: string;
   operId: string;
   title: string;
   businessType: number;
@@ -16,6 +20,7 @@ export interface OperLogInfo {
   jsonResult: string;
   status: number;
   errorMsg: string;
+  costTime: number;
   operTime: string;
 }
 
@@ -23,7 +28,13 @@ export interface OperLogListParams {
   businessType?: number;
   operName?: string;
   order: 'asc' | 'desc';
-  orderBy: 'operTime';
+  orderBy:
+    | 'businessType'
+    | 'costTime'
+    | 'operName'
+    | 'operTime'
+    | 'status'
+    | 'title';
   pageNum: number;
   pageSize: number;
   status?: number;

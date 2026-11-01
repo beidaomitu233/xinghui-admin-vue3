@@ -1,100 +1,153 @@
-import { flushPromises, mount } from '@vue/test-utils';
-import { defineComponent, h } from 'vue';
+import { mount } from '@vue/test-utils';
 
-import { ElButton, ElInput } from 'element-plus';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { getOperLogList } from '#/api/monitor/operlog';
 
 import OperLogPage from './index.vue';
 
-vi.mock('@vben/access', () => ({
-  useAccess: () => ({
-    hasAccessByCodes: (codes: string[]) => codes[0] !== 'monitor:operlog:clean',
-  }),
+interface GridQuery {
+  gridOptions: {
+    proxyConfig: {
+      ajax: {
+        query: (params: unknown, values: unknown) => Promise<unknown>;
+      };
+    };
+  };
+  tableTitle?: string;
+}
+const state = vi.hoisted(() => ({
+  options: undefined as GridQuery | undefined,
+  codes: ['monitor:operlog:list'],
+  live: undefined as
+    | undefined
+    | {
+        field: string | undefined;
+        order: 'asc' | 'desc' | undefined;
+        page: number;
+        values: Record<string, unknown>;
+      },
 }));
 vi.mock('@vben/common-ui', () => ({
   Page: { template: '<div><slot /></div>' },
+  useVbenModal: () => [
+    { template: '<div />' },
+    { setState: () => {}, open: () => {}, close: async () => {} },
+  ],
 }));
+vi.mock('@vben/stores', () => ({
+  useAccessStore: () => ({
+    accessCodes: state.codes,
+    accessToken: 'token',
+  }),
+}));
+vi.mock('#/adapter/form', () => ({ useVbenForm: vi.fn(), z: {} }));
+vi.mock('#/adapter/vxe-table', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('#/adapter/vxe-table')>();
+  return {
+    ...actual,
+    useVbenVxeGrid: (options: GridQuery) => {
+      state.options = options;
+      return [
+        { template: '<div />' },
+        {
+          grid: {
+            getCurrentPage: () => state.live?.page ?? 1,
+            getPageSize: () => 10,
+            getSortColumns: () => [
+              { field: state.live?.field, order: state.live?.order },
+            ],
+            setCurrentPage: async (page: number) => {
+              if (state.live) state.live.page = page;
+            },
+            getCheckboxRecords: () => [],
+            clearCheckboxRow: async () => {},
+          },
+          formApi: {
+            getLatestSubmissionValues: () => state.live?.values ?? {},
+          },
+        },
+      ];
+    },
+  };
+});
 vi.mock('#/api/monitor/operlog', () => ({
   getOperLogList: vi.fn(),
   removeOperLog: vi.fn(),
   cleanOperLog: vi.fn(),
 }));
 
-const Container = defineComponent({
-  setup(_, { slots }) {
-    return () => h('div', [slots.header?.(), slots.default?.()]);
-  },
-});
-const Pagination = defineComponent({
-  props: { total: { type: Number, default: 0 } },
-  setup(props) {
-    return () => h('output', { 'data-testid': 'total' }, String(props.total));
-  },
+function query(
+  page = 1,
+  field = 'operTime',
+  order: 'asc' | 'desc' | null = 'desc',
+  values: Record<string, unknown> = {},
+) {
+  if (!state.options) throw new Error('操作日志原生Grid未初始化');
+  // createVbenGridQuery 从原生 Grid 状态读取查询条件，不走 proxy 参数。
+  state.live = { field, order: order ?? undefined, page, values };
+  return state.options.gridOptions.proxyConfig.ajax.query({}, {});
+}
+
+beforeEach(() => {
+  vi.resetAllMocks();
+  state.options = undefined;
+  state.live = undefined;
+  state.codes = ['monitor:operlog:list'];
 });
 
-describe('operlog page search wiring', () => {
-  it('passes the entered title to the API and renders the filtered total, then resets', async () => {
-    vi.mocked(getOperLogList)
-      .mockResolvedValueOnce({ records: [], total: 11 })
-      .mockResolvedValueOnce({ records: [], total: 4 })
-      .mockResolvedValueOnce({ records: [], total: 11 });
-
-    const wrapper = mount(OperLogPage, {
-      global: {
-        stubs: {
-          ElAlert: Container,
-          ElButton,
-          ElCard: Container,
-          ElDialog: Container,
-          ElDescriptions: Container,
-          ElDescriptionsItem: Container,
-          ElEmpty: Container,
-          ElForm: Container,
-          ElFormItem: Container,
-          ElInput,
-          ElOption: Container,
-          ElPagination: Pagination,
-          ElSelect: Container,
-          ElTag: Container,
-          ElTable: Container,
-          ElTableColumn: { template: '<div />' },
-        },
-        directives: { loading: () => {} },
-      },
+describe('操作日志原生Grid查询合同', () => {
+  it('sends whitelisted sort and business filters as typed values', async () => {
+    mount(OperLogPage);
+    vi.mocked(getOperLogList).mockResolvedValue({ records: [], total: 19 });
+    await query(2, 'costTime', 'asc', {
+      title: ' 登录 ',
+      operName: 'admin',
+      businessType: 1,
+      status: 0,
     });
-    await flushPromises();
-    expect(getOperLogList).toHaveBeenCalledTimes(1);
-    expect(
-      wrapper.findAll('button').some((button) => button.text() === '清空'),
-    ).toBe(false);
+    expect(getOperLogList).toHaveBeenCalledWith({
+      pageNum: 2,
+      pageSize: 10,
+      title: '登录',
+      operName: 'admin',
+      businessType: 1,
+      status: 0,
+      orderBy: 'costTime',
+      order: 'asc',
+    });
+  });
 
-    // Element Plus may emit update:modelValue after a very fast click.
-    // The search must use the text the user can already see in the input.
-    const titleInput = wrapper.get('input[placeholder="请输入系统模块"]');
-    (titleInput.element as HTMLInputElement).value = '文件上传';
-    const searchButton = wrapper
-      .findAll('button')
-      .find((button) => button.text() === '搜索');
-    if (!searchButton) throw new Error('搜索按钮缺失');
-    await searchButton.trigger('click');
-    await flushPromises();
-    expect(getOperLogList).toHaveBeenLastCalledWith(
-      expect.objectContaining({ title: '文件上传' }),
-    );
-    expect(wrapper.get('[data-testid="total"]').text()).toBe('4');
+  it('omits empty optional filters instead of sending blanks', async () => {
+    mount(OperLogPage);
+    vi.mocked(getOperLogList).mockResolvedValue({ records: [], total: 0 });
+    await query(1, 'operTime', 'desc', {
+      title: '',
+      operName: '',
+      businessType: '',
+      status: '',
+    });
+    expect(getOperLogList).toHaveBeenCalledWith({
+      pageNum: 1,
+      pageSize: 10,
+      orderBy: 'operTime',
+      order: 'desc',
+    });
+  });
 
-    const resetButton = wrapper
-      .findAll('button')
-      .find((button) => button.text() === '重置');
-    if (!resetButton) throw new Error('重置按钮缺失');
-    await resetButton.trigger('click');
-    await flushPromises();
-    expect(getOperLogList).toHaveBeenLastCalledWith(
-      expect.objectContaining({ title: '' }),
+  it('restores the server default when the header sort is cleared', async () => {
+    mount(OperLogPage);
+    vi.mocked(getOperLogList).mockResolvedValue({ records: [], total: 0 });
+    await query(1, 'title', null);
+    expect(getOperLogList).toHaveBeenCalledWith(
+      expect.objectContaining({ orderBy: 'operTime', order: 'desc' }),
     );
-    expect(wrapper.get('[data-testid="total"]').text()).toBe('11');
-    expect((titleInput.element as HTMLInputElement).value).toBe('');
+  });
+
+  it('does not issue a list request without the list permission', async () => {
+    state.codes = [];
+    mount(OperLogPage);
+    expect(await query()).toEqual({ items: [], total: 0 });
+    expect(getOperLogList).not.toHaveBeenCalled();
   });
 });

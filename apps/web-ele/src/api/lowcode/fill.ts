@@ -1,4 +1,4 @@
-import type { FormField, Submission } from './forms';
+import type { FormField, FormSchema, Submission } from './forms';
 
 import { useAppConfig } from '@vben/hooks';
 import { useAccessStore } from '@vben/stores';
@@ -8,6 +8,7 @@ export interface FillDefinition {
   schemaVersion: number;
   accessMode: 'login' | 'public';
   fields: Omit<FormField, 'listVisible' | 'searchable'>[];
+  layout?: FormSchema['layout'];
 }
 export interface FillReceipt {
   submitted: boolean;

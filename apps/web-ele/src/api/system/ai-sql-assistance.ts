@@ -14,6 +14,7 @@ export type SqlAssistanceStatus =
   | 'VALIDATING';
 export interface SqlAssistanceStart extends QueryContext {
   businessModel?: null | string;
+  businessModels?: string[];
   sceneKey: string;
   expectedSceneRevision: number;
   description: string;

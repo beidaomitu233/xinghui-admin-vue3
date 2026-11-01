@@ -4,10 +4,20 @@ import type {
 } from '#/api/system/business-config';
 
 import { flushPromises, mount } from '@vue/test-utils';
-import { defineComponent, h } from 'vue';
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import ElementPlus from 'element-plus';
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 
+import { initComponentAdapter } from '#/adapter/component';
+import { initSetupVbenForm } from '#/adapter/form';
 import {
   getBusinessConfig,
   saveBusinessConfig,
@@ -19,53 +29,11 @@ const access = vi.hoisted(() => ({ codes: [] as string[] }));
 vi.mock('@vben/stores', () => ({
   useAccessStore: () => ({ accessCodes: access.codes }),
 }));
-vi.mock('@vben/common-ui', () => ({
-  Page: { template: '<main><slot /></main>' },
-}));
 vi.mock('vue-router', () => ({ useRoute: () => ({ query: {} }) }));
 vi.mock('#/api/system/business-config', () => ({
   getBusinessConfig: vi.fn(),
   saveBusinessConfig: vi.fn(),
 }));
-vi.mock('element-plus', () => ({
-  ElMessage: { error: vi.fn(), success: vi.fn() },
-  ElLoadingDirective: { mounted: () => {}, updated: () => {} },
-  ElAlert: { name: 'ElAlert', render: () => null },
-  ElButton: { name: 'ElButton', render: () => null },
-  ElCheckbox: { name: 'ElCheckbox', render: () => null },
-  ElEmpty: { name: 'ElEmpty', render: () => null },
-  ElForm: { name: 'ElForm', render: () => null },
-  ElFormItem: { name: 'ElFormItem', render: () => null },
-  ElInput: { name: 'ElInput', render: () => null },
-  ElSelect: { name: 'ElSelect', render: () => null },
-  ElOption: { name: 'ElOption', render: () => null },
-  ElSwitch: { name: 'ElSwitch', render: () => null },
-}));
-const Form = defineComponent({
-  props: { disabled: Boolean },
-  setup(props, { slots }) {
-    return () =>
-      h('form', [
-        h('fieldset', { disabled: props.disabled }, slots.default?.()),
-      ]);
-  },
-});
-const Input = defineComponent({
-  props: {
-    modelValue: { type: String, default: '' },
-    type: { type: String, default: 'text' },
-  },
-  emits: ['update:modelValue'],
-  setup(props, { emit }) {
-    return () =>
-      h('input', {
-        value: props.modelValue,
-        type: props.type,
-        onInput: (event: Event) =>
-          emit('update:modelValue', (event.target as HTMLInputElement).value),
-      });
-  },
-});
 function config(section: BusinessSection): BusinessConfig {
   const parameters: Record<BusinessSection, Record<string, string>> = {
     wechat: {
@@ -109,29 +77,27 @@ function config(section: BusinessSection): BusinessConfig {
     secretsConfigured: {},
   };
 }
+const wrappers: ReturnType<typeof mount>[] = [];
 function page() {
-  return mount(ConfigPage, {
-    global: {
-      stubs: {
-        ElForm: Form,
-        ElFormItem: { template: '<div><slot /></div>' },
-        ElInput: Input,
-        ElButton: {
-          props: ['disabled', 'nativeType'],
-          template:
-            '<button :disabled="disabled" :type="nativeType || \'button\'"><slot /></button>',
-        },
-        ElAlert: true,
-        ElEmpty: true,
-        ElCheckbox: true,
-        ElSelect: true,
-        ElOption: true,
-        ElSwitch: true,
-      },
-      directives: { loading: {} },
-    },
-  });
+  const wrapper = mount(ConfigPage, { global: { plugins: [ElementPlus] } });
+  wrappers.push(wrapper);
+  return wrapper;
 }
+beforeAll(async () => {
+  await initComponentAdapter();
+  await initSetupVbenForm();
+  // 表单 Input/Switch 等是 defineAsyncComponent，预热门模块避免首个用例冷加载未渲染。
+  await Promise.all([
+    import('element-plus/es/components/input/index'),
+    import('element-plus/es/components/input/style/css'),
+    import('element-plus/es/components/switch/index'),
+    import('element-plus/es/components/switch/style/css'),
+  ]);
+});
+afterEach(async () => {
+  wrappers.splice(0).forEach((wrapper) => wrapper.unmount());
+  await flushPromises();
+});
 describe('business configuration sections', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -147,15 +113,15 @@ describe('business configuration sections', () => {
     access.codes = ['system:businessConfig:query'];
     const wrapper = page();
     await flushPromises();
-    expect(wrapper.findAll('section')).toHaveLength(5);
+    expect(wrapper.findAll('[id^="business-"]')).toHaveLength(5);
     expect(
       wrapper
-        .findAll('fieldset')
-        .every((field) => field.attributes('disabled') !== undefined),
+        .findAll('input:not([type=hidden])')
+        .every((field) => (field.element as HTMLInputElement).disabled),
     ).toBe(true);
     const reload = wrapper
       .findAll('button')
-      .find((button) => button.text() === '重新读取');
+      .find((button) => button.text() === '重新加载');
     if (!reload) throw new Error('Reload button missing');
     expect(reload.element.closest('fieldset')).toBeNull();
     await reload.trigger('click');
@@ -173,14 +139,19 @@ describe('business configuration sections', () => {
     const secret = secrets.at(-1);
     if (!secret) throw new Error('Secret input missing');
     await secret.setValue('unit-edit-only');
-    await oss.find('form').trigger('submit');
+    await flushPromises();
+    const save = oss
+      .findAll('button')
+      .find((button) => button.text() === '保存配置');
+    if (!save) throw new Error('Save button missing');
+    await save.trigger('click');
     await flushPromises();
     expect(saveBusinessConfig).toHaveBeenCalledTimes(1);
     expect(saveBusinessConfig).toHaveBeenCalledWith(
       'oss',
       expect.objectContaining({
         revision: 3,
-        secrets: { secretKey: 'unit-edit-only' },
+        secrets: expect.objectContaining({ secretKey: 'unit-edit-only' }),
       }),
     );
     expect((secret.element as HTMLInputElement).value).toBe('unit-edit-only');

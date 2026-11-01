@@ -1,27 +1,76 @@
-import { flushPromises, mount } from '@vue/test-utils';
-import { defineComponent, h } from 'vue';
+import { mount } from '@vue/test-utils';
 
-import { ElButton } from 'element-plus';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { getJobLog, getJobLogList } from '#/api/monitor/jobLog';
-import { requireTestFixture } from '#/test-utils/required-fixture';
 
-import LogPage from './index.vue';
+import JobLogPage from './index.vue';
 
+interface GridQuery {
+  gridOptions: {
+    proxyConfig: {
+      ajax: {
+        query: (params: unknown, values: unknown) => Promise<unknown>;
+      };
+    };
+  };
+  tableTitle?: string;
+}
+const state = vi.hoisted(() => ({
+  options: undefined as GridQuery | undefined,
+  codes: ['monitor:jobLog:list', 'monitor:jobLog:query'],
+  live: undefined as
+    | undefined
+    | {
+        field: string | undefined;
+        order: 'asc' | 'desc' | undefined;
+        page: number;
+        values: Record<string, unknown>;
+      },
+}));
 vi.mock('@vben/common-ui', () => ({
   Page: { template: '<div><slot /></div>' },
+  useVbenModal: () => [
+    { template: '<div />' },
+    { setState: () => {}, open: () => {}, close: async () => {} },
+  ],
 }));
 vi.mock('@vben/stores', () => ({
   useAccessStore: () => ({
-    accessCodes: [
-      'monitor:jobLog:list',
-      'monitor:jobLog:query',
-      'monitor:jobLog:clean',
-      'monitor:jobLog:remove',
-    ],
+    accessCodes: state.codes,
+    accessToken: 'token',
   }),
 }));
+vi.mock('#/adapter/form', () => ({ useVbenForm: vi.fn(), z: {} }));
+vi.mock('#/adapter/vxe-table', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('#/adapter/vxe-table')>();
+  return {
+    ...actual,
+    useVbenVxeGrid: (options: GridQuery) => {
+      state.options = options;
+      return [
+        { template: '<div />' },
+        {
+          grid: {
+            getCurrentPage: () => state.live?.page ?? 1,
+            getPageSize: () => 10,
+            getSortColumns: () => [
+              { field: state.live?.field, order: state.live?.order },
+            ],
+            setCurrentPage: async (page: number) => {
+              if (state.live) state.live.page = page;
+            },
+            getCheckboxRecords: () => [],
+            clearCheckboxRow: async () => {},
+          },
+          formApi: {
+            getLatestSubmissionValues: () => state.live?.values ?? {},
+          },
+        },
+      ];
+    },
+  };
+});
 vi.mock('#/api/monitor/jobLog', () => ({
   getJobLogList: vi.fn(),
   getJobLog: vi.fn(),
@@ -29,87 +78,85 @@ vi.mock('#/api/monitor/jobLog', () => ({
   cleanJobLog: vi.fn(),
 }));
 
-const Container = defineComponent({
-  setup(_, { slots }) {
-    return () => h('div', [slots.header?.(), slots.default?.()]);
-  },
+function query(
+  page = 1,
+  field = 'fireId',
+  order: 'asc' | 'desc' | null = 'desc',
+  values: Record<string, unknown> = {},
+) {
+  if (!state.options) throw new Error('执行记录原生Grid未初始化');
+  // createVbenGridQuery 从原生 Grid 状态读取查询条件，不走 proxy 参数。
+  state.live = { field, order: order ?? undefined, page, values };
+  return state.options.gridOptions.proxyConfig.ajax.query({}, {});
+}
+
+beforeEach(() => {
+  vi.resetAllMocks();
+  state.options = undefined;
+  state.live = undefined;
+  state.codes = ['monitor:jobLog:list', 'monitor:jobLog:query'];
 });
 
-describe('new scheduler execution log page', () => {
-  beforeEach(() => {
-    vi.resetAllMocks();
+describe('调度日志原生Grid查询合同', () => {
+  it('sends whitelisted sort and ledger filters to the server', async () => {
+    mount(JobLogPage);
+    vi.mocked(getJobLogList).mockResolvedValue({
+      records: [],
+      total: 41,
+      pageNum: 1,
+      pageSize: 10,
+    });
+    await query(3, 'startedAt', 'asc', {
+      jobId: ' 12 ',
+      jobName: '清理',
+      status: 'FAILED',
+      triggerType: 'MANUAL',
+    });
+    expect(getJobLogList).toHaveBeenCalledWith({
+      pageNum: 3,
+      pageSize: 10,
+      jobId: '12',
+      jobName: '清理',
+      status: 'FAILED',
+      triggerType: 'MANUAL',
+      orderBy: 'startedAt',
+      order: 'asc',
+    });
+  });
+
+  it('keeps the fire ledger default order when the header sort is cleared', async () => {
+    mount(JobLogPage);
     vi.mocked(getJobLogList).mockResolvedValue({
       records: [],
       total: 0,
       pageNum: 1,
       pageSize: 10,
     });
-  });
-
-  it('loads the safe fire ledger and exposes retention actions without legacy fields', async () => {
-    const wrapper = mount(LogPage, {
-      global: {
-        stubs: {
-          ElAlert: Container,
-          ElButton,
-          ElCard: Container,
-          ElDialog: Container,
-          ElForm: Container,
-          ElFormItem: Container,
-          ElInput: Container,
-          ElOption: Container,
-          ElPagination: Container,
-          ElSelect: Container,
-          ElTable: Container,
-          ElTableColumn: { template: '<div />' },
-          ElTag: Container,
-          ElDescriptions: Container,
-          ElDescriptionsItem: Container,
-        },
-        directives: { loading: () => {} },
-      },
-    });
-    await flushPromises();
+    await query(1, 'status', null);
     expect(getJobLogList).toHaveBeenCalledWith(
-      expect.objectContaining({ pageNum: 1, pageSize: 10 }),
+      expect.objectContaining({ orderBy: 'fireId', order: 'desc' }),
     );
-    expect(wrapper.text()).toContain('清理到期记录');
-    expect(wrapper.text()).not.toContain('调用目标');
-    expect(wrapper.text()).not.toContain('异常信息');
-    expect(getJobLog).not.toHaveBeenCalled();
   });
 
-  it('shows a retry action when the ledger request fails', async () => {
-    vi.mocked(getJobLogList).mockRejectedValueOnce(new Error('offline'));
-    const wrapper = mount(LogPage, {
-      global: {
-        stubs: {
-          ElAlert: Container,
-          ElButton,
-          ElCard: Container,
-          ElDialog: Container,
-          ElForm: Container,
-          ElFormItem: Container,
-          ElInput: Container,
-          ElOption: Container,
-          ElPagination: Container,
-          ElSelect: Container,
-          ElTable: Container,
-          ElTableColumn: { template: '<div />' },
-          ElTag: Container,
-          ElDescriptions: Container,
-          ElDescriptionsItem: Container,
-        },
-        directives: { loading: () => {} },
-      },
+  it('does not forward an unsortable column to the server', async () => {
+    mount(JobLogPage);
+    vi.mocked(getJobLogList).mockResolvedValue({
+      records: [],
+      total: 0,
+      pageNum: 1,
+      pageSize: 10,
     });
-    await flushPromises();
-    const retry = wrapper
-      .findAll('button')
-      .find((button) => button.text().includes('重试'));
-    expect(retry).toBeDefined();
-    await requireTestFixture(retry).trigger('click');
-    await flushPromises();
-    expect(getJobLogList).toHaveBeenCalledTimes(2);
+    await query(1, 'traceId', 'asc');
+    expect(getJobLogList).toHaveBeenCalledWith(
+      expect.objectContaining({ orderBy: 'fireId', order: 'desc' }),
+    );
+  });
+
+  it('does not issue a ledger request without the list permission', async () => {
+    state.codes = [];
+    mount(JobLogPage);
+    expect(await query()).toEqual({ items: [], total: 0 });
+    expect(getJobLogList).not.toHaveBeenCalled();
+    expect(getJobLog).not.toHaveBeenCalled();
   });
 });

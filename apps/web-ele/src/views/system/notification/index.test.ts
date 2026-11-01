@@ -1,9 +1,8 @@
-import type { PropType } from 'vue';
-
+/* eslint-disable vue/one-component-per-file -- Parent inbox regression uses local UI ports. */
 import type { PersonalNotification } from '#/api/system/personal-notification';
 
 import { flushPromises, mount } from '@vue/test-utils';
-import { defineComponent, h, inject, provide, ref } from 'vue';
+import { defineComponent, h } from 'vue';
 import { createMemoryHistory, createRouter as makeRouter } from 'vue-router';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -25,12 +24,15 @@ const mocks = vi.hoisted(() => ({
   messageWarning: vi.fn(),
 }));
 
-vi.mock('@vben/common-ui', () => ({
-  Page: {
-    props: ['title', 'description'],
-    template: '<div><h1>{{ title }}</h1><slot /></div>',
-  },
-}));
+vi.mock('@vben/common-ui', async (importOriginal) => {
+  const actual = await importOriginal<object>();
+  const { useModalPort } = await import('#/test-utils/popup-port');
+  return { ...actual, useVbenModal: useModalPort };
+});
+vi.mock('#/adapter/vxe-table', async () => {
+  const { useGridPort } = await import('#/test-utils/vxe-grid-port');
+  return { useVbenVxeGrid: useGridPort };
+});
 vi.mock('@vben/stores', () => ({
   useUserStore: () => ({ userRoles: ['tenant-user'] }),
 }));
@@ -58,83 +60,6 @@ vi.mock('#/store/personal-notification', () => ({
     refreshUnreadCount: mocks.refreshUnreadCount,
   }),
 }));
-
-const tableContext = Symbol('notification-table-context');
-type TableContext = {
-  rows: () => PersonalNotification[];
-  toggle: (row: PersonalNotification, checked: boolean) => void;
-};
-
-const TableStub = defineComponent({
-  props: {
-    data: {
-      type: Array as PropType<PersonalNotification[]>,
-      default: () => [],
-    },
-    emptyText: { type: String, default: '' },
-  },
-  emits: ['selection-change'],
-  setup(props, { emit, slots }) {
-    const selected = ref<PersonalNotification[]>([]);
-    provide(tableContext, {
-      rows: () => props.data,
-      toggle(row, checked) {
-        selected.value = checked
-          ? [...selected.value.filter((item) => item.id !== row.id), row]
-          : selected.value.filter((item) => item.id !== row.id);
-        emit('selection-change', selected.value);
-      },
-    } satisfies TableContext);
-
-    return () =>
-      h(
-        'div',
-        { class: 'notification-table' },
-        props.data.length > 0
-          ? slots.default?.()
-          : [h('div', { class: 'empty-text' }, props.emptyText)],
-      );
-  },
-});
-
-const TableColumnStub = defineComponent({
-  props: {
-    prop: String,
-    type: String,
-    selectable: Function as PropType<(row: PersonalNotification) => boolean>,
-  },
-  setup(props, { slots }) {
-    const context = requireTestFixture(inject<TableContext>(tableContext));
-    return () => {
-      const rows = context.rows();
-      if (props.type === 'selection') {
-        return h(
-          'div',
-          rows.map((row) =>
-            h('input', {
-              type: 'checkbox',
-              'aria-label': `select-${row.id}`,
-              disabled: props.selectable ? !props.selectable(row) : false,
-              onChange: (event: Event) =>
-                context.toggle(row, (event.target as HTMLInputElement).checked),
-            }),
-          ),
-        );
-      }
-      return h(
-        'div',
-        rows.map((row) =>
-          props.prop
-            ? h(
-                'span',
-                String(row[props.prop as keyof PersonalNotification] ?? ''),
-              )
-            : h('div', slots.default?.({ row })),
-        ),
-      );
-    };
-  },
-});
 
 const ButtonStub = defineComponent({
   props: { disabled: Boolean },
@@ -235,8 +160,6 @@ async function createWrapper(query = '', path = '/notifications') {
         'el-pagination': true,
         'el-radio-button': { template: '<button><slot /></button>' },
         'el-radio-group': ContainerStub,
-        'el-table': TableStub,
-        'el-table-column': TableColumnStub,
         'el-tag': { template: '<span><slot /></span>' },
       },
     },
@@ -303,7 +226,7 @@ describe('header notification center', () => {
         pageNum: 3,
         pageSize: 10,
       });
-    const pagination = wrapper.findComponent({ name: 'el-pagination' });
+    const pagination = wrapper.findComponent({ name: 'VxePagerUnitPort' });
     pagination.vm.$emit('current-change', 2);
     await flushPromises();
     pagination.vm.$emit('current-change', 3);
@@ -318,6 +241,44 @@ describe('header notification center', () => {
     expect(wrapper.text()).toContain('Latest page');
     expect(wrapper.text()).not.toContain('Stale page');
     expect(wrapper.text()).not.toContain('通知加载失败');
+    wrapper.unmount();
+  });
+
+  it('requeries after a successful read collides with an older request for the same page and filters', async () => {
+    const { wrapper } = await createWrapper();
+    await flushPromises();
+    const slow = deferred<{
+      items: PersonalNotification[];
+      pageNum: number;
+      pageSize: number;
+      total: number;
+    }>();
+    mocks.listMyNotifications
+      .mockReturnValueOnce(slow.promise)
+      .mockResolvedValueOnce({
+        items: [read],
+        total: 1,
+        pageNum: 1,
+        pageSize: 10,
+      });
+    wrapper
+      .getComponent({ name: 'VxePagerUnitPort' })
+      .vm.$emit('current-change', 1);
+    await flushPromises();
+    const mark = wrapper
+      .findAll('button')
+      .find((button) => button.text() === '标为已读');
+    await requireTestFixture(mark).trigger('click');
+    await flushPromises();
+    expect(mocks.markMyNotificationRead).toHaveBeenCalledWith(41);
+    slow.resolve({ items: [unread], total: 1, pageNum: 1, pageSize: 10 });
+    await flushPromises();
+    expect(mocks.listMyNotifications).toHaveBeenCalledTimes(3);
+    expect(wrapper.text()).toContain('已读');
+    expect(wrapper.text()).not.toContain('未读');
+    expect(
+      wrapper.findAll('button').some((button) => button.text() === '标为已读'),
+    ).toBe(false);
     wrapper.unmount();
   });
 
@@ -348,9 +309,7 @@ describe('header notification center', () => {
     expect(mocks.getMyNotification).not.toHaveBeenCalled();
     await wrapper.setProps({ notificationId: 41 });
     await flushPromises();
-    const button = wrapper
-      .findAll('button')
-      .find((b) => b.text() === 'close-dialog');
+    const button = wrapper.findAll('button').find((b) => b.text() === '关闭');
     await requireTestFixture(button).trigger('click');
     await flushPromises();
     expect(router.currentRoute.value.fullPath).toBe(
@@ -369,13 +328,15 @@ describe('header notification center', () => {
     const { wrapper } = await createWrapper();
     await flushPromises();
     wrapper
-      .findComponent({ name: 'el-pagination' })
+      .findComponent({ name: 'VxePagerUnitPort' })
       .vm.$emit('current-change', 2);
     await flushPromises();
     expect(mocks.listMyNotifications).toHaveBeenLastCalledWith({
       pageNum: 2,
       pageSize: 10,
       unreadOnly: undefined,
+      orderBy: 'createTime',
+      order: 'desc',
     });
     wrapper.unmount();
   });
@@ -404,6 +365,8 @@ describe('header notification center', () => {
       pageNum: 1,
       pageSize: 10,
       unreadOnly: undefined,
+      orderBy: 'createTime',
+      order: 'desc',
     });
     expect(wrapper.text()).toContain(unread.title);
 

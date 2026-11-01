@@ -26,3 +26,26 @@ export const saveBusinessConfig = (
   data: BusinessConfigChange,
 ) =>
   requestClient.put<BusinessConfig>(`/system/businessConfig/${section}`, data);
+
+export interface BusinessProbeReceipt {
+  status: 'ACCEPTED';
+  message: string;
+  requestId: string;
+  provider: string;
+  revision: number;
+  elapsedMs: number;
+}
+export const testBusinessConfig = (
+  section: 'mail' | 'sms',
+  data: {
+    content?: string;
+    recipient: string;
+    revision: number;
+    subject?: string;
+    variables?: Record<string, string>;
+  },
+) =>
+  requestClient.post<BusinessProbeReceipt>(
+    `/system/businessConfig/${section}/test`,
+    data,
+  );

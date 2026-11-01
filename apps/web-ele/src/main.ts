@@ -18,7 +18,7 @@ async function initApplication() {
   const appVersion = import.meta.env.VITE_APP_VERSION;
   const demoSuffix =
     import.meta.env.VITE_APP_DEMO === 'true' ? '-static-demo' : '';
-  const namespace = `${import.meta.env.VITE_APP_NAMESPACE}-${appVersion}-${env}${demoSuffix}`;
+  const namespace = `${import.meta.env.VITE_APP_NAMESPACE}-${appVersion}-${env}${demoSuffix}-ai-hub`;
   const upgradedNavigation = migrateNavigationPreferences(namespace);
 
   // app偏好设置初始化

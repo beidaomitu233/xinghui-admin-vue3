@@ -13,12 +13,12 @@ export const overridesPreferences = defineOverridesPreferences({
   // overrides
   app: {
     defaultAvatar: localAvatar,
-    name: import.meta.env.VITE_APP_TITLE,
+    name: '星辉 AI 中台',
     // 使用后端动态路由模式
     accessMode: 'backend',
     enableRefreshToken: false,
     loginExpiredMode: 'page',
     // 登录后默认跳转路径
-    defaultHomePath: '/workspace',
+    defaultHomePath: '/ai/workbench',
   },
 });

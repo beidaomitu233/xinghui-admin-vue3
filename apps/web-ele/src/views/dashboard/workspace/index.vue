@@ -11,6 +11,7 @@ import { useRouter } from 'vue-router';
 
 import {
   AnalysisChartCard,
+  Page,
   WorkbenchHeader,
   WorkbenchProject,
   WorkbenchQuickNav,
@@ -199,7 +200,7 @@ const getGreeting = () => {
 </script>
 
 <template>
-  <div class="p-5">
+  <Page title="工作台" description="常用业务入口与工作概览">
     <WorkbenchHeader
       :avatar="userStore.userInfo?.avatar || preferences.app.defaultAvatar"
     >
@@ -221,7 +222,7 @@ const getGreeting = () => {
     </WorkbenchHeader>
 
     <div class="mt-5 flex flex-col lg:flex-row">
-      <div class="mr-4 w-full lg:w-3/5">
+      <div class="w-full min-w-0 lg:mr-4 lg:w-3/5">
         <WorkbenchProject
           :items="projectItems"
           title="快捷入口"
@@ -229,7 +230,7 @@ const getGreeting = () => {
         />
         <WorkbenchTrends :items="trendItems" class="mt-5" title="最新动态" />
       </div>
-      <div class="w-full lg:w-2/5">
+      <div class="w-full min-w-0 lg:w-2/5">
         <WorkbenchQuickNav
           :items="quickNavItems"
           class="mt-5 lg:mt-0"
@@ -242,5 +243,5 @@ const getGreeting = () => {
         </AnalysisChartCard>
       </div>
     </div>
-  </div>
+  </Page>
 </template>

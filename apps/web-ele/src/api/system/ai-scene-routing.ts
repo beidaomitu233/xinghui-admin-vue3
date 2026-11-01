@@ -3,6 +3,7 @@ import type { SceneModelPolicy } from './ai-scene';
 import { requestClient } from '#/api/request';
 
 export interface SceneRoutingView {
+  businessModels?: string[];
   businessModel?: null | string;
   sceneKey: string;
   revision: number;
@@ -10,6 +11,7 @@ export interface SceneRoutingView {
   modelPolicy: null | SceneModelPolicy;
 }
 export interface SceneRoutingChange {
+  businessModels?: string[];
   businessModel?: null | string;
   expectedRevision: number;
   clientMutationId: string;

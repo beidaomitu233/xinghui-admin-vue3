@@ -4,10 +4,25 @@ import type { AiSettingsView } from '#/api/system/ai-settings';
 import { flushPromises, mount } from '@vue/test-utils';
 import { reactive } from 'vue';
 
-import ElementPlus, { ElMessageBox, ElSwitch } from 'element-plus';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import ElementPlus, { ElMessageBox, ElSelect, ElSwitch } from 'element-plus';
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 
-import { click, fill, selectValue } from '#/test-utils/element-controls';
+import { initComponentAdapter } from '#/adapter/component';
+import { initSetupVbenForm } from '#/adapter/form';
+import {
+  click,
+  clickTab,
+  fill,
+  selectValue,
+} from '#/test-utils/element-controls';
 
 import ModelHubWorkspace from './ModelHubWorkspace.vue';
 
@@ -156,6 +171,19 @@ function model(): HubModel {
   };
 }
 const wrappers: ReturnType<typeof mount>[] = [];
+beforeAll(async () => {
+  await initComponentAdapter();
+  await initSetupVbenForm();
+  // 表单 Input/Select 是 defineAsyncComponent，预热门模块避免冷加载时 DOM 未渲染。
+  await Promise.all([
+    import('element-plus/es/components/input/index'),
+    import('element-plus/es/components/input/style/css'),
+    import('element-plus/es/components/select-v2/index'),
+    import('element-plus/es/components/select-v2/style/css'),
+    import('element-plus/es/components/select/index'),
+    import('element-plus/es/components/select/style/css'),
+  ]);
+});
 async function render() {
   const wrapper = mount(ModelHubWorkspace, {
     attachTo: document.body,
@@ -357,11 +385,12 @@ describe('model-centered AI configuration from the approved prototype', () => {
     await chooseModel(wrapper);
     expect(wrapper.text().match(/未提供/g)).toHaveLength(2);
     await click('编辑模型');
-    expect(
-      document.querySelector<HTMLInputElement>(
-        'input[aria-label="业务模型调用名称"]',
-      )?.readOnly,
-    ).toBe(true);
+    const slugLabel = [...document.querySelectorAll('label')].find((element) =>
+      (element.textContent ?? '').replaceAll(/\s|\*/g, '').includes('调用名称'),
+    );
+    const slugInput =
+      slugLabel?.parentElement?.querySelector<HTMLInputElement>('input');
+    expect(slugInput?.readOnly).toBe(true);
     expect(document.body.textContent).toContain('创建后保持稳定');
     await click('保存设置');
     expect(api.update.mock.calls[0]?.[1]).toMatchObject({
@@ -373,8 +402,8 @@ describe('model-centered AI configuration from the approved prototype', () => {
   it('rejects uppercase call names before submitting a new business model', async () => {
     await render();
     await click('添加模型');
-    await fill('业务模型名称', '客服');
-    await fill('业务模型调用名称', 'Customer-Chat');
+    await fill('模型名称', '客服');
+    await fill('调用名称', 'Customer-Chat');
     await click('创建模型');
     expect(api.create).not.toHaveBeenCalled();
     expect(document.body.textContent).toContain('小写字母');
@@ -407,7 +436,8 @@ describe('model-centered AI configuration from the approved prototype', () => {
       wrapper.get('.overview-metrics button:nth-child(1) strong').text(),
     ).toBe('19 / 21');
     expect(wrapper.findAll('.hub-list-item')).toHaveLength(22);
-    expect(wrapper.find('.el-pagination').exists()).toBe(true);
+    // 原生 Grid 未启用分页器，全部模型直出列表。
+    expect(wrapper.find('.vxe-pager').exists()).toBe(false);
   });
   it('rejects duplicate supplier bindings and adding a seventeenth route without sending a write', async () => {
     const wrapper = await render();
@@ -436,9 +466,8 @@ describe('model-centered AI configuration from the approved prototype', () => {
   it('defaults to the model overview and uses server health without calling providers or creating bindings', async () => {
     const wrapper = await render();
     expect(wrapper.text()).toContain('模型汇总');
-    expect(wrapper.find('.overview-models .overview-table').exists()).toBe(
-      true,
-    );
+    // 模型清单已用原生 VxeGrid 呈现。
+    expect(wrapper.find('.overview-models .vxe-table').exists()).toBe(true);
     expect(wrapper.find('.overview-models .el-empty').exists()).toBe(false);
     expect(wrapper.get('.hub-summary-item').attributes('aria-pressed')).toBe(
       'true',
@@ -474,9 +503,7 @@ describe('model-centered AI configuration from the approved prototype', () => {
     expect(wrapper.get('.overview-models .el-empty').text()).toContain(
       '还没有配置模型',
     );
-    expect(wrapper.find('.overview-models .el-pagination').exists()).toBe(
-      false,
-    );
+    expect(wrapper.find('.overview-models .vxe-pager').exists()).toBe(false);
   });
   it('keeps unverified keys and unavailable models outside the ready metrics', async () => {
     const unknown = channel();
@@ -519,11 +546,12 @@ describe('model-centered AI configuration from the approved prototype', () => {
     expect(
       wrapper.get('.overview-metrics button:nth-child(4) strong').text(),
     ).toBe('0 / 1');
-    expect(wrapper.text()).toContain('模型等待接入');
+    expect(wrapper.text()).toContain('待配置');
+    expect(wrapper.find('.overview-notices').exists()).toBe(false);
   });
   it('switches the left sidebar to suppliers and places masked keys before endpoint and catalog with stored metadata only', async () => {
     const wrapper = await render();
-    await click('供应商');
+    await clickTab('供应商');
     await flushPromises();
     expect(api.stored).toHaveBeenCalledWith('101', {
       pageNum: 1,
@@ -539,8 +567,8 @@ describe('model-centered AI configuration from the approved prototype', () => {
   it('creates an independent business name and call name without implicitly binding a supplier', async () => {
     await render();
     await click('添加模型');
-    await fill('业务模型名称', '售后助手');
-    await fill('业务模型调用名称', 'support-chat');
+    await fill('模型名称', '售后助手');
+    await fill('调用名称', 'support-chat');
     await click('创建模型');
     expect(api.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -587,7 +615,14 @@ describe('model-centered AI configuration from the approved prototype', () => {
   it('saves an edited route and strategy against exact upstream models rather than display names', async () => {
     const wrapper = await render();
     await chooseModel(wrapper);
-    await selectValue(wrapper, '业务模型调用策略', 'ROUND_ROBIN');
+    expect(
+      wrapper
+        .findAllComponents(ElSelect)
+        .some((control) => control.props('ariaLabel') === '业务模型调用策略'),
+    ).toBe(false);
+    await clickTab('供应商');
+    await flushPromises();
+    await selectValue(wrapper, '客服业务模型 调度策略', 'ROUND_ROBIN');
     await flushPromises();
     expect(api.update.mock.calls[0]?.[1]).toMatchObject({
       strategy: 'ROUND_ROBIN',
@@ -602,7 +637,7 @@ describe('model-centered AI configuration from the approved prototype', () => {
     const wrapper = await render();
     await chooseModel(wrapper);
     await click('编辑模型');
-    await fill('业务模型名称', '改名业务模型');
+    await fill('模型名称', '改名业务模型');
     await click('保存设置');
     const original = api.update.mock.calls[0]?.[1];
     expect(document.body.textContent).toContain('重试原保存');

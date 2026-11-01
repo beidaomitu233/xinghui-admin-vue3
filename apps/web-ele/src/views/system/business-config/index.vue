@@ -7,20 +7,20 @@ import type {
 import { computed, nextTick, onMounted, reactive } from 'vue';
 import { useRoute } from 'vue-router';
 
-import { Page } from '@vben/common-ui';
+import { Loading, Page } from '@vben/common-ui';
 import { useAccessStore } from '@vben/stores';
 
-import { useMediaQuery } from '@vueuse/core';
 import { ElMessage } from 'element-plus';
 
+import { useVbenForm } from '#/adapter/form';
 import {
   getBusinessConfig,
   saveBusinessConfig,
 } from '#/api/system/business-config';
-import AdminPageHeader from '#/components/admin-page-header.vue';
+
+import BusinessTestPanel from './BusinessTestPanel.vue';
 
 const access = useAccessStore();
-const narrow = useMediaQuery('(max-width: 767px)');
 const route = useRoute();
 const canRead = computed(() =>
   access.accessCodes.includes('system:businessConfig:query'),
@@ -224,6 +224,137 @@ const sections = reactive<SectionForm[]>([
     clear: {},
   },
 ]);
+function sectionValues(section: SectionForm) {
+  return {
+    enabled: section.enabled,
+    ...Object.fromEntries(
+      section.fields.map((field) => [
+        `parameter_${field.key}`,
+        section.parameters[field.key] ?? '',
+      ]),
+    ),
+    ...Object.fromEntries(
+      section.secretFields.flatMap((field) => [
+        [`secret_${field.key}`, section.secrets[field.key] ?? ''],
+        [`clear_${field.key}`, section.clear[field.key] ?? false],
+      ]),
+    ),
+  };
+}
+const forms = Object.fromEntries(
+  sections.map((section) => {
+    const [Form, api] = useVbenForm({
+      showDefaultActions: false,
+      layout: 'horizontal',
+      wrapperClass: 'grid-cols-1',
+      commonConfig: {
+        labelWidth: 144,
+        componentProps: () => ({
+          class: 'w-full',
+          disabled: !canEdit.value || section.saving || !section.value,
+        }),
+      },
+      handleValuesChange: (values) => {
+        section.enabled = !!values.enabled;
+        for (const field of section.fields)
+          section.parameters[field.key] =
+            values[`parameter_${field.key}`] ?? '';
+        for (const field of section.secretFields) {
+          section.secrets[field.key] = values[`secret_${field.key}`] ?? '';
+          section.clear[field.key] = !!values[`clear_${field.key}`];
+        }
+      },
+      schema: [
+        {
+          component: 'Switch',
+          fieldName: 'enabled',
+          label: '启用',
+          defaultValue: false,
+        },
+        ...section.fields.map((field) => ({
+          component: field.options ? ('Select' as const) : ('Input' as const),
+          fieldName: `parameter_${field.key}`,
+          label: field.label,
+          help: field.help,
+          dependencies: {
+            triggerFields: ['parameter_provider', 'parameter_credentialMode'],
+            if: () => fieldVisible(section, field),
+          },
+          componentProps: () => ({
+            maxlength: 2048,
+            options: field.options,
+            disabled:
+              !canEdit.value ||
+              section.saving ||
+              !section.value ||
+              presetLocked(section, field),
+            ...(field.options
+              ? {
+                  onChange: (value: string) => {
+                    section.parameters[field.key] = value;
+                    selectChanged(section, field.key);
+                    void api.setValues(sectionValues(section));
+                  },
+                }
+              : {
+                  onInput: (value: string) => {
+                    section.parameters[field.key] = value;
+                    credentialIdentityChanged(section, field.key);
+                    if (
+                      field.key === 'clientId' ||
+                      (section.key === 'mail' &&
+                        ['host', 'user'].includes(field.key))
+                    )
+                      void api.setValues(sectionValues(section));
+                  },
+                }),
+          }),
+        })),
+        ...section.secretFields.flatMap((field) => [
+          {
+            component: 'Input' as const,
+            fieldName: `secret_${field.key}`,
+            label: () => label(section, field),
+            help: field.help,
+            description: () =>
+              !providerChanged(section) &&
+              section.value?.secretsConfigured[field.key]
+                ? '已配置'
+                : '未配置',
+            dependencies: {
+              triggerFields: ['parameter_credentialMode'],
+              if: () =>
+                section.key !== 'wechat' ||
+                section.parameters.credentialMode === 'DB',
+            },
+            componentProps: () => ({
+              type: 'password',
+              showPassword: true,
+              autocomplete: 'new-password',
+              maxlength: 8192,
+              placeholder: providerChanged(section)
+                ? '请填写新服务商密钥'
+                : '留空保持原密钥',
+            }),
+          },
+          {
+            component: 'Checkbox' as const,
+            fieldName: `clear_${field.key}`,
+            label: `清除${field.label}`,
+            defaultValue: false,
+            dependencies: {
+              triggerFields: ['parameter_credentialMode'],
+              if: () =>
+                section.key !== 'wechat' ||
+                section.parameters.credentialMode === 'DB',
+            },
+          },
+        ]),
+      ],
+    });
+    return [section.key, { Form, api }];
+  }),
+);
 function providerChanged(section: SectionForm) {
   const original = section.value?.parameters;
   return (
@@ -299,6 +430,7 @@ function apply(section: SectionForm, value: BusinessConfig) {
   section.secrets = {};
   section.clear = {};
   section.failed = false;
+  void forms[section.key]!.api.setValues(sectionValues(section));
 }
 async function reload(section: SectionForm) {
   if (!canRead.value || section.loading || section.saving) return;
@@ -334,13 +466,23 @@ async function save(section: SectionForm) {
     section.saving = false;
   }
 }
+function hasDraft(section: SectionForm) {
+  return (
+    !section.value ||
+    section.enabled !== section.value.enabled ||
+    JSON.stringify(section.parameters) !==
+      JSON.stringify(section.value.parameters) ||
+    Object.values(section.secrets).some(Boolean) ||
+    Object.values(section.clear).some(Boolean)
+  );
+}
 function status(section: SectionForm) {
   const state = section.value?.effectiveState;
-  if (state === 'DEPLOYMENT_ACTIVE') return '当前使用部署配置，保存后即时切换';
-  if (state === 'ADAPTED_SEND_UNVERIFIED')
-    return '配置已生效，真实发送尚未验证';
-  if (state === 'AUTHORIZATION_READY_IDENTITY_UNVERIFIED')
-    return '授权配置已生效，微信身份扫码验证暂缓';
+  if (section.loading) return '读取中';
+  if (section.failed) return '读取失败';
+  if (state === 'DEPLOYMENT_ACTIVE') return '部署配置';
+  if (state === 'ADAPTED_SEND_UNVERIFIED') return '已配置';
+  if (state === 'AUTHORIZATION_READY_IDENTITY_UNVERIFIED') return '已配置';
   if (state === 'ACTIVE') return '已生效';
   if (state === 'SECRET_UNAVAILABLE') return '密钥不可用';
   return '已停用';
@@ -356,159 +498,102 @@ onMounted(async () => {
 });
 </script>
 <template>
-  <Page content-class="admin-page">
-    <AdminPageHeader
-      title="系统业务配置"
-      description="分别保存微信、短信、邮件和对象存储设置。"
-    />
-    <el-alert
-      class="mb-4"
-      title="同一服务商密钥留空保持原值；切换服务商、邮件主机/账号或微信 AppID 需重新填写密钥。清除需单独勾选。"
-      type="info"
-      show-icon
-      closable
-    />
+  <Page title="业务配置">
     <el-empty v-if="!canRead" description="没有业务配置查询权限" />
-    <div v-else class="flex flex-col gap-6">
-      <section
-        v-for="section in sections"
-        :id="`business-${section.key}`"
-        :key="section.key"
-        class="scroll-mt-28 rounded-lg border p-6"
-      >
-        <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
-          <h2 class="text-lg font-semibold">{{ section.title }}</h2>
-          <span class="text-sm text-muted-foreground">
-            {{ status(section) }}
-          </span>
-        </div>
-        <el-alert
-          v-if="section.failed"
-          class="mb-4"
-          :title="`读取${section.title}失败，请重试。`"
-          type="error"
-          closable
-        />
-        <el-form
-          v-loading="section.loading"
-          label-width="150px"
-          :label-position="narrow ? 'top' : 'right'"
-          :disabled="!canEdit || section.saving || !section.value"
-          @submit.prevent="save(section)"
+    <div v-else>
+      <div class="min-w-0 space-y-5">
+        <el-card
+          v-for="section in sections"
+          :id="`business-${section.key}`"
+          :key="section.key"
+          shadow="never"
+          class="scroll-mt-24"
         >
-          <el-form-item label="启用">
-            <el-switch v-model="section.enabled" />
-          </el-form-item>
-          <el-alert
-            v-if="
-              ['sms', 'mail'].includes(section.key) && providerChanged(section)
-            "
-            class="mb-4"
-            title="服务商、邮件主机或账号已变更，不会沿用旧密钥，请填写新凭据后再启用。"
-            type="info"
-            :closable="false"
-          />
-          <el-form-item
-            v-for="field in section.fields.filter((item) =>
-              fieldVisible(section, item),
-            )"
-            :key="field.key"
-            :label="field.label"
-          >
-            <div class="w-full max-w-2xl">
-              <el-select
-                v-if="field.options"
-                v-model="section.parameters[field.key]"
-                class="w-full"
-                :disabled="presetLocked(section, field)"
-                @change="selectChanged(section, field.key)"
+          <template #header>
+            <div class="flex items-center justify-between gap-3">
+              <h2 class="text-base font-semibold">{{ section.title }}</h2>
+              <el-tag
+                size="small"
+                :type="section.value?.enabled ? 'success' : 'info'"
               >
-                <el-option
-                  v-for="option in field.options"
-                  :key="option.value"
-                  :label="option.label"
-                  :value="option.value"
-                />
-              </el-select>
-              <el-input
-                v-else
-                v-model="section.parameters[field.key]"
-                :maxlength="2048"
-                :disabled="presetLocked(section, field)"
-                @input="credentialIdentityChanged(section, field.key)"
-              />
-              <p v-if="field.help" class="mt-1 text-xs text-muted-foreground">
-                {{ field.help }}
-              </p>
+                {{ status(section) }}
+              </el-tag>
             </div>
-          </el-form-item>
-          <template
-            v-if="
-              section.key !== 'wechat' ||
-              section.parameters.credentialMode === 'DB'
-            "
-          >
-            <el-form-item
-              v-for="field in section.secretFields"
-              :key="field.key"
-              :label="label(section, field)"
-            >
-              <div class="w-full max-w-2xl">
-                <el-input
-                  v-model="section.secrets[field.key]"
-                  type="password"
-                  show-password
-                  autocomplete="new-password"
-                  :placeholder="
-                    providerChanged(section)
-                      ? '请填写新服务商密钥'
-                      : '留空保持原密钥'
-                  "
-                  :maxlength="8192"
-                />
-                <div class="mt-1 flex items-center gap-4">
-                  <span class="text-xs text-muted-foreground">
-                    {{
-                      !providerChanged(section) &&
-                      section.value?.secretsConfigured[field.key]
-                        ? '已配置'
-                        : '未配置'
-                    }}
-                  </span>
-                  <el-checkbox v-model="section.clear[field.key]">
-                    清除此密钥
-                  </el-checkbox>
-                </div>
-                <p v-if="field.help" class="mt-1 text-xs text-muted-foreground">
-                  {{ field.help }}
-                </p>
-              </div>
-            </el-form-item>
           </template>
-          <el-form-item>
-            <el-button
-              v-if="canEdit"
-              type="primary"
-              :loading="section.saving"
-              native-type="submit"
-            >
-              保存{{ section.title }}
-            </el-button>
-            <span
-              v-if="section.value"
-              class="ml-4 text-xs text-muted-foreground"
-            >
-              版本 {{ section.value.revision }}
-            </span>
-          </el-form-item>
-        </el-form>
-        <el-button
-          :disabled="section.loading || section.saving"
-          @click="reload(section)"
-        >
-          重新读取
-        </el-button>
-      </section>
+          <div class="business-config-layout">
+            <section class="min-w-0">
+              <el-alert
+                v-if="section.failed"
+                class="mb-4"
+                :title="`读取${section.title}失败，请重试。`"
+                type="error"
+              />
+              <el-alert
+                v-if="
+                  ['sms', 'mail'].includes(section.key) &&
+                  providerChanged(section)
+                "
+                class="mb-4"
+                title="接入信息已变更，请填写新密钥。"
+                type="info"
+              />
+              <Loading
+                :spinning="section.loading"
+                :text="`读取${section.title}…`"
+              >
+                <div class="max-w-3xl">
+                  <component :is="forms[section.key]!.Form" />
+                </div>
+              </Loading>
+              <div
+                class="mt-2 flex flex-wrap items-center gap-3 border-t pt-4 md:pl-[152px]"
+              >
+                <el-button
+                  v-if="canEdit"
+                  type="primary"
+                  :loading="section.saving"
+                  :disabled="section.loading || !section.value"
+                  @click="save(section)"
+                >
+                  保存配置
+                </el-button>
+                <el-button
+                  :disabled="section.loading || section.saving"
+                  @click="reload(section)"
+                >
+                  重新加载
+                </el-button>
+                <span
+                  v-if="section.value"
+                  class="text-xs text-muted-foreground"
+                >
+                  版本 {{ section.value.revision }}
+                </span>
+              </div>
+            </section>
+            <BusinessTestPanel
+              :section="section.key"
+              :config="section.value"
+              :dirty="hasDraft(section)"
+              :editable="canEdit"
+            />
+          </div>
+        </el-card>
+      </div>
     </div>
   </Page>
 </template>
+
+<style scoped>
+.business-config-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
+  gap: 28px;
+}
+
+@media (max-width: 1100px) {
+  .business-config-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+</style>

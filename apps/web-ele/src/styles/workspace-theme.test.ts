@@ -60,7 +60,7 @@ describe('uI05 neutral workspace theme', () => {
         updateCSSVariables(preference);
         const computed = getComputedStyle(document.documentElement);
         expect(computed.getPropertyValue('--background-deep').trim()).toBe(
-          mode === 'dark' ? '220deg 13.06% 9%' : '216 20.11% 95.47%',
+          mode === 'dark' ? '220deg 13.06% 9%' : '220 30% 96.078431372549%',
         );
         expect(computed.getPropertyValue('--card').trim()).toBe(
           mode === 'dark' ? '222.34deg 10.43% 12.27%' : '0 0% 100%',

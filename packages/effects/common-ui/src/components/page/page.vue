@@ -8,6 +8,8 @@ import { computed, nextTick, onMounted, ref, useTemplateRef } from 'vue';
 import { CSS_VARIABLE_LAYOUT_CONTENT_HEIGHT } from '@vben-core/shared/constants';
 import { cn } from '@vben-core/shared/utils';
 
+import { useResizeObserver } from '@vueuse/core';
+
 defineOptions({
   name: 'Page',
 });
@@ -47,6 +49,11 @@ async function calcContentHeight() {
 onMounted(() => {
   calcContentHeight();
 });
+
+// Header actions wrap when the viewport narrows. Reuse the native observer so
+// every list/workbench keeps its content height in sync with the actual header.
+useResizeObserver(headerRef, calcContentHeight);
+useResizeObserver(footerRef, calcContentHeight);
 </script>
 
 <template>
@@ -62,7 +69,7 @@ onMounted(() => {
       ref="headerRef"
       :class="
         cn(
-          'bg-card border-border relative flex items-end border-b px-6 py-4',
+          'bg-card border-border relative flex items-end border-b px-5 py-3',
           headerClass,
         )
       "
@@ -86,7 +93,7 @@ onMounted(() => {
       </div>
     </div>
 
-    <div :class="cn('h-full p-4', contentClass)" :style="contentStyle">
+    <div :class="cn('h-full p-5', contentClass)" :style="contentStyle">
       <slot></slot>
     </div>
     <div

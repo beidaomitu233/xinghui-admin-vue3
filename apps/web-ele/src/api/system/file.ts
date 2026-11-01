@@ -11,7 +11,7 @@ export interface OssFile {
 
 export interface OssPage {
   records: OssFile[];
-  total: number;
+  total: number | string;
 }
 
 export interface OssListParams {
@@ -19,6 +19,8 @@ export interface OssListParams {
   pageSize: number;
   originalName?: string;
   fileSuffix?: string;
+  orderBy?: string;
+  order?: 'asc' | 'desc';
 }
 
 export function getFileList(params: OssListParams) {

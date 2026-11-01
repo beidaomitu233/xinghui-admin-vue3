@@ -23,7 +23,7 @@ import { useRoute, useRouter } from 'vue-router';
 
 import { useAccessStore } from '@vben/stores';
 
-import { ElAlert, ElOption, ElPagination, ElSelect } from 'element-plus';
+import { ElAlert, ElPagination } from 'element-plus';
 
 import { requestClient } from '#/api/request';
 import { subscribeAiRequest } from '#/api/system/ai-application';
@@ -46,7 +46,6 @@ const access = useAccessStore();
 const route = useRoute();
 const router = useRouter();
 const can = (code: string) => access.accessCodes.includes(code);
-const scope = ref<'AUDIT' | 'OWN'>('OWN');
 const page = ref(1);
 const total = ref('0');
 const search = ref('');
@@ -90,6 +89,7 @@ const canSettings = computed(() =>
 const canAudit = computed(
   () => can('ai:request:list') && can('ai:request:audit'),
 );
+const scope = computed(() => (canAudit.value ? 'AUDIT' : 'OWN'));
 const canListConversations = computed(() =>
   scope.value === 'AUDIT'
     ? canAudit.value
@@ -458,7 +458,6 @@ watch(
   () => access.accessToken,
   () => {
     identityVersion.value++;
-    scope.value = 'OWN';
     page.value = 1;
     search.value = '';
     error.value = '';
@@ -526,12 +525,6 @@ onBeforeUnmount(() => {
 </script>
 <template>
   <div class="conversation-workspace">
-    <div v-if="canAudit" class="conversation-toolbar">
-      <ElSelect v-model="scope" aria-label="会话范围">
-        <ElOption label="我的对话" value="OWN" />
-        <ElOption label="审计查看（只读）" value="AUDIT" />
-      </ElSelect>
-    </div>
     <ElAlert
       v-if="error"
       :title="error"
@@ -638,16 +631,6 @@ onBeforeUnmount(() => {
   display: grid;
   gap: 14px;
   min-width: 0;
-  padding: 16px;
-}
-
-.conversation-toolbar {
-  display: flex;
-  justify-content: flex-end;
-}
-
-.conversation-toolbar :deep(.el-select) {
-  width: 180px;
 }
 
 .conversation-paging {
@@ -657,11 +640,5 @@ onBeforeUnmount(() => {
 .context-hint {
   font-size: 12px;
   color: hsl(var(--muted-foreground));
-}
-
-@media (max-width: 700px) {
-  .conversation-workspace {
-    padding: 8px;
-  }
 }
 </style>

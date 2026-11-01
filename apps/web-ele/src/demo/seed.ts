@@ -250,7 +250,7 @@ DEMO_MENUS.push({
     {
       ...leaf(
         '202610160180000003',
-        '调用监控',
+        'AI统计',
         '/ai/requests',
         'system/ai-request/index',
         'carbon:document',

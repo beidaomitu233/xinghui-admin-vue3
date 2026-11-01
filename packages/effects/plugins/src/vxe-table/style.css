@@ -115,3 +115,49 @@
 .vxe-grid--layout-body-content-wrapper {
   overflow: hidden;
 }
+
+/* Shared native Grid presentation, carried over from the accepted user page. */
+.vben-list-surface .vxe-toolbar {
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-bottom: 16px;
+  background: transparent;
+}
+
+.vben-list-surface .vxe-grid--layout-body-content-wrapper {
+  background: hsl(var(--card));
+  border-radius: 6px;
+}
+
+.vben-list-surface .vxe-table {
+  --vxe-ui-table-header-background-color: hsl(var(--card));
+}
+
+.vben-list-surface .vxe-header--column > .vxe-cell,
+.vben-list-surface .vxe-body--column > .vxe-cell,
+.vben-list-surface .vxe-footer--column > .vxe-cell {
+  padding-right: 20px !important;
+  padding-left: 20px !important;
+}
+
+.vben-list-surface .vxe-tools--operate .vxe-button,
+.vben-list-surface .vxe-tools--wrapper > .vxe-button {
+  background: transparent;
+  border-color: transparent;
+  border-radius: 4px;
+}
+
+.vben-list-surface .vxe-pager {
+  padding: 12px 20px;
+  margin-top: 0;
+  border-top: 1px solid hsl(var(--border));
+}
+
+.vben-list-surface .vxe-pager--total {
+  margin-right: auto;
+  margin-left: 0;
+}
+
+.vben-list-surface .vxe-pager--sizes {
+  margin-right: 0;
+}

@@ -1,145 +1,258 @@
-<script lang="ts" setup>
+<script setup lang="ts">
+import type { VbenFormSchema } from '#/adapter/form';
 import type { NoticeInfo } from '#/api/system/notice';
 
-import { reactive, ref } from 'vue';
+import { ref } from 'vue';
 
+import { useVbenModal } from '@vben/common-ui';
+import { useAccessStore } from '@vben/stores';
+
+import dayjs from 'dayjs';
 import { ElMessage } from 'element-plus';
 
-import { addNotice, updateNotice } from '#/api/system/notice';
+import { useVbenForm, z } from '#/adapter/form';
+import { addNotice, getNotice, updateNotice } from '#/api/system/notice';
+import { DICT_TYPE, useDictionary } from '#/composables/use-dictionary';
 
-const emit = defineEmits(['success']);
-const visible = ref(false);
-const title = ref('新增通知');
-const loading = ref(false);
-const formRef = ref();
-
-const formData = reactive<Partial<NoticeInfo>>({
-  noticeTitle: '',
-  noticeType: '1',
-  noticeContent: '',
-  status: '0',
-  remark: '',
+const emit = defineEmits<{ success: [] }>();
+const access = useAccessStore();
+const dictionary = useDictionary(DICT_TYPE.NOTICE_TYPE);
+const record = ref<NoticeInfo>();
+const failed = ref(false);
+const readOnly = ref(false);
+const loaded = ref(false);
+const saving = ref(false);
+let generation = 0;
+function schema(currentType = ''): VbenFormSchema[] {
+  const options: {
+    disabled?: boolean;
+    label: string;
+    sortOrder: number;
+    value: string;
+  }[] = [...dictionary.options.value];
+  if (currentType && !options.some((item) => item.value === currentType))
+    options.push({
+      label: dictionary.label(currentType),
+      value: currentType,
+      disabled: true,
+      sortOrder: Number.MAX_SAFE_INTEGER,
+    });
+  return [
+    {
+      fieldName: 'noticeTitle',
+      component: 'Input',
+      label: '公告标题',
+      rules: z.string().trim().min(1, '请输入公告标题'),
+      componentProps: { maxlength: 200 },
+    },
+    {
+      fieldName: 'noticeType',
+      component: 'Select',
+      label: '公告类型',
+      rules: 'required',
+      componentProps: { options },
+    },
+    {
+      fieldName: 'status',
+      component: 'RadioGroup',
+      label: '状态',
+      componentProps: {
+        options: [
+          { label: '正常', value: '0' },
+          { label: '关闭', value: '1' },
+        ],
+      },
+    },
+    {
+      fieldName: 'noticeContent',
+      component: 'Input',
+      label: '公告内容',
+      componentProps: { type: 'textarea', rows: 6 },
+    },
+    {
+      fieldName: 'startTime',
+      component: 'DatePicker',
+      label: '开始时间',
+      componentProps: {
+        type: 'datetime',
+        valueFormat: 'YYYY-MM-DD HH:mm:ss',
+        clearable: true,
+      },
+    },
+    {
+      fieldName: 'endTime',
+      component: 'DatePicker',
+      label: '结束时间',
+      componentProps: {
+        type: 'datetime',
+        valueFormat: 'YYYY-MM-DD HH:mm:ss',
+        clearable: true,
+      },
+    },
+    {
+      fieldName: 'remark',
+      component: 'Input',
+      label: '备注',
+      componentProps: { type: 'textarea', rows: 2 },
+    },
+  ];
+}
+const [Form, formApi] = useVbenForm({
+  schema: [],
+  showDefaultActions: false,
+  wrapperClass: 'grid-cols-1',
 });
-
-const rules = {
-  noticeTitle: [{ required: true, message: '请输入通知标题', trigger: 'blur' }],
-  noticeType: [
-    { required: true, message: '请选择通知类型', trigger: 'change' },
-  ],
-  status: [{ required: true, message: '请选择状态', trigger: 'change' }],
-};
-
-/**
- * 初始化并打开弹窗
- */
-function open(record?: NoticeInfo) {
-  visible.value = true;
-  if (record) {
-    title.value = '修改通知';
-    Object.assign(formData, record);
-  } else {
-    title.value = '新增通知';
-    resetForm();
-  }
-}
-
-/**
- * 重置表单
- */
-function resetForm() {
-  Object.assign(formData, {
-    noticeId: undefined,
-    noticeTitle: '',
-    noticeType: '1',
-    noticeContent: '',
-    status: '0',
-    remark: '',
-  });
-  if (formRef.value) {
-    formRef.value.clearValidate();
-  }
-}
-
-/**
- * 提交表单
- */
-async function handleSubmit() {
-  try {
-    await formRef.value.validate();
-    loading.value = true;
-
-    if (formData.noticeId) {
-      await updateNotice(formData);
-      ElMessage.success('修改成功');
-    } else {
-      await addNotice(formData);
-      ElMessage.success('新增成功');
+const [Modal, modalApi] = useVbenModal({
+  title: '公告',
+  onBeforeClose: () => !saving.value,
+  class: 'w-[min(720px,94vw)]',
+  closeOnClickModal: false,
+  onOpenChange: async (opened) => {
+    const run = ++generation;
+    if (!opened) return;
+    const data = modalApi.getData<{ id?: number; readOnly?: boolean }>();
+    readOnly.value = data.readOnly === true;
+    failed.value = false;
+    record.value = undefined;
+    loaded.value = false;
+    saving.value = false;
+    const title = data.id ? '编辑公告' : '新增公告';
+    modalApi.setState({
+      title: readOnly.value ? '公告详情' : title,
+      loading: true,
+      confirmDisabled: true,
+      showConfirmButton: !readOnly.value,
+    });
+    try {
+      formApi.setState({ schema: [], commonConfig: { disabled: true } });
+      await formApi.resetForm({ values: {} });
+      if (run !== generation) return;
+      if (
+        data.id !== undefined &&
+        !access.accessCodes.includes('system:notice:query')
+      )
+        throw new Error('没有读取权限');
+      await dictionary.load();
+      const value =
+        data.id === undefined ? undefined : await getNotice(data.id);
+      if (run !== generation) return;
+      if (
+        data.id !== undefined &&
+        (!value || String(value.noticeId) !== String(data.id))
+      )
+        throw new Error('公告不存在或响应不匹配');
+      record.value = value;
+      const currentType = String(
+        value?.noticeType ?? dictionary.options.value[0]?.value ?? '',
+      );
+      await dictionary.ensureLabels([currentType]);
+      if (run !== generation) return;
+      formApi.setState({
+        schema: schema(currentType),
+        commonConfig: { disabled: readOnly.value },
+      });
+      const values = {
+        noticeTitle: value?.noticeTitle || '',
+        noticeType: currentType,
+        noticeContent: decodeContent(value?.noticeContent),
+        status: String(value?.status ?? '0'),
+        remark: value?.remark || '',
+        startTime: dateValue(value?.startTime),
+        endTime: dateValue(value?.endTime),
+      };
+      await formApi.resetForm({ values });
+      if (run === generation) {
+        loaded.value = true;
+        modalApi.setState({ confirmDisabled: false });
+      }
+    } catch {
+      if (run === generation) failed.value = true;
+    } finally {
+      if (run === generation) modalApi.setState({ loading: false });
     }
-
-    visible.value = false;
-    emit('success');
-  } catch (error) {
-    console.error(error);
-  } finally {
-    loading.value = false;
-  }
+  },
+  onConfirm: async () => {
+    const run = generation;
+    const permission = record.value
+      ? 'system:notice:edit'
+      : 'system:notice:add';
+    if (
+      saving.value ||
+      !loaded.value ||
+      readOnly.value ||
+      !access.accessCodes.includes(permission)
+    )
+      return;
+    const validation = await formApi.validate();
+    if (!validation.valid) return;
+    const values = await formApi.getValues();
+    if (
+      run !== generation ||
+      readOnly.value ||
+      !loaded.value ||
+      !access.accessCodes.includes(permission)
+    )
+      return;
+    if (saving.value) return;
+    saving.value = true;
+    modalApi.lock();
+    failed.value = false;
+    try {
+      const input = {
+        ...values,
+        noticeId: record.value?.noticeId,
+        noticeType: Number(values.noticeType),
+        status: Number(values.status),
+      };
+      await (record.value ? updateNotice(input) : addNotice(input));
+      if (run !== generation) return;
+      saving.value = false;
+      modalApi.unlock();
+      modalApi.close();
+      ElMessage.success('公告已保存');
+      emit('success');
+    } catch {
+      if (run === generation) failed.value = true;
+    } finally {
+      if (run === generation) {
+        saving.value = false;
+        modalApi.unlock();
+      }
+    }
+  },
+});
+function dateValue(value?: string) {
+  return value && dayjs(value).isValid()
+    ? dayjs(value).format('YYYY-MM-DD HH:mm:ss')
+    : '';
 }
-
-defineExpose({ open });
+function decodeContent(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value))
+    return new TextDecoder().decode(new Uint8Array(value));
+  if (
+    value &&
+    typeof value === 'object' &&
+    'data' in value &&
+    Array.isArray(value.data)
+  )
+    return new TextDecoder().decode(new Uint8Array(value.data));
+  return '';
+}
 </script>
-
 <template>
-  <el-dialog
-    v-model="visible"
-    :title="title"
-    width="600px"
-    append-to-body
-    destroy-on-close
-  >
-    <el-form ref="formRef" :model="formData" :rules="rules" label-width="100px">
-      <el-form-item label="通知标题" prop="noticeTitle">
-        <el-input v-model="formData.noticeTitle" placeholder="请输入通知标题" />
-      </el-form-item>
-
-      <el-form-item label="通知类型" prop="noticeType">
-        <el-select v-model="formData.noticeType" placeholder="请选择类型">
-          <el-option label="通知" value="1" />
-          <el-option label="公告" value="2" />
-        </el-select>
-      </el-form-item>
-
-      <el-form-item label="状态" prop="status">
-        <el-radio-group v-model="formData.status">
-          <el-radio value="0">正常</el-radio>
-          <el-radio value="1">关闭</el-radio>
-        </el-radio-group>
-      </el-form-item>
-
-      <el-form-item label="通知内容" prop="noticeContent">
-        <el-input
-          v-model="formData.noticeContent"
-          type="textarea"
-          :rows="4"
-          placeholder="请输入内容"
-        />
-      </el-form-item>
-
-      <el-form-item label="备注" prop="remark">
-        <el-input
-          v-model="formData.remark"
-          type="textarea"
-          placeholder="请输入备注"
-        />
-      </el-form-item>
-    </el-form>
-
-    <template #footer>
-      <div class="dialog-footer">
-        <el-button @click="visible = false">取 消</el-button>
-        <el-button type="primary" :loading="loading" @click="handleSubmit">
-          确 定
-        </el-button>
-      </div>
-    </template>
-  </el-dialog>
+  <Modal>
+    <el-alert
+      v-if="failed"
+      :title="
+        loaded
+          ? '保存未完成，已保留当前输入，请重试'
+          : '公告读取失败，请关闭后重新打开'
+      "
+      type="error"
+      closable
+      class="mb-3"
+    />
+    <Form />
+  </Modal>
 </template>

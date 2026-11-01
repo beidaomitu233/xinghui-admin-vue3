@@ -4,6 +4,8 @@ import type { SceneRequest } from '#/api/system/ai-scene';
 
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
+import { useVbenModal } from '@vben/common-ui';
+
 import { ElMessage } from 'element-plus';
 
 import { subscribeAiRequest } from '#/api/system/ai-application';
@@ -28,6 +30,19 @@ const emit = defineEmits<{
   conversation: [conversationId: string];
   'update:modelValue': [value: boolean];
 }>();
+const [Modal, modalApi] = useVbenModal({
+  title: 'AI 记录摘要',
+  class: 'w-[min(760px,92vw)]',
+  showConfirmButton: false,
+  showCancelButton: false,
+  closeOnClickModal: false,
+  onBeforeClose: async () => {
+    if (submitting.value) return false;
+    await close();
+    return !active.value;
+  },
+});
+
 const requirement = ref('请概括这条记录的主要信息。');
 const text = ref('');
 const request = ref<SceneRequest>();
@@ -298,6 +313,14 @@ watch(
     void restore();
   },
 );
+watch(
+  () => props.modelValue,
+  (open) => {
+    if (open) modalApi.open();
+    else modalApi.close();
+  },
+  { immediate: true },
+);
 onMounted(restore);
 onBeforeUnmount(() => {
   generation++;
@@ -309,15 +332,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <el-dialog
-    :model-value="modelValue"
-    title="AI 记录摘要"
-    width="min(760px,92vw)"
-    :close-on-click-modal="false"
-    :show-close="!submitting"
-    :close-on-press-escape="!submitting"
-    :before-close="close"
-  >
+  <Modal>
     <el-alert
       title="仅用授权字段，结果不会自动保存。"
       type="info"
@@ -412,5 +427,5 @@ onBeforeUnmount(() => {
       <el-button :disabled="submitting" @click="close">关闭</el-button>
       <el-button :disabled="!text" @click="copy">复制当前内容</el-button>
     </template>
-  </el-dialog>
+  </Modal>
 </template>

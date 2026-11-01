@@ -63,6 +63,24 @@ const ElInputNumber = defineAsyncComponent(() =>
     import('element-plus/es/components/input-number/style/css'),
   ]).then(([res]) => res.ElInputNumber),
 );
+const ElSlider = defineAsyncComponent(() =>
+  Promise.all([
+    import('element-plus/es/components/slider/index'),
+    import('element-plus/es/components/slider/style/css'),
+  ]).then(([res]) => res.ElSlider),
+);
+const ElRate = defineAsyncComponent(() =>
+  Promise.all([
+    import('element-plus/es/components/rate/index'),
+    import('element-plus/es/components/rate/style/css'),
+  ]).then(([res]) => res.ElRate),
+);
+const ElColorPicker = defineAsyncComponent(() =>
+  Promise.all([
+    import('element-plus/es/components/color-picker/index'),
+    import('element-plus/es/components/color-picker/style/css'),
+  ]).then(([res]) => res.ElColorPicker),
+);
 const ElRadio = defineAsyncComponent(() =>
   Promise.all([
     import('element-plus/es/components/radio/index'),
@@ -158,13 +176,16 @@ export type ComponentType =
   | 'ApiTreeSelect'
   | 'Checkbox'
   | 'CheckboxGroup'
+  | 'ColorPicker'
   | 'DatePicker'
   | 'Divider'
   | 'IconPicker'
   | 'Input'
   | 'InputNumber'
   | 'RadioGroup'
+  | 'Rate'
   | 'Select'
+  | 'Slider'
   | 'Space'
   | 'Switch'
   | 'TimePicker'
@@ -226,11 +247,32 @@ async function initComponentAdapter() {
     },
     // 自定义默认按钮
     DefaultButton: (props, { attrs, slots }) => {
-      return h(ElButton, { ...props, attrs, type: 'info' }, slots);
+      const { type, ...buttonProps } = { ...props, ...attrs };
+      const htmlType = ['button', 'reset', 'submit'].includes(String(type));
+      return h(
+        ElButton,
+        {
+          ...buttonProps,
+          nativeType: htmlType ? type : 'button',
+          type: htmlType ? undefined : type,
+        },
+        slots,
+      );
     },
     // 自定义主要按钮
     PrimaryButton: (props, { attrs, slots }) => {
-      return h(ElButton, { ...props, attrs, type: 'primary' }, slots);
+      const { type, ...buttonProps } = { ...props, ...attrs };
+      return h(
+        ElButton,
+        {
+          ...buttonProps,
+          nativeType: ['button', 'reset', 'submit'].includes(String(type))
+            ? type
+            : 'button',
+          type: 'primary',
+        },
+        slots,
+      );
     },
     Divider: ElDivider,
     IconPicker: withDefaultPlaceholder(IconPicker, 'select', {
@@ -240,6 +282,9 @@ async function initComponentAdapter() {
     }),
     Input: withDefaultPlaceholder(ElInput, 'input'),
     InputNumber: withDefaultPlaceholder(ElInputNumber, 'input'),
+    Slider: ElSlider,
+    Rate: ElRate,
+    ColorPicker: ElColorPicker,
     RadioGroup: (props, { attrs, slots }) => {
       let defaultSlot;
       if (Reflect.has(slots, 'default')) {

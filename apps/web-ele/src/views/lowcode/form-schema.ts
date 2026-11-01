@@ -8,7 +8,21 @@ export const fieldTypes = [
   { value: 'select', label: '单选' },
   { value: 'multiselect', label: '多选' },
   { value: 'switch', label: '开关' },
+  { value: 'radio', label: '单选框组' },
+  { value: 'checkbox', label: '复选框组' },
+  { value: 'time', label: '时间选择' },
+  { value: 'timerange', label: '时间范围' },
+  { value: 'daterange', label: '日期范围' },
+  { value: 'slider', label: '滑块' },
+  { value: 'rate', label: '评分' },
+  { value: 'color', label: '颜色选择' },
 ] as const;
+export const arrayField = (type: string) =>
+  ['checkbox', 'daterange', 'multiselect', 'timerange'].includes(type);
+export const choiceField = (type: string) =>
+  ['checkbox', 'multiselect', 'radio', 'select'].includes(type);
+export const numericField = (type: string) =>
+  ['number', 'rate', 'slider'].includes(type);
 const keyPattern = /^[a-z][a-z0-9_]{0,49}$/u;
 const reserved = new Set([
   'constructor',
@@ -46,7 +60,7 @@ export function initialData(schema: FormSchema): Record<string, FieldValue> {
       let value: FieldValue = null;
       if (field.defaultValue !== null) value = field.defaultValue;
       else if (field.type === 'switch') value = false;
-      else if (field.type === 'multiselect') value = [];
+      else if (arrayField(field.type)) value = [];
       return [field.fieldKey, value];
     }),
   );
@@ -65,6 +79,21 @@ function valueError(
   if (value === null || value === undefined) return undefined;
   let valid = false;
   switch (field.type) {
+    case 'checkbox':
+    case 'multiselect': {
+      valid =
+        Array.isArray(value) &&
+        value.length <= 100 &&
+        new Set(value).size === value.length &&
+        value.every((item) =>
+          field.options.some((option) => option.value === item),
+        );
+      break;
+    }
+    case 'color': {
+      valid = typeof value === 'string' && /^#[a-f0-9]{6}$/iu.test(value);
+      break;
+    }
     case 'date': {
       const date =
         typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/u.test(value)
@@ -77,26 +106,43 @@ function valueError(
       );
       break;
     }
-    case 'multiselect': {
+    case 'daterange':
+    case 'timerange': {
+      const [start, end] = Array.isArray(value) ? value : [];
       valid =
         Array.isArray(value) &&
-        value.length <= 100 &&
-        new Set(value).size === value.length &&
-        value.every((item) =>
-          field.options.some((option) => option.value === item),
-        );
+        (value.length === 0 ||
+          (value.length === 2 &&
+            typeof start === 'string' &&
+            typeof end === 'string' &&
+            value.every(
+              (item) =>
+                !valueError(
+                  {
+                    ...field,
+                    type: field.type === 'timerange' ? 'time' : 'date',
+                  },
+                  item,
+                  false,
+                ),
+            ) &&
+            start <= end));
       break;
     }
-    case 'number': {
+    case 'number':
+    case 'rate':
+    case 'slider': {
       valid =
         typeof value === 'number' &&
         Number.isFinite(value) &&
         Math.abs(value) <= 1e12 &&
         (field.min === null || value >= field.min) &&
         (field.max === null || value <= field.max) &&
-        Math.abs(value * 1e6 - Math.round(value * 1e6)) < 0.001;
+        Math.abs(value * 1e6 - Math.round(value * 1e6)) < 0.001 &&
+        (field.type !== 'rate' || (value >= 0 && value <= 5));
       break;
     }
+    case 'radio':
     case 'select': {
       valid =
         typeof value === 'string' &&
@@ -112,6 +158,12 @@ function valueError(
       valid = typeof value === 'string' && value.length <= field.maxLength;
       break;
     }
+    case 'time': {
+      valid =
+        typeof value === 'string' &&
+        /^(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d$/u.test(value);
+      break;
+    }
   }
   return valid ? undefined : `${field.label}类型、范围或选项不正确`;
 }
@@ -119,7 +171,23 @@ export function schemaError(schema: FormSchema): string | undefined {
   if (schema.fields.length === 0 || schema.fields.length > 100)
     return '字段数量须在1至100之间';
   const keys = new Set<string>();
+  if (
+    schema.layout &&
+    (!['left', 'right', 'top'].includes(schema.layout.labelPosition) ||
+      !Number.isInteger(schema.layout.labelWidth) ||
+      schema.layout.labelWidth < 40 ||
+      schema.layout.labelWidth > 240)
+  )
+    return '表单标签布局不正确';
   for (const field of schema.fields) {
+    if (
+      field.ui &&
+      ['clearable', 'readOnly', 'disabled', 'showWordLimit'].some((key) => {
+        const value = field.ui?.[key as 'clearable'];
+        return value !== undefined && typeof value !== 'boolean';
+      })
+    )
+      return '字段显示属性格式不正确';
     if (
       !keyPattern.test(field.fieldKey) ||
       reserved.has(field.fieldKey.replaceAll('_', '')) ||
@@ -127,6 +195,13 @@ export function schemaError(schema: FormSchema): string | undefined {
     )
       return '字段标识重复、保留或格式不正确';
     keys.add(field.fieldKey);
+    if (
+      field.ui &&
+      ((field.ui.placeholder?.length ?? 0) > 200 ||
+        (field.ui.span !== undefined &&
+          ![6, 8, 12, 24].includes(field.ui.span)))
+    )
+      return '字段占位文字或布局宽度不正确';
     if (
       !field.label.trim() ||
       field.label.length > 100 ||
@@ -148,7 +223,7 @@ export function schemaError(schema: FormSchema): string | undefined {
       (field.min !== null && field.max !== null && field.min > field.max)
     )
       return '数字范围不正确';
-    if (['multiselect', 'select'].includes(field.type)) {
+    if (choiceField(field.type)) {
       if (
         field.options.length === 0 ||
         field.options.length > 100 ||
@@ -163,8 +238,8 @@ export function schemaError(schema: FormSchema): string | undefined {
       )
         return '选项名称、值或重复项不正确';
     } else if (field.options.length > 0) return '当前类型不支持选项';
-    if (field.type === 'multiselect' && field.searchable)
-      return '多选字段暂不支持查询条件';
+    if (arrayField(field.type) && field.searchable)
+      return '数组字段不支持单值查询条件';
     const error = valueError(field, field.defaultValue, false);
     if (error) return error;
   }
@@ -196,7 +271,7 @@ export function displayValue(
 ): string {
   if (value === undefined || value === null || value === '') return '—';
   if (field.type === 'switch') return value ? '是' : '否';
-  if (field.type === 'select' || field.type === 'multiselect')
+  if (choiceField(field.type))
     return (Array.isArray(value) ? value : [value])
       .map(
         (item) =>

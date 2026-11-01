@@ -1,3 +1,4 @@
+/* eslint-disable vue/one-component-per-file -- Parent business regression uses local native-component ports. */
 import { flushPromises, mount } from '@vue/test-utils';
 import { defineComponent, h, watch } from 'vue';
 import { createMemoryHistory, createRouter } from 'vue-router';
@@ -23,6 +24,45 @@ vi.mock('#/api/system/personal-notification', () => ({
   markMyNotificationsRead: mocks.markMyNotificationsRead,
 }));
 
+vi.mock('@vben/common-ui', async () => {
+  const { useModalPort } = await import('#/test-utils/popup-port');
+  return { useVbenDrawer: useModalPort };
+});
+vi.mock('#/layouts/notification-center.vue', () => ({
+  default: {
+    name: 'NotificationCenter',
+    template: '<div class="notification-center-content">完整通知中心</div>',
+  },
+}));
+vi.mock('@vben/layouts', async () => {
+  const { defineComponent, h } = await import('vue');
+  return {
+    Notification: defineComponent({
+      name: 'NotificationUnitPort',
+      props: { open: Boolean, triggerLabel: { type: String, default: '' } },
+      emits: ['update:open', 'viewAll'],
+      setup(props, { emit, slots }) {
+        return () =>
+          h('section', [
+            h(
+              'button',
+              {
+                'aria-label': props.triggerLabel,
+                onClick: () => emit('update:open', !props.open),
+              },
+              '通知',
+            ),
+            props.open
+              ? h('div', [
+                  slots.empty?.(),
+                  h('button', { onClick: () => emit('viewAll') }, '查看全部'),
+                ])
+              : null,
+          ]);
+      },
+    }),
+  };
+});
 const PopoverStub = defineComponent({
   props: { visible: Boolean },
   emits: ['show'],
@@ -110,8 +150,10 @@ describe('personal notification header entry', () => {
     });
     await flushPromises();
 
-    expect(wrapper.find('.badge-value').text()).toContain('7');
-    await wrapper.find('button[aria-label="个人通知"]').trigger('click');
+    expect(
+      wrapper.get('button[aria-label]').attributes('aria-label'),
+    ).toContain('未读 7 条');
+    await wrapper.find('button[aria-label^="个人通知"]').trigger('click');
     await flushPromises();
     expect(mocks.listMyNotifications).toHaveBeenCalledWith({
       pageNum: 1,
@@ -124,16 +166,21 @@ describe('personal notification header entry', () => {
     ).trigger('click');
     await flushPromises();
     expect(router.currentRoute.value.name).toBe('Workspace');
-    expect(wrapper.find('.center-drawer').exists()).toBe(true);
+    expect(wrapper.find('[role="dialog"]').exists()).toBe(true);
     expect(wrapper.find('.notification-center-content').exists()).toBe(true);
     await router.push('/notifications?notificationId=41');
     await flushPromises();
-    expect(wrapper.find('.center-drawer').exists()).toBe(true);
+    expect(wrapper.find('[role="dialog"]').exists()).toBe(true);
 
     useAccessStore().setAccessToken(null);
     await flushPromises();
-    expect(wrapper.find('.badge-value').text()).not.toContain('7');
-    expect(wrapper.find('.center-drawer').exists()).toBe(false);
+    expect(
+      wrapper.get('button[aria-label]').attributes('aria-label'),
+    ).not.toContain('未读 7 条');
+    expect(
+      wrapper.get('button[aria-label]').attributes('aria-label'),
+    ).toContain('未读数暂不可用');
+    expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
     wrapper.unmount();
   });
 });

@@ -46,6 +46,9 @@ export function cloneDataBinding(binding: DataBinding): DataBinding {
 export function cloneScene(value: SceneDefinition): SceneDefinition {
   return {
     ...value,
+    businessModels: value.businessModels
+      ? [...value.businessModels]
+      : undefined,
     ...(value.sqlBindings
       ? {
           sqlBindings: value.sqlBindings.map((binding) => ({
@@ -100,6 +103,19 @@ export function sceneSaveProblem(error: unknown) {
   if (status === 401 || status === 403)
     return new SaveProblem('denied', '当前无编辑权限，本地输入已保留。');
   if (status === 400 || status === 422) {
+    const code = object(response.data).message;
+    const agentProblems: Record<string, string> = {
+      AGENT_INPUT_COMES_FROM_CHAT: '必填变量缺少输入来源，请检查变量引用。',
+      AGENT_REQUIRES_TEXT_MODEL: 'Agent 系统提示词需要使用对话模型。',
+    };
+    const agentMessage =
+      typeof code === 'string' && Object.hasOwn(agentProblems, code)
+        ? agentProblems[code]
+        : undefined;
+    if (agentMessage)
+      return new SaveProblem('validation', agentMessage, {
+        promptText: agentMessage,
+      });
     const data = object(object(response.data).data);
     const fields: Record<string, string> = {};
     if (Array.isArray(data.fields))
@@ -122,6 +138,7 @@ export function sceneSaveProblem(error: unknown) {
             sqlBindings: '查询引用',
             initialModel: '使用模型',
             businessModel: '使用模型',
+            businessModels: '使用模型',
             dataObjects: '数据对象或允许字段',
             dataBindings: '数据库引用',
             modelPolicy: '模型及调用设置',
@@ -131,7 +148,7 @@ export function sceneSaveProblem(error: unknown) {
       }
     return new SaveProblem(
       'validation',
-      '配置未通过校验，原有效配置继续使用。',
+      '配置未通过校验，请检查标注字段。',
       fields,
     );
   }
@@ -145,7 +162,11 @@ export async function persistScene(
   try {
     const definition: SceneEditableDefinition = { ...command.value };
     delete definition.modelPolicy;
-    if (definition.businessModel || !definition.initialModel)
+    if (
+      definition.businessModels?.length ||
+      definition.businessModel ||
+      !definition.initialModel
+    )
       delete definition.initialModel;
     const result = await saveScene(command.sceneKey, {
       clientMutationId: command.clientMutationId,

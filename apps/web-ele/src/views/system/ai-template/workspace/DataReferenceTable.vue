@@ -346,28 +346,28 @@ onBeforeUnmount(() => {
     </header>
     <ElTable
       :data="rows"
-      size="small"
-      class="reference-table"
+      row-key="name"
       height="100%"
-      empty-text="暂无数据引用"
+      class="reference-table"
+      size="small"
     >
-      <ElTableColumn label="数据对象及说明" min-width="190">
+      <ElTableColumn prop="label" label="数据对象及说明" min-width="150">
         <template #default="{ row }">
           <strong>{{ row.label }}</strong>
           <p>{{ row.description }}</p>
         </template>
       </ElTableColumn>
-      <ElTableColumn label="注入标识" min-width="190">
+      <ElTableColumn prop="name" label="注入标识" min-width="180">
         <template #default="{ row }">
           <code>{{ variableToken(row) }}</code>
         </template>
       </ElTableColumn>
-      <ElTableColumn label="查询来源与范围" min-width="190">
+      <ElTableColumn prop="source" label="查询来源与范围" min-width="160">
         <template #default="{ row }">
           <span :title="row.sourceDetail">{{ row.source }}</span>
         </template>
       </ElTableColumn>
-      <ElTableColumn label="操作" width="140">
+      <ElTableColumn label="操作" width="120">
         <template #default="{ row }">
           <ElButton
             link

@@ -1,4 +1,6 @@
-import { resolve } from 'node:path';
+import { existsSync, readdirSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { dirname, resolve } from 'node:path';
 import process from 'node:process';
 
 import { defineConfig } from '@vben/vite-config';
@@ -17,6 +19,18 @@ import { localIconsPlugin } from './local-icons';
 
 export default defineConfig(async ({ mode }) => {
   const demo = loadEnv(mode, process.cwd()).VITE_APP_DEMO === 'true';
+  // On-demand component styles are injected after the initial dependency scan.
+  // Pre-optimize the installed entries to avoid a full reload on each new menu.
+  const require = createRequire(import.meta.url);
+  const elementComponents = resolve(
+    dirname(require.resolve('element-plus/package.json')),
+    'es/components',
+  );
+  const elementStyles = readdirSync(elementComponents)
+    .filter((name) =>
+      existsSync(resolve(elementComponents, name, 'style/css.mjs')),
+    )
+    .map((name) => `element-plus/es/components/${name}/style/css`);
   return {
     application: demo
       ? {
@@ -30,7 +44,10 @@ export default defineConfig(async ({ mode }) => {
     vite: {
       // The dependency scanner visits guarded dynamic imports even in normal dev mode.
       // This virtual ID belongs to the demo plugin, rather than an installable dependency.
-      optimizeDeps: { exclude: [DEMO_ICON_MODULE_ID] },
+      optimizeDeps: {
+        exclude: [DEMO_ICON_MODULE_ID],
+        include: elementStyles,
+      },
       define: {
         'import.meta.env.VITE_APP_DEMO': JSON.stringify(String(demo)),
         ...(demo

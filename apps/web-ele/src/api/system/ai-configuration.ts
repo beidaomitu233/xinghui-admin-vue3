@@ -111,6 +111,8 @@ const base = '/system/ai/configurations';
 export const listConfigurations = (params: {
   environment?: string;
   name?: string;
+  order?: 'asc' | 'desc';
+  orderBy?: string;
   pageNum: number;
   pageSize: number;
   providerCode?: string;
