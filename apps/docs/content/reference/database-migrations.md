@@ -1,5 +1,7 @@
 # 数据库迁移
 
+MySQL 5.7 在数据库启动配置中设置 `explicit_defaults_for_timestamp=ON`，应用账号只需专属数据库权限。
+
 使用 Flyway，迁移目录为 `system-admin/src/main/resources/db/migration`。
 
 ```text

@@ -9,18 +9,27 @@
 ```java
 @Component
 public class ProductAgentResources implements AgentResourceProvider {
-    private final ProductService products;
-    public ProductAgentResources(ProductService products) { this.products = products; }
+    // 注入已有业务服务、AgentAccess 和 ObjectMapper。
     public String namespace() { return "products"; }
-    public JsonNode catalog(AgentCall call) { /* 返回资源名称与用途 */ }
-    public JsonNode describe(AgentCall call, String resource) { /* 返回字段与动作 */ }
-    public JsonNode query(AgentCall call, String resource, JsonNode args) { /* 调用查询服务 */ }
-    public JsonNode mutate(AgentCall call, String resource, JsonNode args) { /* 调用写入服务 */ }
-    public void requireReadable(AgentActor actor, String resource) { /* 校验当前访问权限 */ }
+
+    public JsonNode query(AgentCall call, String resource, JsonNode args) {
+        access.current(call.actor()).require("mall:product:list");
+        return json.valueToTree(products.list(call.actor().tenantId(), args));
+    }
 }
 ```
 
-这是接口结构示例；返回值按业务 DTO 构造。已有完整例子：`NativeAdminAgentResources`、`LowcodeAgentResources`、`ExternalKnowledgeResources`。
+资源提供者实现以下方法，具体参数转为业务 DTO 后调用已有 Service：
+
+| 方法              | 返回内容                     |
+| ----------------- | ---------------------------- |
+| `catalog`         | 当前账号可用的资源名称与用途 |
+| `describe`        | 字段、查询参数与业务动作     |
+| `query`           | 业务查询结果                 |
+| `mutate`          | 业务操作回执                 |
+| `requireReadable` | 检查当前账号的资源访问权限   |
+
+上面展示查询方法；按表补齐接口。已有完整例子：`NativeAdminAgentResources`、`LowcodeAgentResources`、`ExternalKnowledgeResources`。
 
 ## 2. 提供可理解的描述
 

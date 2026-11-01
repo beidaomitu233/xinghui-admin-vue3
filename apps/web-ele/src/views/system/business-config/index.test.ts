@@ -6,7 +6,15 @@ import type {
 import { flushPromises, mount } from '@vue/test-utils';
 
 import ElementPlus from 'element-plus';
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 
 import { initComponentAdapter } from '#/adapter/component';
 import { initSetupVbenForm } from '#/adapter/form';

@@ -9,7 +9,7 @@
 | MySQL   | 5.7 / 8.0                    |
 | Redis   | 7                            |
 
-准备独立 MySQL 数据库和 Redis；文件功能另需 MinIO 或兼容对象存储。CI 使用 MySQL 5.7/8.0 服务矩阵。
+准备独立 MySQL 数据库和 Redis；文件功能另需 MinIO 或兼容对象存储。CI 使用 MySQL 5.7/8.0 服务矩阵。MySQL 5.7 在数据库配置中开启 `explicit_defaults_for_timestamp=ON`，MySQL 8.0 使用默认设置。
 
 ```bash
 java -version

@@ -38,6 +38,8 @@ pnpm docs:check
 pnpm build:docs
 ```
 
+构建默认使用 4 GiB Node 堆内存，可通过 `XINGHUI_BUILD_NODE_OPTIONS` 调整。
+
 镜像包含管理应用、文档和发布信息。Nginx 同源代理 `/api/`，并保留 SSE 流式响应。构建发生在 Actions，服务器只拉取并启动固定镜像。
 
 ## 发布验证
