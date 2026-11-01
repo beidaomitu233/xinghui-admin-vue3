@@ -29,7 +29,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node
       - run: mkdir -p .quality
-      - run: pnpm exec vitest run --dom --maxWorkers=2 --exclude '**/session-info.test.mjs' --exclude '**/captcha-state.test.mjs' --reporter=default --reporter=json --outputFile=.quality/root.json
+      # Application tests run once below with the application's Vite adapters.
+      - run: pnpm exec vitest run --dom --maxWorkers=2 --exclude 'apps/web-ele/**' --reporter=default --reporter=json --outputFile=.quality/root.json
       - run: node scripts/verify-app-tests.mjs --root
       - run: pnpm --filter @vben/web-ele test --maxWorkers=2 --reporter=default --reporter=json --outputFile=../../.quality/web-ele.json
       - run: node scripts/verify-app-tests.mjs --self-test
