@@ -73,63 +73,121 @@ watch(
   </Page>
 </template>
 <style scoped>
+@media (max-width: 780px) {
+  .hub-chat {
+    --hub-welcome-columns: 2;
+  }
+}
+
 .hub-page {
   position: relative;
   height: 100%;
   min-height: 360px;
   overflow: hidden;
 }
+
 .hub-chat {
   height: 100%;
   min-height: 360px;
 }
+
 /* Adjust native component spacing; keep its layout, messages and interactions. */
 .hub-chat :deep([class$='-conversations-list'] [class*='-conversations-item']) {
   padding-inline-start: 0;
 }
+
 .hub-chat :deep([class$='-conversations-content']) {
   padding-inline-start: calc(8px + 1em);
 }
+
 .hub-chat :deep([class$='-welcome-prompts-prompts']) {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(var(--hub-welcome-columns, 3), minmax(0, 1fr));
   gap: 12px;
   width: min(720px, 100%);
   margin-top: 28px;
 }
+
 .hub-chat :deep([class$='-welcome-prompts-prompt']) {
   height: 56px;
 }
+
 .hub-chat :deep([class$='-welcome-prompts-prompt-icon']) {
   display: none;
 }
+
 .hub-chat :deep(.hub-answer) {
   padding-block: 12px;
 }
+
 .hub-chat :deep([data-role='user'] [class$='-bubble-content-filled']) {
   padding: 12px 20px;
   background: #edf3ff;
   border-radius: 22px;
 }
+
 .hub-chat :deep(.hub-message-actions) {
   margin-top: 8px;
 }
-:global(.dark) .hub-chat :deep([data-role='user'] [class$='-bubble-content-filled']) {
+
+:global(.dark)
+  .hub-chat
+  :deep([data-role='user'] [class$='-bubble-content-filled']) {
   background: #23324d;
 }
+
 .hub-chat :deep(.hub-task-output) {
-  max-width: 760px;
-  margin-top: 14px;
+  width: 100%;
+  max-width: 720px;
+  margin-block: 16px 8px;
 }
-.hub-chat :deep(.hub-phase-description) {
-  font-size: 13px;
+
+.hub-chat :deep(.hub-progress-card),
+.hub-chat :deep(.hub-change-card),
+.hub-chat :deep(.hub-change-summary) {
+  width: 100%;
+  box-shadow: none;
+}
+
+.hub-chat :deep(.hub-change-card),
+.hub-chat :deep(.hub-change-summary) {
+  margin-top: 12px;
+}
+
+.hub-chat :deep(.hub-change-summary .hub-change-card) {
+  margin-top: 0;
+}
+
+.hub-chat :deep(.hub-card-title) {
+  min-width: 0;
+  font-weight: 500;
+}
+
+.hub-chat :deep(.hub-card-icon) {
+  display: inline-flex;
+  flex: 0 0 28px;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  color: hsl(var(--primary));
+  background: hsl(var(--primary) / 8%);
+  border-radius: 6px;
+}
+
+.hub-chat :deep(.hub-step-count) {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
   color: hsl(var(--muted-foreground));
 }
-@media (max-width: 780px) {
-  .hub-chat :deep([class$='-welcome-prompts-prompts']) {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
+
+.hub-chat :deep(.hub-phase-description) {
+  display: block;
+  font-size: 13px;
+  line-height: 1.7;
+  color: hsl(var(--muted-foreground));
 }
+
 .hub-loading {
   position: absolute;
   inset: 48px;

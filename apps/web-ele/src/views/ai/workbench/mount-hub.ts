@@ -2,10 +2,14 @@ import type {
   IAgentScopeRuntimeWebUIOptions,
   IAgentScopeRuntimeWebUIRef,
 } from '@agentscope-ai/chat';
+import type { ThemeConfig } from 'antd';
+import type { ReactNode } from 'react';
 
 import type { HubChange } from './hub-adapter';
 
 import type { AgentPreset } from '#/api/system/ai-workbench';
+
+import { TinyColor } from '@vben/utils';
 
 import {
   AgentScopeRuntimeWebUI,
@@ -16,9 +20,11 @@ import {
 } from '@agentscope-ai/chat';
 import {
   Alert,
+  theme as antTheme,
   Button,
   Card,
   Collapse,
+  ConfigProvider,
   Descriptions,
   Flex,
   message,
@@ -27,8 +33,15 @@ import {
   Table,
   Tag,
 } from 'antd';
-import { Sparkles } from 'lucide-react';
-import { createRef, createElement as h, useEffect, useState } from 'react';
+import { ClipboardCheck, ListChecks, Sparkles } from 'lucide-react';
+import {
+  createContext,
+  createRef,
+  createElement as h,
+  useContext,
+  useEffect,
+  useState,
+} from 'react';
 import { createRoot } from 'react-dom/client';
 
 import { requestClient } from '#/api/request';
@@ -48,6 +61,75 @@ const statusLabels: Record<string, string> = {
   EXPIRED: '已过期',
   CANCELLED: '任务已停止',
 };
+function businessCardTheme(element: HTMLElement, dark: boolean): ThemeConfig {
+  const styles = getComputedStyle(element);
+  // AgentScope's theme generator accepts HEX; Element exposes computed RGB.
+  const color = (name: string) =>
+    new TinyColor(styles.getPropertyValue(name).trim()).toHexString();
+  const statusText = (name: string, amount: number) =>
+    new TinyColor(color(name)).darken(dark ? 0 : amount).toHexString();
+  const statusBackground = (name: string) =>
+    new TinyColor(color(name)).setAlpha(dark ? 0.16 : 0.08).toRgbString();
+  return {
+    inherit: false,
+    algorithm: dark ? antTheme.darkAlgorithm : antTheme.defaultAlgorithm,
+    token: {
+      colorPrimary: color('--el-color-primary'),
+      colorInfo: color('--el-color-primary'),
+      colorSuccess: statusText('--el-color-success', 26),
+      colorWarning: statusText('--el-color-warning', 30),
+      colorError: statusText('--el-color-danger', 16),
+      colorSuccessBg: statusBackground('--el-color-success'),
+      colorWarningBg: statusBackground('--el-color-warning'),
+      colorErrorBg: statusBackground('--el-color-danger'),
+      colorInfoBg: statusBackground('--el-color-primary'),
+      colorBgContainer: color('--el-bg-color-overlay'),
+      colorBgElevated: color('--el-bg-color-overlay'),
+      colorBorder: color('--el-border-color'),
+      colorBorderSecondary: color('--el-border-color-light'),
+      colorText: color('--el-text-color-primary'),
+      colorTextSecondary: color('--el-text-color-secondary'),
+      colorFillAlter: color('--el-fill-color-light'),
+      borderRadius: 6,
+      borderRadiusLG: 8,
+      fontSize: 14,
+    },
+    components: {
+      Card: {
+        headerBg: 'transparent',
+        headerFontSizeSM: 14,
+        headerHeightSM: 48,
+        headerPaddingSM: 16,
+        bodyPaddingSM: 16,
+      },
+      Collapse: {
+        headerBg: color('--el-bg-color-overlay'),
+        contentBg: color('--el-bg-color-overlay'),
+      },
+    },
+  };
+}
+const CardThemeContext = createContext<ThemeConfig>({});
+function BusinessCards({ children }: { children: ReactNode }) {
+  return h(ConfigProvider, { theme: useContext(CardThemeContext) }, children);
+}
+function changeColor(status: string) {
+  if (status === 'EXECUTED') return 'success';
+  if (status === 'PENDING') return 'warning';
+  return status === 'FAILED' ? 'error' : 'default';
+}
+function cardTitle(title: string, kind: 'change' | 'task') {
+  return h(
+    Flex,
+    { gap: 10, align: 'center', className: 'hub-card-title' },
+    h(
+      'span',
+      { className: 'hub-card-icon', 'aria-hidden': true },
+      h(kind === 'task' ? ListChecks : ClipboardCheck, { size: 16 }),
+    ),
+    h('span', null, title),
+  );
+}
 const fieldLabels: Record<string, string> = {
   username: '账号',
   nickname: '昵称',
@@ -155,6 +237,7 @@ function ChangeCard({ value, session }: { session: string; value: HubChange }) {
   const expired = now >= Date.parse(change.expiresAt);
   const state =
     change.status === 'PENDING' && expired ? 'EXPIRED' : change.status;
+  const settled = state !== 'PENDING' && state !== 'FAILED';
   const decide = async (approve: boolean) => {
     setBusy(true);
     try {
@@ -178,9 +261,22 @@ function ChangeCard({ value, session }: { session: string; value: HubChange }) {
     Card,
     {
       size: 'small',
-      title: `${operationLabels[operation] || operation} · ${String(preview.name || '业务数据')}`,
-      extra: h(Tag, null, statusLabels[state] || state),
-      style: { marginTop: 16, maxWidth: 720 },
+      className: 'hub-change-card',
+      variant: settled ? 'borderless' : 'outlined',
+      styles: settled ? { body: { padding: 0 } } : undefined,
+      title: settled
+        ? undefined
+        : cardTitle(
+            `${operationLabels[operation] || operation} · ${String(preview.name || '业务数据')}`,
+            'change',
+          ),
+      extra: settled
+        ? undefined
+        : h(
+            Tag,
+            { color: changeColor(state), bordered: false },
+            statusLabels[state] || state,
+          ),
     },
     h(Descriptions, {
       size: 'small',
@@ -254,12 +350,16 @@ function ChangeCard({ value, session }: { session: string; value: HubChange }) {
     ? details
     : h(Collapse, {
         size: 'small',
-        style: { marginTop: 12, maxWidth: 720 },
+        className: 'hub-change-summary',
         items: [
           {
             key: change.id,
             label: `${operationLabels[operation] || operation} · ${String(preview.name || '业务数据')}`,
-            extra: h(Tag, null, statusLabels[state] || state),
+            extra: h(
+              Tag,
+              { color: changeColor(state), bordered: false },
+              statusLabels[state] || state,
+            ),
             children: details,
           },
         ],
@@ -334,8 +434,11 @@ function TaskOutput({
   else if (planOnly)
     phaseDescription = '可继续执行计划，具体变更仍会逐项确认。';
   let color = 'default';
-  if (waiting) color = 'gold';
+  if (waiting) color = 'warning';
   else if (running) color = 'processing';
+  else if (usage.runStatus === 'FAILED') color = 'error';
+  else if (usage.runStatus === 'COMPLETED')
+    color = planOnly ? 'processing' : 'success';
   const completed = steps.filter((step) => step.status === 'COMPLETED').length;
   return h(
     'section',
@@ -344,13 +447,20 @@ function TaskOutput({
       Card,
       {
         size: 'small',
-        title: h(
+        className: 'hub-progress-card',
+        title: cardTitle('任务进度', 'task'),
+        extra: h(
           Flex,
           { gap: 8, align: 'center' },
-          '任务进度',
-          h(Tag, { color }, phase),
+          steps.length > 0
+            ? h(
+                'span',
+                { className: 'hub-step-count' },
+                `${completed}/${steps.length}`,
+              )
+            : null,
+          h(Tag, { color, bordered: false }, phase),
         ),
-        extra: steps.length > 0 ? `${completed}/${steps.length}` : null,
       },
       steps.length > 0
         ? h(Steps, {
@@ -411,6 +521,7 @@ export async function mountHub(
   const adapter = new HubAdapter();
   const root = createRoot(element);
   const ui = createRef<IAgentScopeRuntimeWebUIRef>();
+  let cardTheme = businessCardTheme(element, dark);
   let choices: AgentPreset[] = [];
   try {
     choices = await listAgentPresets();
@@ -462,9 +573,9 @@ export async function mountHub(
     theme: {
       locale: 'cn',
       darkMode: dark,
-      colorPrimary: '#2563eb',
-      colorBgBase: dark ? '#171717' : '#ffffff',
-      background: dark ? '#171717' : '#ffffff',
+      colorPrimary: cardTheme.token?.colorPrimary,
+      colorBgBase: cardTheme.token?.colorBgContainer,
+      background: cardTheme.token?.colorBgContainer,
       leftHeader: { logo: '', title: '' },
       rightHeader: h(Controls),
       typography: { baseFontSize: 15, baseLineHeight: 1.75 },
@@ -554,35 +665,50 @@ export async function mountHub(
         {
           id: 'business-result',
           render: ({ data }) =>
-            h(TaskOutput, {
-              data,
-              isLatest: () =>
-                adapter.isLatestRun(String(data.usage?.session || ''), data.id),
-              onExecute: () => {
-                setRunMode('EXECUTE');
-                ui.current?.input.submit({ query: '按刚才的计划继续执行。' });
-              },
-            }),
+            h(
+              BusinessCards,
+              null,
+              h(TaskOutput, {
+                data,
+                isLatest: () =>
+                  adapter.isLatestRun(
+                    String(data.usage?.session || ''),
+                    data.id,
+                  ),
+                onExecute: () => {
+                  setRunMode('EXECUTE');
+                  ui.current?.input.submit({ query: '按刚才的计划继续执行。' });
+                },
+              }),
+            ),
         },
       ],
     },
   };
-  root.render(h(AgentScopeRuntimeWebUI, { options, ref: ui }));
+  const render = () =>
+    root.render(
+      h(
+        CardThemeContext.Provider,
+        { value: cardTheme },
+        h(AgentScopeRuntimeWebUI, { options: { ...options }, ref: ui }),
+      ),
+    );
+  render();
   return {
     dispose: () => {
       adapter.close();
       root.unmount();
     },
     setTheme: (darkMode: boolean) => {
+      cardTheme = businessCardTheme(element, darkMode);
       options.theme = {
         ...options.theme,
         darkMode,
-        colorBgBase: darkMode ? '#171717' : '#ffffff',
-        background: darkMode ? '#171717' : '#ffffff',
+        colorPrimary: cardTheme.token?.colorPrimary,
+        colorBgBase: cardTheme.token?.colorBgContainer,
+        background: cardTheme.token?.colorBgContainer,
       };
-      root.render(
-        h(AgentScopeRuntimeWebUI, { options: { ...options }, ref: ui }),
-      );
+      render();
     },
   };
 }
