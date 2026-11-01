@@ -85,6 +85,20 @@ afterEach(() => {
 });
 
 describe('official chat protocol adapter', () => {
+  it('rejects a lost or invalid last question before creating a task and never replays an older user request', async () => {
+    const value = adapter();
+    for (const invalid of [
+      [],
+      message('  '),
+      [
+        ...message('旧的修改任务'),
+        { role: 'assistant', content: [{ type: 'text', text: '已完成' }] },
+      ],
+    ])
+      await expect(value.send(invalid)).rejects.toThrow('任务内容');
+    expect(api.submit).not.toHaveBeenCalled();
+    expect(api.create).not.toHaveBeenCalled();
+  });
   it('loads persisted turns with their own outcomes without invoking a model again', async () => {
     api.events.mockResolvedValue([
       event(1, 'run-1', 'USER_MESSAGE', { text: '看看商品' }),
@@ -189,6 +203,7 @@ describe('official chat protocol adapter', () => {
           content: [
             { type: 'image', image_url: 'https://untrusted.invalid/photo.png' },
           ],
+          role: 'user',
         },
       ]),
     ).rejects.toThrow('图片不属于当前对话');
@@ -210,7 +225,10 @@ describe('official chat protocol adapter', () => {
     value.mode = 'PLAN';
     await value.upload(new File(['QA_IMAGE'], 'qa.png', { type: 'image/png' }));
     const response = await value.send([
-      { content: [{ type: 'image', image_url: 'blob:qa-photo' }] },
+      {
+        role: 'user',
+        content: [{ type: 'image', image_url: 'blob:qa-photo' }],
+      },
     ]);
     await response.text();
     expect(api.submit).toHaveBeenCalledWith(

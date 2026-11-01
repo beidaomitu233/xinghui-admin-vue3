@@ -38,6 +38,7 @@ import { HubAdapter } from './hub-adapter';
 import { HubRequestActions } from './hub-message-actions';
 import { recommendations } from './hub-recommendations';
 import { HubSessions } from './hub-sessions';
+import { submissionFailureResponse } from './hub-submission-error';
 
 const statusLabels: Record<string, string> = {
   EXECUTED: '已执行',
@@ -483,7 +484,14 @@ export async function mountHub(
       renderList: h(HubSessions, { adapter }),
     },
     api: {
-      fetch: ({ input, signal }) => adapter.send(input, signal),
+      fetch: async ({ input, signal }) => {
+        try {
+          return await adapter.send(input, signal);
+        } catch (error) {
+          if (signal?.aborted) throw error;
+          return submissionFailureResponse(error);
+        }
+      },
       cancel: ({ session_id }) => {
         void adapter.cancel(session_id);
       },

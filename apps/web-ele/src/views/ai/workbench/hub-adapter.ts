@@ -24,6 +24,7 @@ import {
 } from '#/api/system/ai-workbench';
 
 import { applyEvents, emptyHistory, isRunning } from './history';
+import { HubSubmissionError } from './hub-submission-error';
 import { prepareImage } from './prepare-image';
 
 export interface HubChange {
@@ -219,15 +220,26 @@ export class HubAdapter {
   }
   async send(input: unknown[], signal?: AbortSignal): Promise<Response> {
     signal?.throwIfAborted();
-    if (!this.scene) throw new Error('请先在 AI 配置中设置中台提示词和模型。');
+    if (!this.scene) throw new HubSubmissionError('AGENT_PROMPT_UNAVAILABLE');
     const last = input.at(-1) as
       | undefined
-      | { content?: { image_url?: string; text?: string; type: string }[] };
+      | {
+          content?: { image_url?: string; text?: string; type: string }[];
+          role?: string;
+        };
     const text =
       last?.content
         ?.filter((c) => c.type === 'text')
         .map((c) => c.text || '')
         .join('\n') || '';
+    // Never fall back to an older question: it might repeat a business write.
+    if (
+      !last ||
+      last.role !== 'user' ||
+      text.length > 32_768 ||
+      (!text.trim() && !last.content?.some((c) => c.type === 'image'))
+    )
+      throw new HubSubmissionError('INVALID_MESSAGE');
     let session = this.current;
     if (!session) {
       const created = await createAgentSession(text.slice(0, 160));

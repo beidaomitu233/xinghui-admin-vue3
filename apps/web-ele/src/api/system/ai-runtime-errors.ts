@@ -1,7 +1,7 @@
 const messages: Record<string, string> = {
   AGENT_UNAVAILABLE: 'AI工作台暂不可用，请稍后重试。',
   AGENT_EXECUTION_FAILED: '任务执行失败，可查看已有结果后继续。',
-  AGENT_PROMPT_UNAVAILABLE: 'Agent提示词不可用，请检查提示词配置。',
+  AGENT_PROMPT_UNAVAILABLE: '中台配置不可用，请到 AI 配置检查。',
   RUN_BUSY: '当前会话仍有任务正在执行。',
   RUN_STOPPED: '任务已停止。',
   QUEUE_FULL: '任务队列已满，请稍后重试。',
@@ -13,7 +13,8 @@ const messages: Record<string, string> = {
   IMAGE_CONTEXT_LIMIT: '历史图片过多，请新建会话继续。',
   STATE_LIMIT: '会话数据过大，请新建会话。',
   IDEMPOTENCY_CONFLICT: '请求标识冲突，请刷新查看已有任务。',
-  INVALID_MESSAGE: '请选择Agent提示词并输入任务内容。',
+  INVALID_MESSAGE:
+    '任务内容为空或超出长度限制，请输入最多32768个字符的任务内容。',
   INVALID_TITLE: '会话名称需为1至160个字符。',
   INVALID_REQUEST_ID: '请求标识无效，请刷新后重试。',
   INVALID_ID: '会话或任务标识无效。',
