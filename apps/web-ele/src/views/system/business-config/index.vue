@@ -590,6 +590,7 @@ onMounted(async () => {
   grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
   gap: 28px;
 }
+
 @media (max-width: 1100px) {
   .business-config-layout {
     grid-template-columns: minmax(0, 1fr);

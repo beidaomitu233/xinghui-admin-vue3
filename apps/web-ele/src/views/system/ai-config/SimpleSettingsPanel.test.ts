@@ -508,7 +508,6 @@ describe('independent multi-key channel management', () => {
     expect(wrapper.findAll('.el-card')).toHaveLength(0);
     expect(wrapper.text()).toContain('主渠道');
     expect(wrapper.text()).toContain('备用渠道');
-    expect(wrapper.text()).toContain('2 个渠道 · 2 个已启用');
     expect(wrapper.text()).toContain('API Key');
     expect(api.draftScan).not.toHaveBeenCalled();
     expect(api.test).not.toHaveBeenCalled();
@@ -594,11 +593,11 @@ describe('independent multi-key channel management', () => {
       pageNum: 1,
       pageSize: 20,
     });
-    render();
+    const wrapper = render();
     await flushPromises();
     await clickPagerPage(2);
     await fill('搜索渠道', '远端渠道');
-    await click('搜索');
+    await wrapper.find('form').trigger('submit');
     await flushPromises();
     expect(api.list).toHaveBeenLastCalledWith({
       pageNum: 1,

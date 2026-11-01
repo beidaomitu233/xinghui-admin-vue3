@@ -271,27 +271,31 @@ function move(index: number, offset: number) {
   width: 100%;
   min-width: 0;
 }
+
 .model-drag-handle {
   display: inline-flex;
-  cursor: grab;
   color: hsl(var(--muted-foreground));
+  cursor: grab;
 }
+
 .model-drag-handle:active {
   cursor: grabbing;
 }
+
 .model-selection {
   display: flex;
-  align-items: center;
   gap: 12px;
+  align-items: center;
   width: 100%;
   min-width: 0;
 }
+
 .model-selection-summary {
   flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
   font-size: 13px;
+  white-space: nowrap;
 }
 </style>

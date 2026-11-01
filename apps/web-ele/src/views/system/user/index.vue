@@ -90,6 +90,13 @@ const columns = computed<NonNullable<VxeTableGridOptions<UserInfo>['columns']>>(
   () => [
     { field: 'username', title: '账号', minWidth: 136, sortable: true },
     { field: 'nickname', title: '昵称', minWidth: 110, sortable: true },
+    {
+      field: 'roleNames',
+      title: '角色',
+      minWidth: 180,
+      formatter: ({ cellValue }) =>
+        (cellValue as string[] | undefined)?.join('、') || '未分配',
+    },
     { field: 'mobile', title: '手机号', minWidth: 125, sortable: true },
     { field: 'email', title: '邮箱', minWidth: 170, sortable: true },
     {

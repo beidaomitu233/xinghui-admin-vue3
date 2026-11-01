@@ -1,14 +1,22 @@
 <script setup lang="ts">
 import type { CallLogDetail } from '#/api/system/ai-call-log';
 
-import { computed } from 'vue';
+import { computed, ref, watch } from 'vue';
+
+import { useAccessStore } from '@vben/stores';
 
 import {
+  ElButton,
   ElCollapse,
   ElCollapseItem,
   ElDescriptions,
   ElDescriptionsItem,
+  ElInput,
+  ElMessage,
+  ElRate,
 } from 'element-plus';
+
+import { getAiFeedback, rateAiOutput } from '#/api/system/ai-statistics';
 
 import {
   costValue,
@@ -23,6 +31,50 @@ import {
 
 const props = defineProps<{ detail: CallLogDetail }>();
 const call = computed(() => props.detail.call);
+const access = useAccessStore();
+const rating = ref(0);
+const comment = ref('');
+const savingRating = ref(false);
+const ratingFilters = () => ({
+  scope: access.accessCodes.includes('ai:request:audit')
+    ? ('AUDIT' as const)
+    : ('OWN' as const),
+  from: new Date(new Date(call.value.startedAt).getTime() - 1000).toISOString(),
+  to: new Date(
+    new Date(call.value.startedAt).getTime() + 86_400_000,
+  ).toISOString(),
+});
+watch(
+  () => props.detail.call.callId,
+  async (id) => {
+    rating.value = 0;
+    comment.value = '';
+    if (!props.detail.response) return;
+    try {
+      const value = await getAiFeedback(id, ratingFilters());
+      if (call.value.callId === id) {
+        rating.value = Number(value.score ?? 0);
+        comment.value = value.comment ?? '';
+      }
+    } catch {
+      /* Detailed output remains available when feedback is unavailable. */
+    }
+  },
+  { immediate: true },
+);
+async function saveRating() {
+  savingRating.value = true;
+  try {
+    await rateAiOutput(
+      call.value.callId,
+      { score: rating.value, comment: comment.value },
+      ratingFilters(),
+    );
+    ElMessage.success('评价已保存');
+  } finally {
+    savingRating.value = false;
+  }
+}
 const transmission = computed(() => {
   if (call.value.streaming === null) return '未采集';
   return call.value.streaming ? '流式' : '非流式';
@@ -178,6 +230,30 @@ const diagnostics = computed(() => [
         </ElDescriptions>
       </ElCollapseItem>
     </ElCollapse>
+    <section v-if="response" class="mt-5 border-t pt-4" aria-label="输出评价">
+      <h3>输出评价</h3>
+      <ElRate
+        v-model="rating"
+        show-text
+        :texts="['不可用', '较差', '一般', '良好', '很好']"
+      />
+      <ElInput
+        v-model="comment"
+        type="textarea"
+        :rows="2"
+        :maxlength="1000"
+        placeholder="准确性、完整性或需要改进的地方（可选）"
+        class="my-3"
+      />
+      <ElButton
+        type="primary"
+        :disabled="rating === 0"
+        :loading="savingRating"
+        @click="saveRating"
+      >
+        保存评价
+      </ElButton>
+    </section>
   </article>
 </template>
 

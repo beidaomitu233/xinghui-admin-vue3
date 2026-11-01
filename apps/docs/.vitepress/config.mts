@@ -14,7 +14,7 @@ const base = resolveDocsBase();
 export default defineConfig({
   lang: 'zh-CN',
   title: partial ? '星辉文档 · 部分章节' : '星辉文档',
-  description: '星辉后台管理系统：使用、开发、组件与部署指南',
+  description: '星辉 2.0：AI 应用、Agent 业务工具与后台开发指南',
   base,
   srcDir: 'content',
   cleanUrls: false,
@@ -87,7 +87,7 @@ export default defineConfig({
     footer: {
       message: partial
         ? '开发检查：仅本站点分支章节，完整内容待组合。'
-        : '开发候选文档。功能与验证边界以各章节为准。',
+        : '星辉 2.0 · AI 应用与业务开发框架',
       copyright: '保留 Vue Vben Admin、VitePress 及其他上游归属。',
     },
   },

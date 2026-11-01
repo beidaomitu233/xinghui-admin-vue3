@@ -151,6 +151,7 @@ const panes = [
 .hub-workspace.is-agent-settings {
   flex-direction: column;
 }
+
 .is-agent-settings .hub-sidebar {
   flex: 0 0 auto;
   padding: 12px 24px 0;

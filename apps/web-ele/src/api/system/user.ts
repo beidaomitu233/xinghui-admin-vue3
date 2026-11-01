@@ -9,6 +9,7 @@ export interface UserInfo {
   avatar: string;
   status: number;
   createTime: string;
+  roleNames?: string[];
 }
 
 export interface UserForm extends Omit<UserInfo, 'createTime' | 'userId'> {

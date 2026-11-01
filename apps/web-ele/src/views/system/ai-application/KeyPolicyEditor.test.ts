@@ -16,9 +16,16 @@ vi.mock('#/api/system/ai-application', () => ({
 vi.mock('element-plus', () => ({
   ElMessage: { warning: vi.fn() },
   ...Object.fromEntries(
-    ['ElAlert', 'ElButton', 'ElForm', 'ElFormItem', 'ElOption', 'ElSelect'].map(
-      (name) => [name, { name, render: () => null }],
-    ),
+    [
+      'ElAlert',
+      'ElButton',
+      'ElCollapse',
+      'ElCollapseItem',
+      'ElForm',
+      'ElFormItem',
+      'ElOption',
+      'ElSelect',
+    ].map((name) => [name, { name, render: () => null }]),
   ),
 }));
 // 单测端口：捕获原生表单 schema，直接驱动字段 onChange；真实表单交互在 Chrome 验证。
@@ -86,6 +93,8 @@ function render(value = binding()) {
     global: {
       stubs: {
         ElAlert: Box,
+        ElCollapse: Box,
+        ElCollapseItem: Box,
         ElForm: Box,
         ElFormItem: Box,
         ElSelect: Select,

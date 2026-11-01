@@ -47,7 +47,7 @@ vi.mock('#/adapter/vxe-table', async (importOriginal) => {
   return {
     ...actual,
     useVbenVxeGrid: (options: GridQuery) => {
-      if (options.tableTitle === '执行记录') state.options = options;
+      state.options = options;
       return [
         { template: '<div />' },
         {

@@ -7,8 +7,8 @@ import MonitorWorkspace from './MonitorWorkspace.vue';
   <Page
     auto-content-height
     header-class="flex-wrap gap-3"
-    title="调用监控"
-    description="查看对话记录与模型调用情况"
+    title="AI统计"
+    description="分析模型成本、速度、使用情况与输出反馈"
   >
     <MonitorWorkspace />
   </Page>

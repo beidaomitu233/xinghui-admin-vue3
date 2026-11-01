@@ -6,6 +6,7 @@ import { useAccessStore } from '@vben/stores';
 
 import { ElCard, ElTabPane, ElTabs } from 'element-plus';
 
+import AiStatistics from './AiStatistics.vue';
 import CallLogPanel from './CallLogPanel.vue';
 import AgentConversationHistory from './conversations/AgentConversationHistory.vue';
 
@@ -22,7 +23,13 @@ onMounted(() => {
   )
     void router.replace('/ai/configurations');
 });
-const tab = ref('conversations');
+const tab = ref(
+  route.query.conversation ||
+    route.query.session ||
+    !access.accessCodes.includes('ai:request:list')
+    ? 'conversations'
+    : 'statistics',
+);
 const logsVisited = ref(false);
 </script>
 <template>
@@ -37,10 +44,14 @@ const logsVisited = ref(false);
           }
         "
       >
+        <ElTabPane label="使用统计" name="statistics" />
         <ElTabPane label="对话记录" name="conversations" />
         <ElTabPane label="请求日志" name="logs" />
       </ElTabs>
     </ElCard>
+    <div v-if="tab === 'statistics'" class="monitor-pane">
+      <AiStatistics :active="tab === 'statistics'" />
+    </div>
     <div
       v-show="tab === 'conversations'"
       class="monitor-pane monitor-conversations"

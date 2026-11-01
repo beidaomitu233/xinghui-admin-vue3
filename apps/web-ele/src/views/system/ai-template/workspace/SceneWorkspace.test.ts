@@ -211,7 +211,7 @@ describe('scene workspace actual editing and autosave', () => {
     const wrapper = await open();
     expect(wrapper.getComponent(PromptEditor).props('agent')).toBe(true);
     expect(wrapper.text()).toContain('Agent 系统提示词');
-    expect(wrapper.findComponent(DataReferenceTable).exists()).toBe(true);
+    expect(wrapper.findComponent(DataReferenceTable).exists()).toBe(false);
     expect(
       wrapper.findAll('button').some((entry) => entry.text() === '试运行'),
     ).toBe(false);

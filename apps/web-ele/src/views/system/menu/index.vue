@@ -85,6 +85,15 @@ const [Grid, gridApi] = useVbenVxeGrid<MenuInfo>({
         sortable: true,
       },
       { field: 'icon', title: '图标', width: 120 },
+      {
+        field: 'menuType',
+        title: '类型',
+        width: 110,
+        formatter: ({ cellValue }: { cellValue: string }) =>
+          ({ M: '目录', C: '页面', G: '业务模块', F: '操作权限' })[
+            cellValue as 'C' | 'F' | 'G' | 'M'
+          ] || cellValue,
+      },
       { field: 'orderNum', title: '显示顺序', width: 100, sortable: true },
       { field: 'perms', title: '权限标识', minWidth: 180, sortable: true },
       { field: 'component', title: '组件路径', minWidth: 180, sortable: true },

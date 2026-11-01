@@ -4,7 +4,7 @@ export const sections = [
     title: '开始使用',
     items: [
       ['overview/introduction', '项目简介'],
-      ['overview/capabilities', '能力与边界'],
+      ['overview/capabilities', '功能概览'],
       ['overview/reading-path', '阅读路径'],
       ['guide/quickstart', '快速开始'],
       ['guide/environment', '环境准备'],
@@ -14,7 +14,16 @@ export const sections = [
     ],
   },
   {
-    title: '功能手册',
+    title: 'AI 应用',
+    items: [
+      ['features/ai', '模型与提示词'],
+      ['ai/workbench', 'AI 中台'],
+      ['ai/extensions', 'Skill、MCP 与知识库'],
+      ['ai/statistics', 'AI 统计'],
+    ],
+  },
+  {
+    title: '平台功能',
     items: [
       ['features/accounts', '用户与账号'],
       ['features/authorization', '角色与授权'],
@@ -26,7 +35,6 @@ export const sections = [
       ['features/bulk', '用户导入导出'],
       ['features/scheduler', '定时任务与日志'],
       ['features/notifications', '公告与个人通知'],
-      ['features/ai', 'AI对话、配置与数据库引用'],
       ['features/lowcode', '低代码表单'],
     ],
   },
@@ -40,7 +48,7 @@ export const sections = [
       ['development/tenant-platform', '租户与平台'],
       ['development/scheduler-handler', '任务处理器'],
       ['development/notification-event', '通知事件'],
-      ['development/ai-extension', 'AI配置、对话与数据扩展'],
+      ['development/ai-extension', '开发 Agent 业务工具'],
       ['development/lowcode-extension', '表单扩展'],
       ['reference/api-conventions', 'API约定'],
       ['reference/api-catalog', 'API目录'],
@@ -74,7 +82,7 @@ export const sections = [
   {
     title: '版本与参与',
     items: [
-      ['releases/versions', '候选版本与组合'],
+      ['releases/versions', '版本历程'],
       ['releases/changelog', '变更记录'],
       ['releases/upgrade', '升级说明'],
       ['contributing/gitflow', '双仓协作'],
@@ -97,9 +105,11 @@ export const pageHelp = {
   '/system/config': 'features/parameters',
   '/system/business-config': 'features/business-config',
   '/infra/file': 'features/files',
+  '/ai/workbench': 'ai/workbench',
+  '/ai/configurations': 'features/ai',
   '/ai/model': 'features/ai',
   '/ai/prompts': 'features/ai',
-  '/ai/requests': 'features/ai',
+  '/ai/requests': 'ai/statistics',
   '/ai/templates': 'features/ai',
   '/ai/configs': 'features/ai',
   '/ai/apps': 'features/ai',

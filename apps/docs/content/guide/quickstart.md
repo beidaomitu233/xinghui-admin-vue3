@@ -7,11 +7,11 @@
 准备已获授权的前后端仓库地址，分别检出配套版本；本项目不以 Vben 上游仓库作为自己的后端。当前文档对应的精确提交见[版本组合](../releases/versions.md)。以下目录名是教程约定，可自行调整。
 
 ```bash
-git clone 'https://git.example.com/your-team/backend.git' backend
-git clone 'https://git.example.com/your-team/frontend.git' frontend
+git clone 'https://github.com/beidaomitu233/xinghui-admin-backend.git' backend
+git clone 'https://github.com/beidaomitu233/xinghui-admin-vue3.git' frontend
 ```
 
-将两个示例地址换成自己的真实地址。安装 JDK 17、Maven 3.9.x、Node.js 20.19 或更高的兼容版本、pnpm 10.28.1、MySQL 和 Redis；核对命令及数据库版本边界见[环境要求](./environment.md)。
+安装 JDK 17、Maven 3.9.x、Node.js 20.19 或更高的兼容版本、pnpm 10.28.1、MySQL 和 Redis；核对命令及数据库版本边界见[环境要求](./environment.md)。
 
 ## 建立独立开发数据库
 
@@ -86,7 +86,7 @@ $env:VITE_DEV_API_TARGET='http://localhost:7799'
 pnpm --filter @vben/web-ele dev
 ```
 
-完整文档仓库组合提供以下命令；仅检出应用基线、没有 `@xinghui/docs` 包时，需要先取得文档中心配套版本：
+文档命令：
 
 ```bash
 pnpm --filter @xinghui/docs dev
@@ -99,7 +99,3 @@ pnpm --filter @xinghui/docs preview
 ## 完成与排错
 
 按[首次登录](./first-login.md)立即处理初始化账号，再按[启动验证](./verification.md)核对本人信息、菜单与同源请求。启动缺少变量、Redis 认证失败或 Flyway 校验失败时，先读[故障排查](../operations/troubleshooting.md)，不要关闭迁移校验让应用暂时跑起来。
-
-## 源码依据
-
-后端：`pom.xml`、`system-admin/src/main/resources/application.yml`、`application-datasource.yml`、`db/migration/V1__baseline_schema.sql`、`V2__baseline_data.sql`。前端：`.node-version`、`package.json`、`apps/web-ele/.env.development`、`apps/web-ele/vite.config.mts`。本文命令是部署教程；不会在读者的环境自动执行。

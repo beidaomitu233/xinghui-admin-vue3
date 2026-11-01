@@ -20,7 +20,12 @@ overrides:
   pinia: 'catalog:'
   vue: 'catalog:'
 
+patchedDependencies:
+  '@agentscope-ai/chat@1.1.72': patches/@agentscope-ai__chat@1.1.72.patch
 catalog:
+  '@agentscope-ai/chat': 1.1.72
+  '@agentscope-ai/design': 1.0.23
+  '@ant-design/icons': 5.6.1
   '@ast-grep/napi': ^0.39.9
   '@changesets/changelog-github': ^0.5.2
   '@changesets/cli': ^2.29.8
@@ -56,6 +61,8 @@ catalog:
   '@types/postcss-import': ^14.0.3
   '@types/qrcode': ^1.5.6
   '@types/qs': ^6.14.0
+  '@types/react': 18.3.27
+  '@types/react-dom': 18.3.7
   '@types/sortablejs': ^1.15.9
   '@typescript-eslint/eslint-plugin': ^8.53.1
   '@typescript-eslint/parser': ^8.53.1
@@ -67,6 +74,7 @@ catalog:
   '@vueuse/core': ^14.1.0
   '@vueuse/integrations': ^14.1.0
   '@vueuse/motion': ^3.0.3
+  antd: 5.29.1
   archiver: ^7.0.1
   autoprefixer: ^10.4.23
   axios: ^1.13.2
@@ -87,6 +95,7 @@ catalog:
   dayjs: ^1.11.19
   defu: ^6.1.4
   depcheck: ^1.4.7
+  dompurify: 3.4.17
   dotenv: ^16.6.1
   echarts: ^6.0.0
   element-plus: ^2.13.1
@@ -119,12 +128,15 @@ catalog:
   html-minifier-terser: ^7.2.0
   is-ci: ^4.1.0
   jiti: ^2.6.1
+  jsdom: 27.4.0
   json-bigint: ^1.0.0
   jsonc-eslint-parser: ^2.4.2
   jsonwebtoken: ^9.0.3
   lefthook: ^2.0.15
   lodash.clonedeep: ^4.5.0
+  lucide-react: 0.562.0
   lucide-vue-next: ^0.553.0
+  marked: 18.1.1
   minisearch: 7.1.2
   nitropack: ^2.13.1
   nprogress: ^0.2.0
@@ -144,6 +156,8 @@ catalog:
   publint: ^0.3.17
   qrcode: ^1.5.4
   qs: ^6.14.1
+  react: 18.3.1
+  react-dom: 18.3.1
   reka-ui: ^2.7.0
   resolve.exports: ^2.0.3
   rimraf: ^6.1.2
@@ -194,6 +208,3 @@ catalog:
   yaml-eslint-parser: ^1.3.2
   zod: ^3.25.76
   zod-defaults: 0.1.3
-
-patchedDependencies:
-  '@agentscope-ai/chat@1.1.72': patches/@agentscope-ai__chat@1.1.72.patch

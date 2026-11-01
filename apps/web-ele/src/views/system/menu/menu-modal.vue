@@ -85,7 +85,8 @@ const [Form, formApi] = useVbenForm({
         options: [
           { label: '目录', value: 'M' },
           { label: '菜单', value: 'C' },
-          { label: '按钮', value: 'F' },
+          { label: '业务模块', value: 'G' },
+          { label: '操作权限', value: 'F' },
         ],
       },
     },
@@ -114,7 +115,7 @@ const [Form, formApi] = useVbenForm({
       defaultValue: '',
       dependencies: {
         triggerFields: ['menuType'],
-        if: (values) => values.menuType !== 'F',
+        if: (values) => ['C', 'M'].includes(values.menuType),
         rules: () => z.string().min(1, '请输入路由地址').max(200),
       },
     },
@@ -154,7 +155,7 @@ const [Form, formApi] = useVbenForm({
       rules: z.string().max(100).optional(),
       dependencies: {
         triggerFields: ['menuType'],
-        if: (values) => values.menuType !== 'F',
+        if: (values) => ['C', 'M'].includes(values.menuType),
       },
     },
     {
@@ -170,7 +171,7 @@ const [Form, formApi] = useVbenForm({
       },
       dependencies: {
         triggerFields: ['menuType'],
-        if: (values) => values.menuType !== 'F',
+        if: (values) => ['C', 'M'].includes(values.menuType),
       },
     },
     {
@@ -257,6 +258,11 @@ const [Modal, modalApi] = useVbenModal({
             ? String(values.parentId ?? '0') || '0'
             : baseline.parentId,
       };
+      if (payload.menuType === 'G' || payload.menuType === 'F') {
+        payload.path = '';
+        payload.component = '';
+        payload.isFrame = 1;
+      }
       await (baseline.menuId ? updateMenu(payload) : addMenu(payload));
       saved = true;
       ElMessage.success('保存成功');

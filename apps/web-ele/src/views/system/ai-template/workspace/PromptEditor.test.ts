@@ -41,7 +41,7 @@ beforeAll(async () => {
 });
 
 describe('one editable prompt document', () => {
-  it('keeps data references available when editing an Agent prompt', async () => {
+  it('edits Agent instructions while tools provide its business context', async () => {
     const wrapper = mount(PromptEditor, {
       props: {
         value: {
@@ -57,7 +57,7 @@ describe('one editable prompt document', () => {
       slots: { data: '<div data-testid="data-picker">数据引用</div>' },
     });
     await flushPromises();
-    expect(wrapper.find('[data-testid="data-picker"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="data-picker"]').exists()).toBe(false);
     expect(wrapper.text()).toContain('Agent 系统提示词');
     expect(wrapper.get('textarea').attributes('placeholder')).toContain(
       'AI 工作台',

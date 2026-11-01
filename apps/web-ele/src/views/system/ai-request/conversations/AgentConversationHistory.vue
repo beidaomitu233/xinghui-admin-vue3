@@ -333,51 +333,60 @@ onBeforeUnmount(() => {
   height: 100%;
   min-height: 0;
 }
+
 .history-layout {
   display: grid;
+  flex: 1;
   grid-template-columns: 240px minmax(0, 1fr);
   gap: 16px;
-  flex: 1;
   min-height: 0;
 }
+
 .history-sessions {
   background: hsl(var(--card));
   border-radius: 6px;
 }
+
 .history-thread {
   display: flex;
   flex-direction: column;
-  min-height: 0;
   min-width: 0;
+  min-height: 0;
   background: hsl(var(--card));
   border-radius: 6px;
 }
+
 .history-messages {
   max-width: 900px;
-  margin: auto;
   padding: 24px;
+  margin: auto;
 }
+
 .history-message {
   margin-bottom: 24px;
 }
+
 .history-message h3 {
-  font-size: 12px;
   margin-bottom: 8px;
+  font-size: 12px;
   color: hsl(var(--muted-foreground));
 }
+
 .user-message {
   padding: 16px;
   background: hsl(var(--muted) / 40%);
   border-radius: 6px;
 }
+
 .tool-record {
   margin: 8px 0;
   font-size: 12px;
 }
+
 @media (max-width: 767px) {
   .history-layout {
-    grid-template-columns: minmax(0, 1fr);
     grid-template-rows: 140px minmax(300px, 1fr);
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 </style>

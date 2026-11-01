@@ -425,19 +425,21 @@ async function verifyDownload() {
   padding-left: 28px;
   border-left: 1px solid hsl(var(--border));
 }
+
 .authorization-preview {
   display: flex;
-  min-height: 270px;
   align-items: center;
   justify-content: center;
+  min-height: 270px;
   background: hsl(var(--muted) / 35%);
   border-radius: 8px;
 }
+
 @media (max-width: 1100px) {
   .business-test-panel {
     padding: 24px 0 0;
-    border-left: 0;
     border-top: 1px solid hsl(var(--border));
+    border-left: 0;
   }
 }
 </style>

@@ -11,16 +11,21 @@ import {
   ElEmpty,
   ElTable,
   ElTableColumn,
+  ElTabPane,
+  ElTabs,
   ElTag,
   ElTooltip,
 } from 'element-plus';
 
 import { listAgentCapabilities } from '#/api/system/ai-workbench';
 
+import AgentExtensions from './AgentExtensions.vue';
+
 const access = useAccessStore();
 const rows = ref<AgentCapability[]>([]);
 const loading = ref(false);
 const error = ref('');
+const tab = ref('business');
 let generation = 0;
 let alive = true;
 const allowed = computed(
@@ -79,48 +84,63 @@ onBeforeUnmount(() => {
 <template>
   <section aria-label="中台工具列表" class="mt-6 border-t pt-6">
     <h3 class="mb-2 text-sm font-medium">工具列表</h3>
-    <p class="mb-4 text-sm text-muted-foreground">
-      按当前账号权限实时读取。查询直接返回结果；新增、修改、删除和执行操作须先预览并确认。业务表单的记录操作以已发布表单及具体数据权限为准。
-    </p>
-    <ElEmpty
-      v-if="!allowed"
-      :image-size="60"
-      description="当前账号无中台调用权限"
-    />
-    <ElAlert v-else-if="error" :title="error" type="error" :closable="false">
-      <ElButton link @click="load">重试</ElButton>
-    </ElAlert>
-    <ElTable
-      v-else
-      v-loading="loading"
-      :data="rows"
-      row-key="resource"
-      max-height="460"
-      empty-text="当前账号暂无可用业务工具"
-    >
-      <ElTableColumn prop="name" label="业务能力" min-width="170" sortable>
-        <template #default="{ row }">
-          <ElTooltip
-            :content="row.description || '当前账号授权范围'"
-            placement="top"
-          >
-            <span>{{ row.name }}</span>
-          </ElTooltip>
-        </template>
-      </ElTableColumn>
-      <ElTableColumn label="可查询" min-width="100">
-        <template #default="{ row }">{{ operations(row, false) }}</template>
-      </ElTableColumn>
-      <ElTableColumn label="可执行" min-width="220">
-        <template #default="{ row }">{{ operations(row, true) }}</template>
-      </ElTableColumn>
-      <ElTableColumn label="执行方式" width="120">
-        <template #default="{ row }">
-          <ElTag :type="row.readOnly ? 'info' : 'warning'">
-            {{ row.readOnly ? '只读' : '写入需确认' }}
-          </ElTag>
-        </template>
-      </ElTableColumn>
-    </ElTable>
+    <ElTabs v-model="tab">
+      <ElTabPane label="业务工具" name="business">
+        <ElEmpty
+          v-if="!allowed"
+          :image-size="60"
+          description="当前账号无中台调用权限"
+        />
+        <ElAlert
+          v-else-if="error"
+          :title="error"
+          type="error"
+          :closable="false"
+        >
+          <ElButton link @click="load">重试</ElButton>
+        </ElAlert>
+        <ElTable
+          v-else
+          v-loading="loading"
+          :data="rows"
+          row-key="resource"
+          max-height="460"
+          empty-text="当前账号暂无可用业务工具"
+        >
+          <ElTableColumn prop="name" label="业务能力" min-width="170" sortable>
+            <template #default="{ row }">
+              <ElTooltip
+                :content="row.description || '当前账号授权范围'"
+                placement="top"
+              >
+                <span>{{ row.name }}</span>
+              </ElTooltip>
+            </template>
+          </ElTableColumn>
+          <ElTableColumn label="可查询" min-width="100">
+            <template #default="{ row }">{{ operations(row, false) }}</template>
+          </ElTableColumn>
+          <ElTableColumn label="可执行" min-width="220">
+            <template #default="{ row }">{{ operations(row, true) }}</template>
+          </ElTableColumn>
+          <ElTableColumn label="执行方式" width="120">
+            <template #default="{ row }">
+              <ElTag :type="row.readOnly ? 'info' : 'warning'">
+                {{ row.readOnly ? '只读' : '写入需确认' }}
+              </ElTag>
+            </template>
+          </ElTableColumn>
+        </ElTable>
+      </ElTabPane>
+      <ElTabPane label="Skill" name="skill" lazy>
+        <AgentExtensions kind="SKILL" />
+      </ElTabPane>
+      <ElTabPane label="MCP" name="mcp" lazy>
+        <AgentExtensions kind="MCP" />
+      </ElTabPane>
+      <ElTabPane label="外部知识库" name="knowledge" lazy>
+        <AgentExtensions kind="KNOWLEDGE" />
+      </ElTabPane>
+    </ElTabs>
   </section>
 </template>

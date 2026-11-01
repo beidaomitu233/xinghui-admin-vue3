@@ -2,7 +2,9 @@
    of the persisted accent preset. Existing locale/layout/auth storage is untouched. */
 html {
   --background: 0 0% 100% !important;
+
   /* #f2f4f8, independently of the selected accent preset. */
+  /* stylelint-disable-next-line number-max-precision -- Match the shared Vben background token. */
   --background-deep: 220 30% 96.078431372549% !important;
   --card: 0 0% 100% !important;
   --el-border-radius-base: 4px;
@@ -17,13 +19,13 @@ html.dark {
 }
 
 .el-button:not(.is-circle) {
+  font-weight: 400;
   border-radius: 4px;
   box-shadow: none;
-  font-weight: 400;
 }
 
 .vxe-grid .vxe-button:not(.is--circle) {
+  font-weight: 400;
   border-radius: 4px;
   box-shadow: none;
-  font-weight: 400;
 }

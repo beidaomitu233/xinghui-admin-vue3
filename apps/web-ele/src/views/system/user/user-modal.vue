@@ -112,7 +112,14 @@ const [Form, formApi] = useVbenForm({
       defaultValue: [],
       label: '角色',
       component: 'Select',
-      componentProps: { multiple: true, clearable: true, options: [] },
+      componentProps: {
+        multiple: true,
+        filterable: true,
+        clearable: true,
+        collapseTags: true,
+        collapseTagsTooltip: true,
+        options: [],
+      },
     },
   ],
 });
@@ -294,6 +301,12 @@ const [Modal, modalApi] = useVbenModal({
             ? '停用角色只能保留或移除，不能新分配。'
             : '无角色列表查看权限或列表不可用，仅保留原角色。',
           componentProps: (values) => ({
+            multiple: true,
+            filterable: true,
+            clearable: true,
+            collapseTags: true,
+            collapseTagsTooltip: true,
+            placeholder: '选择一个或多个角色',
             disabled: !rolesEditable.value || mode.value === 'view',
             options: rolesEditable.value
               ? roles.map((role) => ({

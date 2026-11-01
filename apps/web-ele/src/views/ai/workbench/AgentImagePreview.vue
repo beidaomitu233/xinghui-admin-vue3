@@ -61,8 +61,8 @@ onBeforeUnmount(() => {
   justify-content: center;
   width: 80px;
   height: 80px;
+  vertical-align: middle;
   border: 1px solid var(--el-border-color-lighter);
   border-radius: 4px;
-  vertical-align: middle;
 }
 </style>

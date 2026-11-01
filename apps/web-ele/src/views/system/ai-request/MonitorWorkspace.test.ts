@@ -49,8 +49,18 @@ const event = (id: string, type: string, data: Record<string, unknown>) => ({
   runId: 'run',
   createdAt: '2026-11-01T00:00:00Z',
 });
-const render = () =>
-  mount(MonitorWorkspace, { global: { plugins: [ElementPlus] } });
+const render = async () => {
+  const wrapper = mount(MonitorWorkspace, {
+    global: { plugins: [ElementPlus], stubs: { AiStatistics: true } },
+  });
+  await flushPromises();
+  await wrapper
+    .findAll('[role="tab"]')
+    .find((tab) => tab.text() === '对话记录')
+    ?.trigger('click');
+  await flushPromises();
+  return wrapper;
+};
 beforeEach(() => {
   vi.clearAllMocks();
   access.accessToken = 'qa-user';
@@ -80,9 +90,10 @@ beforeEach(() => {
 });
 describe('unified conversation log', () => {
   it('merges both sources in one tab with collision-safe selection and keeps logs read-only', async () => {
-    const wrapper = render();
+    const wrapper = await render();
     await flushPromises();
     expect(wrapper.findAll('[role="tab"]').map((tab) => tab.text())).toEqual([
+      '使用统计',
       '对话记录',
       '请求日志',
     ]);
@@ -113,7 +124,7 @@ describe('unified conversation log', () => {
         resolve = r;
       }),
     );
-    const wrapper = render();
+    const wrapper = await render();
     await flushPromises();
     expect(api.list).not.toHaveBeenCalled();
     access.accessToken = '';
@@ -126,7 +137,7 @@ describe('unified conversation log', () => {
   });
   it('keeps the readable source available if the other source fails', async () => {
     api.agents.mockRejectedValue(new Error('unavailable'));
-    const wrapper = render();
+    const wrapper = await render();
     await flushPromises();
     expect(wrapper.text()).toContain('部分对话列表读取失败');
     expect(wrapper.text()).toContain('业务对话');
