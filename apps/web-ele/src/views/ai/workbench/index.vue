@@ -122,18 +122,12 @@ watch(
 
 .hub-chat :deep([data-role='user'] [class$='-bubble-content-filled']) {
   padding: 12px 20px;
-  background: #edf3ff;
+  background: color-mix(in srgb, hsl(var(--primary)) 10%, hsl(var(--card)));
   border-radius: 22px;
 }
 
 .hub-chat :deep(.hub-message-actions) {
   margin-top: 8px;
-}
-
-:global(.dark)
-  .hub-chat
-  :deep([data-role='user'] [class$='-bubble-content-filled']) {
-  background: #23324d;
 }
 
 .hub-chat :deep(.hub-task-output) {
