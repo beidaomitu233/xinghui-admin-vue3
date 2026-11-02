@@ -67,6 +67,7 @@ import {
   listAiSettings,
   settingsProviders,
 } from '#/api/system/ai-settings';
+import { secureId } from '#/composables/secure-id';
 
 import AgentSettings from './AgentSettings.vue';
 import ChannelWorkspace from './ChannelWorkspace.vue';
@@ -544,7 +545,7 @@ async function toggleModel(enabled?: boolean) {
       body: {
         expectedRevision: model.revision,
         enabled,
-        clientMutationId: crypto.randomUUID(),
+        clientMutationId: secureId(),
       },
     };
   }
@@ -589,7 +590,7 @@ function saveMetadata(value: ModelMetadata) {
       ? hubModelChange(model)
       : { strategy: 'PRIORITY' as const, fallback: true, routes: [] }),
     ...value,
-    clientMutationId: crypto.randomUUID(),
+    clientMutationId: secureId(),
   };
   void saveModel(body, model?.modelId);
 }
@@ -600,7 +601,7 @@ function mutateModel(change: Partial<HubModelChange>) {
     {
       ...hubModelChange(model),
       ...change,
-      clientMutationId: crypto.randomUUID(),
+      clientMutationId: secureId(),
     },
     model.modelId,
   );
@@ -617,7 +618,7 @@ function updateSupplierPolicy(
       ...hubModelChange(model),
       strategy,
       fallback,
-      clientMutationId: crypto.randomUUID(),
+      clientMutationId: secureId(),
     },
     modelId,
     true,
@@ -820,7 +821,7 @@ async function runTest() {
     body: {
       expectedRevision: model.revision,
       confirmedCosts: true,
-      clientMutationId: crypto.randomUUID(),
+      clientMutationId: secureId(),
     },
   };
   const attempt = pendingTest;

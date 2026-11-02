@@ -105,8 +105,7 @@ const errors: Record<string, string> = {
   CONFIG_CHANGED: '渠道已更新，请刷新后重新获取目录。',
   CONFIG_UNAVAILABLE: '此渠道暂不可用。',
   CREDENTIAL_UNAVAILABLE: '该 Key 暂不可用，请检查后重试。',
-  ENDPOINT_UNSUPPORTED:
-    '当前仅支持服务商官方预设地址，请恢复官方地址后重新获取。',
+  ENDPOINT_UNSUPPORTED: '服务地址无效，请检查 HTTPS 地址或恢复官方地址。',
   KEY_NOT_FOUND: '此 Key 已变化，请刷新渠道。',
   KEY_REQUIRED: '请先填写 API Key。',
   NETWORK_UNAVAILABLE: '目录服务暂时无法连接。',

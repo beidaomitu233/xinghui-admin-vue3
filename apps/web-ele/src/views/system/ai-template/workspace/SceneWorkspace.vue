@@ -43,6 +43,7 @@ import {
   getSceneWorkspace,
   sceneModels,
 } from '#/api/system/ai-scene';
+import { secureId } from '#/composables/secure-id';
 
 import DataReferenceTable from './DataReferenceTable.vue';
 import { OrderedSceneAutosave } from './ordered-autosave';
@@ -237,7 +238,7 @@ const autosave = new OrderedSceneAutosave<SceneDefinition>({
     businessModel: confirmed.businessModel,
     modelPolicy: confirmed.modelPolicy,
   }),
-  mutationId: () => crypto.randomUUID(),
+  mutationId: () => secureId(),
   persist: (command) => {
     if (!mutationConsent.has(command.clientMutationId))
       mutationConsent.set(
@@ -472,7 +473,7 @@ async function create() {
       purpose: newPurpose.value,
       kind: newKind.value,
       formId: newKind.value === 'RECORD_SUMMARY' ? newFormId.value : null,
-      clientMutationId: crypto.randomUUID(),
+      clientMutationId: secureId(),
     };
     const detail = await createScene(pendingCreate.value);
     if (disposed) return;

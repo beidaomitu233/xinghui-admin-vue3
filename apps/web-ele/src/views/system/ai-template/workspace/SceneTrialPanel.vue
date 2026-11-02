@@ -39,6 +39,7 @@ import {
   sceneEntries,
   testScene,
 } from '#/api/system/ai-scene';
+import { secureId } from '#/composables/secure-id';
 
 import DatabaseRecordPicker from './DatabaseRecordPicker.vue';
 
@@ -190,7 +191,7 @@ function input(): SceneSubmission {
   return {
     businessRef: businessRef.value,
     inputs: { user_request: requirement.value },
-    idempotencyKey: crypto.randomUUID(),
+    idempotencyKey: secureId(),
   };
 }
 async function showPreview() {
