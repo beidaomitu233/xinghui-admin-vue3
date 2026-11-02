@@ -1,0 +1,416 @@
+diff --git a/components/AgentScopeRuntimeWebUI/core/Chat/hooks/useChatRequest.tsx b/components/AgentScopeRuntimeWebUI/core/Chat/hooks/useChatRequest.tsx
+index b8db5b9fcfb65e6955d14e75c00c55e89786ec39..0b5a3a1fbe99a6f4b4e7a85f2a6014fe9820899c 100644
+--- a/components/AgentScopeRuntimeWebUI/core/Chat/hooks/useChatRequest.tsx
++++ b/components/AgentScopeRuntimeWebUI/core/Chat/hooks/useChatRequest.tsx
+@@ -154,7 +154,8 @@ export default function useChatRequest(options: UseChatRequestOptions) {
+ 
+           if (
+             res.status !== AgentScopeRuntimeRunStatus.Failed &&
+-            !res.output?.some((msg) => msg.content?.length)
++            !res.output?.some((msg) => msg.content?.length) &&
++            !apiOptionsRef.current.emitResponseWithoutContent
+           )
+             continue;
+ 
+diff --git a/components/AgentScopeRuntimeWebUI/core/Context/ChatAnywhereSessionsContext.tsx b/components/AgentScopeRuntimeWebUI/core/Context/ChatAnywhereSessionsContext.tsx
+index 3f57250ba800283ee424bf7728ded07371fd75d2..8877fe2d4dccbd8e500fb7e0d1d0133aa7454acc 100644
+--- a/components/AgentScopeRuntimeWebUI/core/Context/ChatAnywhereSessionsContext.tsx
++++ b/components/AgentScopeRuntimeWebUI/core/Context/ChatAnywhereSessionsContext.tsx
+@@ -23,17 +23,21 @@ export function ChatAnywhereSessionsContextProvider(props: {
+   children: React.ReactNode | React.ReactNode[];
+ }) {
+   const options = useChatAnywhereOptions(v => v.session);
++  const newSessionIdRef = React.useRef<string | undefined>(undefined);
+   const [sessions, setSessions, getSessions] = useGetState<IAgentScopeRuntimeWebUISession[]>([]);
+   const [currentSessionId, setCurrentSessionId, getCurrentSessionId] = useGetState<string | undefined>(undefined);
+ 
+   useMount(async () => {
++    const initialSessions = getSessions();
+     const sessionList = await options.api.getSessionList();
++    if (getSessions() !== initialSessions) return;
+     setSessions(sessionList);
+     setCurrentSessionId(sessionList?.[0]?.id);
+   })
+ 
+ 
+   return <ChatAnywhereSessionsContext.Provider value={{
++    newSessionIdRef,
+     sessions,
+     setSessions,
+     getSessions,
+@@ -53,12 +57,23 @@ export const useChatAnywhereSessionLoader = () => {
+   const options = useChatAnywhereOptions(v => v.session);
+   const setMessages = useContextSelector(ChatAnywhereMessagesContext, v => v.setMessages);
+ 
++  const newSessionIdRef = useContextSelector(ChatAnywhereSessionsContext, v => v.newSessionIdRef);
++  const getCurrentSessionId = useContextSelector(ChatAnywhereSessionsContext, v => v.getCurrentSessionId);
++  const getMessages = useContextSelector(ChatAnywhereMessagesContext, v => v.getMessages);
++  const loadVersion = React.useRef(0);
++  useEffect(() => () => { loadVersion.current++; }, []);
+   useAsyncEffect(async () => {
+-    ReactDOM.flushSync(() => {
+-      setMessages([])
+-    })
+-
++    const version = ++loadVersion.current;
++    if (currentSessionId && newSessionIdRef) {
++      const freshlyCreated = newSessionIdRef.current === currentSessionId;
++      newSessionIdRef.current = undefined;
++      if (freshlyCreated) return;
++    }
++    const initialMessages: IAgentScopeRuntimeWebUISession["messages"] = [];
++    ReactDOM.flushSync(() => { setMessages(initialMessages); });
+     const session = await options.api.getSession(currentSessionId);
++    // A late restore cannot erase a newly submitted turn or a different session.
++    if (version !== loadVersion.current || getCurrentSessionId() !== currentSessionId || getMessages() !== initialMessages) return;
+     const messages = session?.messages || [];
+     setMessages(messages.map(item => {
+       return {
+@@ -82,6 +97,7 @@ export const useChatAnywhereSessionsState = () => {
+ 
+ export const useChatAnywhereSessions = () => {
+   const {
++    newSessionIdRef,
+     setSessions,
+     getSessions,
+     getCurrentSessionId,
+@@ -114,8 +130,12 @@ export const useChatAnywhereSessions = () => {
+       name: data?.name || '',
+       messages: [],
+     });
+-    setCurrentSessionId(session.id);
+-    setMessages(session.messages);
++    if (newSessionIdRef) newSessionIdRef.current = session.id;
++    // Commit session-change effects before the first submit snapshots its request id.
++    ReactDOM.flushSync(() => {
++      setCurrentSessionId(session.id);
++      setMessages(session.messages);
++    });
+     return session.id;
+   }, []);
+ 
+diff --git a/components/AgentScopeRuntimeWebUI/core/Layout/index.tsx b/components/AgentScopeRuntimeWebUI/core/Layout/index.tsx
+index 3c843a3db2073e02b8744590030e9ebae1c523e1..659197f543fb6019363168e7c01eecaf980384db 100644
+--- a/components/AgentScopeRuntimeWebUI/core/Layout/index.tsx
++++ b/components/AgentScopeRuntimeWebUI/core/Layout/index.tsx
+@@ -25,6 +25,7 @@ function Layout(props: IProps, ref: React.Ref<any>) {
+   const { session } = useChatAnywhereOptions(v => ({ session: v.session }));
+   const { collapsed } = useContext(ChatAnyWhereLayoutContext);
+   const showLeft = !narrowMode && session && session.multiple && !session.hideBuiltInSessionList;
++  const showHeader = !!rightHeader || (narrowMode && session?.multiple && !session.hideBuiltInSessionList);
+ 
+   return <>
+     <Style />
+@@ -37,12 +38,12 @@ function Layout(props: IProps, ref: React.Ref<any>) {
+         </div>
+       }
+       <div className={cls(`${prefixCls}-right`, {
+-        [`${prefixCls}-right-has-header`]: !!rightHeader,
++        [`${prefixCls}-right-has-header`]: showHeader,
+       })} style={{
+         background: background,
+       }}>
+         {
+-          !!rightHeader && <Header />
++          showHeader && <Header />
+         }
+         <Chat />
+       </div>
+diff --git a/components/AgentScopeRuntimeWebUI/core/types/IChatAnywhere.ts b/components/AgentScopeRuntimeWebUI/core/types/IChatAnywhere.ts
+index bcd6e40d723c3e8be5c3ff49008de9dbc20fb382..e036f1f7bcbb59d8c1ff027ed3649c1b1766c6d7 100644
+--- a/components/AgentScopeRuntimeWebUI/core/types/IChatAnywhere.ts
++++ b/components/AgentScopeRuntimeWebUI/core/types/IChatAnywhere.ts
+@@ -56,6 +56,8 @@ export interface IAgentScopeRuntimeWebUIAPIOptions {
+    * @descriptionEn Whether to include history messages in request
+    */
+   enableHistoryMessages?: boolean;
++  /** Allow response slots to render progress/approval metadata before assistant text exists. */
++  emitResponseWithoutContent?: boolean;
+ 
+   /**
+    * @description 自定义流式数据解析函数（默认 JSON.parse）
+diff --git a/components/AgentScopeRuntimeWebUI/core/types/ISessions.tsx b/components/AgentScopeRuntimeWebUI/core/types/ISessions.tsx
+index bc374d41b3141be563afdba5b0923a4c48416c82..24918f7131e400691b1817338a7569518c1ab399 100644
+--- a/components/AgentScopeRuntimeWebUI/core/types/ISessions.tsx
++++ b/components/AgentScopeRuntimeWebUI/core/types/ISessions.tsx
+@@ -25,6 +25,8 @@ export interface IAgentScopeRuntimeWebUISession {
+ }
+ 
+ export interface IAgentScopeRuntimeWebUISessionsContext {
++    /** Internal: a freshly created empty session must not reload over its first request. */
++    newSessionIdRef?: { current: string | undefined };
+   sessions: IAgentScopeRuntimeWebUISession[];
+   setSessions: (sessions: IAgentScopeRuntimeWebUISession[]) => void;
+   getSessions: () => IAgentScopeRuntimeWebUISession[];
+diff --git a/lib/AgentScopeRuntimeWebUI/core/Chat/hooks/useChatRequest.js b/lib/AgentScopeRuntimeWebUI/core/Chat/hooks/useChatRequest.js
+index ddd4ef0c9cd65dc3cad90cad2ff2cb16b6425d80..0311f0f5bcdc992baeebdf96d479bfd19e950e76 100644
+--- a/lib/AgentScopeRuntimeWebUI/core/Chat/hooks/useChatRequest.js
++++ b/lib/AgentScopeRuntimeWebUI/core/Chat/hooks/useChatRequest.js
+@@ -200,7 +200,7 @@ export default function useChatRequest(options) {
+             responseParser = apiOptionsRef.current.responseParser || JSON.parse;
+             chunkData = responseParser(chunk.data);
+             _res = agentScopeRuntimeResponseBuilder.handle(chunkData);
+-            if (!(_res.status !== AgentScopeRuntimeRunStatus.Failed && !((_res$output = _res.output) !== null && _res$output !== void 0 && _res$output.some(function (msg) {
++            if (!(!apiOptionsRef.current.emitResponseWithoutContent && _res.status !== AgentScopeRuntimeRunStatus.Failed && !((_res$output = _res.output) !== null && _res$output !== void 0 && _res$output.some(function (msg) {
+               var _msg$content;
+               return (_msg$content = msg.content) === null || _msg$content === void 0 ? void 0 : _msg$content.length;
+             })))) {
+diff --git a/lib/AgentScopeRuntimeWebUI/core/Context/ChatAnywhereSessionsContext.js b/lib/AgentScopeRuntimeWebUI/core/Context/ChatAnywhereSessionsContext.js
+index 4544e8da2b3aa3621609c87758480875d691b3d6..ef07b7a1738981f4f38c74840dd4cb17aec56462 100644
+--- a/lib/AgentScopeRuntimeWebUI/core/Context/ChatAnywhereSessionsContext.js
++++ b/lib/AgentScopeRuntimeWebUI/core/Context/ChatAnywhereSessionsContext.js
+@@ -38,6 +38,7 @@ export function ChatAnywhereSessionsContextProvider(props) {
+   var options = useChatAnywhereOptions(function (v) {
+     return v.session;
+   });
++  var newSessionIdRef = React.useRef(undefined);
+   var _useGetState = useGetState([]),
+     _useGetState2 = _slicedToArray(_useGetState, 3),
+     sessions = _useGetState2[0],
+@@ -50,14 +51,16 @@ export function ChatAnywhereSessionsContextProvider(props) {
+     getCurrentSessionId = _useGetState4[2];
+   useMount( /*#__PURE__*/_asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee() {
+     var _sessionList$;
+-    var sessionList;
++    var sessionList, initialSessions;
+     return _regeneratorRuntime().wrap(function _callee$(_context) {
+       while (1) switch (_context.prev = _context.next) {
+         case 0:
++          initialSessions = getSessions();
+           _context.next = 2;
+           return options.api.getSessionList();
+         case 2:
+           sessionList = _context.sent;
++          if (getSessions() !== initialSessions) return _context.abrupt("return");
+           setSessions(sessionList);
+           setCurrentSessionId(sessionList === null || sessionList === void 0 || (_sessionList$ = sessionList[0]) === null || _sessionList$ === void 0 ? void 0 : _sessionList$.id);
+         case 5:
+@@ -68,6 +71,7 @@ export function ChatAnywhereSessionsContextProvider(props) {
+   })));
+   return /*#__PURE__*/_jsx(ChatAnywhereSessionsContext.Provider, {
+     value: {
++      newSessionIdRef: newSessionIdRef,
+       sessions: sessions,
+       setSessions: setSessions,
+       getSessions: getSessions,
+@@ -92,38 +96,25 @@ export var useChatAnywhereSessionLoader = function useChatAnywhereSessionLoader(
+   var setMessages = useContextSelector(ChatAnywhereMessagesContext, function (v) {
+     return v.setMessages;
+   });
+-  useAsyncEffect( /*#__PURE__*/_asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee2() {
+-    var session, messages;
+-    return _regeneratorRuntime().wrap(function _callee2$(_context2) {
+-      while (1) switch (_context2.prev = _context2.next) {
+-        case 0:
+-          ReactDOM.flushSync(function () {
+-            setMessages([]);
+-          });
+-          _context2.next = 3;
+-          return options.api.getSession(currentSessionId);
+-        case 3:
+-          session = _context2.sent;
+-          messages = (session === null || session === void 0 ? void 0 : session.messages) || [];
+-          setMessages(messages.map(function (item) {
+-            return _objectSpread(_objectSpread({}, item), {}, {
+-              history: true
+-            });
+-          }));
+-          if (session !== null && session !== void 0 && session.generating) {
+-            emit({
+-              type: 'handleReconnect',
+-              data: {
+-                session_id: currentSessionId
+-              }
+-            });
+-          }
+-        case 7:
+-        case "end":
+-          return _context2.stop();
+-      }
+-    }, _callee2);
+-  })), [currentSessionId]);
++  var newSessionIdRef = useContextSelector(ChatAnywhereSessionsContext, function(v) { return v.newSessionIdRef; });
++  var getCurrentSessionId = useContextSelector(ChatAnywhereSessionsContext, function(v) { return v.getCurrentSessionId; });
++  var getMessages = useContextSelector(ChatAnywhereMessagesContext, function(v) { return v.getMessages; });
++  var loadVersion = React.useRef(0);
++  React.useEffect(function() { return function() { loadVersion.current++; }; }, []);
++  useAsyncEffect(async function() {
++    var version = ++loadVersion.current;
++    if (currentSessionId && newSessionIdRef) {
++      var freshlyCreated = newSessionIdRef.current === currentSessionId;
++      newSessionIdRef.current = undefined;
++      if (freshlyCreated) return;
++    }
++    var initialMessages = [];
++    ReactDOM.flushSync(function() { setMessages(initialMessages); });
++    var session = await options.api.getSession(currentSessionId);
++    if (version !== loadVersion.current || getCurrentSessionId() !== currentSessionId || getMessages() !== initialMessages) return;
++    setMessages(((session && session.messages) || []).map(function(item) { return Object.assign({}, item, {history: true}); }));
++    if (session && session.generating) emit({type:'handleReconnect',data:{session_id:currentSessionId}});
++  }, [currentSessionId]);
+ };
+ 
+ /**
+@@ -138,6 +129,7 @@ export var useChatAnywhereSessions = function useChatAnywhereSessions() {
+   var _useContextSelector = useContextSelector(ChatAnywhereSessionsContext, function (v) {
+       return v;
+     }),
++    newSessionIdRef = _useContextSelector.newSessionIdRef,
+     setSessions = _useContextSelector.setSessions,
+     getSessions = _useContextSelector.getSessions,
+     getCurrentSessionId = _useContextSelector.getCurrentSessionId,
+@@ -220,8 +212,11 @@ export var useChatAnywhereSessions = function useChatAnywhereSessions() {
+             });
+           case 2:
+             session = _context5.sent;
+-            setCurrentSessionId(session.id);
+-            setMessages(session.messages);
++            if (newSessionIdRef) newSessionIdRef.current = session.id;
++            ReactDOM.flushSync(function() {
++              setCurrentSessionId(session.id);
++              setMessages(session.messages);
++            });
+             return _context5.abrupt("return", session.id);
+           case 6:
+           case "end":
+diff --git a/lib/AgentScopeRuntimeWebUI/core/Layout/index.js b/lib/AgentScopeRuntimeWebUI/core/Layout/index.js
+index 3cc81d67c6234a76250d6bcf90701eff2670ba34..1bdef20c8019001e4a17e294e303861e96b05d35 100644
+--- a/lib/AgentScopeRuntimeWebUI/core/Layout/index.js
++++ b/lib/AgentScopeRuntimeWebUI/core/Layout/index.js
+@@ -37,6 +37,7 @@ function Layout(props, ref) {
+   var _useContext = useContext(ChatAnyWhereLayoutContext),
+     collapsed = _useContext.collapsed;
+   var showLeft = !narrowMode && session && session.multiple && !session.hideBuiltInSessionList;
++  var showHeader = !!rightHeader || (narrowMode && session && session.multiple && !session.hideBuiltInSessionList);
+   return /*#__PURE__*/_jsxs(_Fragment, {
+     children: [/*#__PURE__*/_jsx(Style, {}), /*#__PURE__*/_jsxs("div", {
+       className: cls("".concat(prefixCls), className),
+@@ -44,11 +45,11 @@ function Layout(props, ref) {
+         className: cls("".concat(prefixCls, "-left"), _defineProperty({}, "".concat(prefixCls, "-left-collapsed"), collapsed)),
+         children: /*#__PURE__*/_jsx(Sessions, {})
+       }), /*#__PURE__*/_jsxs("div", {
+-        className: cls("".concat(prefixCls, "-right"), _defineProperty({}, "".concat(prefixCls, "-right-has-header"), !!rightHeader)),
++        className: cls("".concat(prefixCls, "-right"), _defineProperty({}, "".concat(prefixCls, "-right-has-header"), showHeader)),
+         style: {
+           background: background
+         },
+-        children: [!!rightHeader && /*#__PURE__*/_jsx(Header, {}), /*#__PURE__*/_jsx(Chat, {})]
++        children: [showHeader && /*#__PURE__*/_jsx(Header, {}), /*#__PURE__*/_jsx(Chat, {})]
+       })]
+     }), /*#__PURE__*/_jsx(Ref, {
+       ref: ref
+diff --git a/lib/AgentScopeRuntimeWebUI/core/Sessions/index.js b/lib/AgentScopeRuntimeWebUI/core/Sessions/index.js
+index cf010f15ae21362a1c70b2fd95b0465ffd32b6cf..3f93d6404b019e03cde82e96ade315dcda9ed93b 100644
+--- a/lib/AgentScopeRuntimeWebUI/core/Sessions/index.js
++++ b/lib/AgentScopeRuntimeWebUI/core/Sessions/index.js
+@@ -77,6 +77,9 @@ export function InnerHeader(_ref) {
+   });
+ }
+ export function InnerAdder(props) {
++  var newChatLabel = useChatAnywhereOptions(function (v) {
++    return v.session.newChatLabel;
++  });
+   var loading = useContextSelector(ChatAnywhereInputContext, function (v) {
+     return v.loading;
+   });
+@@ -109,11 +112,14 @@ export function InnerAdder(props) {
+           }
+         }, _callee);
+       })),
+-      children: "New Chat"
++      children: newChatLabel || "New Chat"
+     })
+   });
+ }
+ export function InnerList(props) {
++  var renderList = useChatAnywhereOptions(function (v) {
++    return v.session.renderList;
++  });
+   var prefixCls = useProviderContext().getPrefixCls('chat-anywhere-sessions');
+   var sessions = useContextSelector(ChatAnywhereSessionsContext, function (v) {
+     return v.sessions;
+@@ -137,7 +143,7 @@ export function InnerList(props) {
+   return /*#__PURE__*/_jsx("div", {
+     className: "".concat(prefixCls, "-list"),
+     style: props.style,
+-    children: /*#__PURE__*/_jsx(HistoryPanel, {
++    children: renderList || /*#__PURE__*/_jsx(HistoryPanel, {
+       items: items,
+       menu: [{
+         key: 'delete',
+diff --git a/lib/AgentScopeRuntimeWebUI/core/types/IChatAnywhere.d.ts b/lib/AgentScopeRuntimeWebUI/core/types/IChatAnywhere.d.ts
+index 3068df5390d53736bbf7f531135889c24b3c7704..a9c28f575eb4e4a17bb2767b5a1ef3ed54651ad1 100644
+--- a/lib/AgentScopeRuntimeWebUI/core/types/IChatAnywhere.d.ts
++++ b/lib/AgentScopeRuntimeWebUI/core/types/IChatAnywhere.d.ts
+@@ -50,6 +50,8 @@ export interface IAgentScopeRuntimeWebUIAPIOptions {
+      * @descriptionEn Whether to include history messages in request
+      */
+     enableHistoryMessages?: boolean;
++    /** Allow response slots to render progress/approval metadata before assistant text exists. */
++    emitResponseWithoutContent?: boolean;
+     /**
+      * @description 自定义流式数据解析函数（默认 JSON.parse）
+      * @descriptionEn Custom parser for stream chunks (default JSON.parse)
+@@ -552,6 +554,10 @@ export interface IAgentScopeRuntimeWebUISessionAPI {
+  * @descriptionEn Session configuration options
+  */
+ export interface IAgentScopeRuntimeWebUISessionOptions {
++    /** Optional list slot inside the native collapsible session panel. */
++    renderList?: React.ReactElement;
++    /** Localized label for the native new-session button. */
++    newChatLabel?: string;
+     /**
+      * @description 是否支持多会话
+      * @descriptionEn Whether to support multiple sessions
+diff --git a/lib/AgentScopeRuntimeWebUI/core/types/ISessions.d.ts b/lib/AgentScopeRuntimeWebUI/core/types/ISessions.d.ts
+index 90933814c3f04331f99794a68f5945af27722998..0a36cdc5bcd46e5022b89e6d0a2d7aeee5b032ad 100644
+--- a/lib/AgentScopeRuntimeWebUI/core/types/ISessions.d.ts
++++ b/lib/AgentScopeRuntimeWebUI/core/types/ISessions.d.ts
+@@ -22,6 +22,8 @@ export interface IAgentScopeRuntimeWebUISession {
+     generating?: boolean;
+ }
+ export interface IAgentScopeRuntimeWebUISessionsContext {
++    /** Internal: a freshly created empty session must not reload over its first request. */
++    newSessionIdRef?: { current: string | undefined };
+     sessions: IAgentScopeRuntimeWebUISession[];
+     setSessions: (sessions: IAgentScopeRuntimeWebUISession[]) => void;
+     getSessions: () => IAgentScopeRuntimeWebUISession[];
+diff --git a/lib/Conversations/Item.js b/lib/Conversations/Item.js
+index c907907f09aaa5102f5fc73885a0505865ee3320..33019eb4174efce07c06d03951972a184738ab26 100644
+--- a/lib/Conversations/Item.js
++++ b/lib/Conversations/Item.js
+@@ -211,6 +211,7 @@ function Input(_ref) {
+     v = _useState10[0],
+     sv = _useState10[1];
+   var ref = useRef();
++  var cancelled = useRef(false);
+   useEffect(function () {
+     ref.current.focus();
+   }, []);
+@@ -219,6 +220,7 @@ function Input(_ref) {
+   }, [value]);
+   return /*#__PURE__*/_jsx("input", {
+     ref: ref,
++    "aria-label": "对话名称",
+     className: "".concat(prefixCls, "-label-edit"),
+     value: v,
+     onClick: function onClick(e) {
+@@ -227,8 +229,17 @@ function Input(_ref) {
+     onChange: function onChange(e) {
+       return sv(e.target.value);
+     },
++    onKeyDown: function onKeyDown(e) {
++      e.stopPropagation();
++      if (e.nativeEvent.isComposing || e.keyCode === 229) return;
++      if (e.key === 'Enter') e.currentTarget.blur();
++      if (e.key === 'Escape') {
++        cancelled.current = true;
++        setEditable(false);
++      }
++    },
+     onBlur: function onBlur() {
+-      return _onBlur(v);
++      if (!cancelled.current) return _onBlur(v);
+     }
+   });
+ }

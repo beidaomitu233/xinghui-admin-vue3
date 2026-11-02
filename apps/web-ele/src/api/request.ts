@@ -95,10 +95,8 @@ function createRequestClient(baseURL: string, options?: RequestClientOptions) {
         return;
       if (/^\/(?:system\/)?ai\//.test(error?.config?.url ?? '')) {
         const failure = aiFailureInfo(error);
-        if (failure.code) {
-          ElMessage.error(aiErrorMessage(failure.code));
-          return;
-        }
+        ElMessage.error(aiErrorMessage(failure.code));
+        return;
       }
       // 这里可以根据业务进行定制,你可以拿到 error 内的信息进行定制化处理，根据不同的 code 做不同的提示，而不是直接使用 message.error 提示 msg
       // 检查后端返回的错误字段: msg, message, error

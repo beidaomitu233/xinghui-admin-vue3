@@ -5,17 +5,11 @@ import type {
   SettingsProvider,
 } from '#/api/system/ai-settings';
 
-import { computed } from 'vue';
+import { computed, watch } from 'vue';
 
-import {
-  ElButton,
-  ElCheckbox,
-  ElOption,
-  ElSelect,
-  ElSwitch,
-  ElTable,
-  ElTableColumn,
-} from 'element-plus';
+import { ElButton, ElSwitch, ElTag } from 'element-plus';
+
+import { useVbenVxeGrid } from '#/adapter/vxe-table';
 
 const props = defineProps<{
   busy: boolean;
@@ -30,11 +24,10 @@ const emit = defineEmits<{
   addRoute: [];
   edit: [];
   editRoute: [routeId: string];
-  fallback: [enabled: boolean];
   move: [index: number, direction: number];
   removeRoute: [routeId: string];
   routeEnabled: [routeId: string, enabled: boolean];
-  strategy: [strategy: HubModel['strategy']];
+  supplier: [channelId: string];
   test: [];
   toggle: [enabled: boolean];
 }>();
@@ -83,9 +76,45 @@ function routeStatus(route: HubModelRoute) {
   if (!route.enabled) return '已停用';
   return route.health.ready ? '可用' : '待配置或验证';
 }
-function changeStrategy(value: unknown) {
-  if (value === 'PRIORITY' || value === 'ROUND_ROBIN') emit('strategy', value);
-}
+const [Grid, gridApi] = useVbenVxeGrid<
+  HubModelRoute & { priorityIndex: number }
+>({
+  gridOptions: {
+    proxyConfig: { enabled: false },
+    columns: [
+      { title: '优先级', width: 95, slots: { default: 'cell0' } },
+      { title: '供应商 / 渠道', minWidth: 160, slots: { default: 'cell1' } },
+      {
+        title: '上游模型',
+        minWidth: 175,
+        field: 'upstreamModel',
+        sortable: true,
+        slots: { default: 'cell2' },
+      },
+      { title: '可用 Key', width: 95, slots: { default: 'cell3' } },
+      { title: '状态', minWidth: 115, slots: { default: 'cell4' } },
+      { title: '启用', width: 75, slots: { default: 'cell5' } },
+      {
+        title: '操作',
+        width: 100,
+        slots: { default: 'cell6' },
+        visible: props.canEdit,
+      },
+    ],
+    pagerConfig: { enabled: false },
+    toolbarConfig: { custom: true },
+    rowConfig: { keyField: 'routeId' },
+  },
+});
+watch(
+  () =>
+    props.model.routes.map((route, priorityIndex) => ({
+      ...route,
+      priorityIndex,
+    })),
+  (data) => gridApi.setGridOptions({ data }),
+  { immediate: true, deep: true },
+);
 </script>
 
 <template>
@@ -142,107 +171,81 @@ function changeStrategy(value: unknown) {
         添加供应商
       </ElButton>
     </div>
-    <ElTable
-      :data="model.routes"
-      row-key="routeId"
-      aria-label="模型供应商"
-      class="model-route-table"
-    >
-      <ElTableColumn label="优先级" width="95">
-        <template #default="{ $index }">
-          <div class="route-priority">
-            <span>{{ String($index + 1).padStart(2, '0') }}</span>
-            <div v-if="canEdit">
-              <ElButton
-                link
-                :disabled="busy || $index === 0"
-                :aria-label="`上移第 ${$index + 1} 个供应商`"
-                @click="emit('move', $index, -1)"
-              >
-                ↑
-              </ElButton>
-              <ElButton
-                link
-                :disabled="busy || $index === model.routes.length - 1"
-                :aria-label="`下移第 ${$index + 1} 个供应商`"
-                @click="emit('move', $index, 1)"
-              >
-                ↓
-              </ElButton>
-            </div>
+    <Grid>
+      <template #cell0="{ row }">
+        <div class="route-priority">
+          <span>{{ String(row.priorityIndex + 1).padStart(2, '0') }}</span>
+          <div v-if="canEdit">
+            <ElButton
+              link
+              :disabled="busy || row.priorityIndex === 0"
+              :aria-label="`上移第 ${row.priorityIndex + 1} 个供应商`"
+              @click="emit('move', row.priorityIndex, -1)"
+            >
+              ↑
+            </ElButton>
+            <ElButton
+              link
+              :disabled="busy || row.priorityIndex === model.routes.length - 1"
+              :aria-label="`下移第 ${row.priorityIndex + 1} 个供应商`"
+              @click="emit('move', row.priorityIndex, 1)"
+            >
+              ↓
+            </ElButton>
           </div>
-        </template>
-      </ElTableColumn>
-      <ElTableColumn label="供应商 / 渠道" min-width="160">
-        <template #default="{ row }">
-          <strong>{{ providerName(row) }}</strong>
-          <span class="model-cell-secondary">{{ channelName(row) }}</span>
-        </template>
-      </ElTableColumn>
-      <ElTableColumn label="上游模型" min-width="175">
-        <template #default="{ row }">
-          <code>{{ row.upstreamModel }}</code>
-        </template>
-      </ElTableColumn>
-      <ElTableColumn label="可用 Key" width="95">
-        <template #default="{ row }">{{ keyCount(row) }}</template>
-      </ElTableColumn>
-      <ElTableColumn label="状态" min-width="115">
-        <template #default="{ row }">
-          <span :class="{ 'is-ready': row.enabled && row.health.ready }">
-            {{ routeStatus(row) }}
-          </span>
-        </template>
-      </ElTableColumn>
-      <ElTableColumn label="启用" width="75">
-        <template #default="{ row }">
-          <ElSwitch
-            :model-value="row.enabled"
-            :disabled="busy || !canEdit"
-            :aria-label="`${channelName(row)} 接入启用状态`"
-            @change="emit('routeEnabled', row.routeId, Boolean($event))"
-          />
-        </template>
-      </ElTableColumn>
-      <ElTableColumn v-if="canEdit" label="操作" width="100">
-        <template #default="{ row }">
-          <ElButton
-            link
-            :disabled="busy"
-            @click="emit('editRoute', row.routeId)"
-          >
-            编辑
-          </ElButton>
-          <ElButton
-            link
-            type="danger"
-            :disabled="busy"
-            @click="emit('removeRoute', row.routeId)"
-          >
-            移除
-          </ElButton>
-        </template>
-      </ElTableColumn>
-    </ElTable>
+        </div>
+      </template>
+      <template #cell1="{ row }">
+        <strong>{{ providerName(row) }}</strong>
+        <span class="model-cell-secondary">{{ channelName(row) }}</span>
+      </template>
+      <template #cell2="{ row }">
+        <code>{{ row.upstreamModel }}</code>
+      </template>
+      <template #cell3="{ row }">{{ keyCount(row) }}</template>
+      <template #cell4="{ row }">
+        <span :class="{ 'is-ready': row.enabled && row.health.ready }">
+          {{ routeStatus(row) }}
+        </span>
+        <ElButton
+          v-if="
+            canEdit && row.health.reasons.includes('UPSTREAM_NOT_CONFIGURED')
+          "
+          link
+          type="primary"
+          @click="emit('supplier', row.channelId)"
+        >
+          配置 Key
+        </ElButton>
+      </template>
+      <template #cell5="{ row }">
+        <ElSwitch
+          :model-value="row.enabled"
+          :disabled="busy || !canEdit"
+          :aria-label="`${channelName(row)} 接入启用状态`"
+          @change="emit('routeEnabled', row.routeId, Boolean($event))"
+        />
+      </template>
+      <template #cell6="{ row }">
+        <ElButton link :disabled="busy" @click="emit('editRoute', row.routeId)">
+          编辑
+        </ElButton>
+        <ElButton
+          link
+          type="danger"
+          :disabled="busy"
+          @click="emit('removeRoute', row.routeId)"
+        >
+          移除
+        </ElButton>
+      </template>
+    </Grid>
     <div class="model-routing-bar">
       <span>调用策略</span>
-      <ElSelect
-        :model-value="model.strategy"
-        :disabled="busy || !canEdit"
-        aria-label="业务模型调用策略"
-        class="model-strategy"
-        @change="changeStrategy"
-      >
-        <ElOption label="按优先级调用" value="PRIORITY" />
-        <ElOption label="轮询调用" value="ROUND_ROBIN" />
-      </ElSelect>
-      <ElCheckbox
-        :model-value="model.fallback"
-        :disabled="busy || !canEdit"
-        @change="emit('fallback', Boolean($event))"
-      >
-        失败时自动切换
-      </ElCheckbox>
+      <ElTag effect="plain">
+        {{ model.strategy === 'PRIORITY' ? '按优先级调用' : '轮询调用' }}
+      </ElTag>
+      <span>{{ model.fallback ? '失败时自动切换' : '失败时停止' }}</span>
       <ElButton
         v-if="canTest"
         :disabled="busy || !model.enabled || model.routes.length === 0"

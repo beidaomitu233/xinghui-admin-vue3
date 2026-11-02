@@ -5,10 +5,13 @@ import type {
   ProviderTarget,
 } from '#/api/system/ai-application';
 
-import { computed, ref, watch } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
+
+import { VbenButtonGroup } from '@vben/common-ui';
 
 import { ElMessage } from 'element-plus';
 
+import { useVbenForm } from '#/adapter/form';
 import { applicationKeyOptions } from '#/api/system/ai-application';
 
 const props = defineProps<{ disabled?: boolean; modelValue: ModelBinding }>();
@@ -126,103 +129,147 @@ watch(
     serial++;
   },
 );
+const expanded = ref<string[]>([]);
+const values = () => ({
+  mode: props.modelValue.keyMode,
+  allowed: allowed.value,
+  fixed: fixed.value,
+  fallbacks: fallbacks.value,
+});
+const [Form, formApi] = useVbenForm({
+  showDefaultActions: false,
+  layout: 'vertical',
+  wrapperClass: 'grid-cols-1',
+  commonConfig: {
+    componentProps: () => ({ class: 'w-full', disabled: props.disabled }),
+  },
+  schema: [
+    {
+      component: 'Select',
+      fieldName: 'mode',
+      label: '模式',
+      componentProps: {
+        options: [
+          { label: '自动选择已验证可用 Key', value: 'AUTO' },
+          { label: '固定 Key', value: 'FIXED' },
+        ],
+        onChange: async (value: 'AUTO' | 'FIXED') => {
+          mode(value);
+          await nextTick();
+          await formApi.setValues(values());
+        },
+      },
+    },
+    {
+      component: 'Select',
+      fieldName: 'allowed',
+      label: '限制可用 Key（留空使用全部已验证搭配）',
+      dependencies: {
+        triggerFields: ['mode'],
+        if: () => props.modelValue.keyMode === 'AUTO',
+      },
+      componentProps: () => ({
+        multiple: true,
+        clearable: true,
+        options: options.value.map((item) => ({
+          value: key(item.key),
+          label: item.maskedKeyLabel,
+        })),
+        onChange: range,
+      }),
+    },
+    {
+      component: 'Select',
+      fieldName: 'fixed',
+      label: '固定 Key',
+      dependencies: {
+        triggerFields: ['mode'],
+        if: () => props.modelValue.keyMode === 'FIXED',
+      },
+      componentProps: () => ({
+        options: fixedOptions.value.map((item) => ({
+          value: key(item.key),
+          label: item.maskedKeyLabel,
+        })),
+        onChange: chooseFixed,
+      }),
+    },
+    {
+      component: 'Select',
+      fieldName: 'fallbacks',
+      label: '后备 Key（按下方顺序）',
+      dependencies: {
+        triggerFields: ['mode', 'fixed'],
+        if: () => props.modelValue.keyMode === 'FIXED',
+      },
+      componentProps: () => ({
+        multiple: true,
+        clearable: true,
+        options: fixedOptions.value
+          .filter((item) => key(item.key) !== fixed.value)
+          .map((item) => ({
+            value: key(item.key),
+            label: item.maskedKeyLabel,
+          })),
+        onChange: chooseFallbacks,
+      }),
+    },
+  ],
+});
+watch(
+  () => JSON.stringify(values()),
+  () => {
+    void formApi.setValues(values());
+  },
+  { immediate: true },
+);
 </script>
 <template>
-  <details
-    class="mt-2 rounded border p-3"
-    @toggle="($event.target as HTMLDetailsElement).open && load()"
+  <el-collapse
+    v-model="expanded"
+    class="mt-2"
+    @change="expanded.includes('keys') && load()"
   >
-    <summary class="cursor-pointer text-sm">
-      Key 选择 · {{ modelValue.keyMode === 'AUTO' ? '自动' : '固定' }}
-    </summary>
-    <el-alert
-      v-if="error"
-      :title="error"
-      type="warning"
-      closable
-      class="my-2"
-      @close="error = ''"
-    />
-    <el-form label-position="top" :disabled="disabled">
-      <el-form-item label="模式">
-        <el-select :model-value="modelValue.keyMode" @change="mode">
-          <el-option label="自动选择已验证可用 Key" value="AUTO" />
-          <el-option label="固定 Key" value="FIXED" />
-        </el-select>
-        <el-button :loading="loading" class="ml-2" @click="load">
-          刷新候选
-        </el-button>
-      </el-form-item>
-      <el-form-item
-        v-if="modelValue.keyMode === 'AUTO'"
-        label="限制可用 Key（留空使用全部已验证搭配）"
-      >
-        <el-select
-          :model-value="allowed"
-          multiple
-          clearable
-          class="w-full"
-          @change="range"
-        >
-          <el-option
-            v-for="item in options"
-            :key="key(item.key)"
-            :label="item.maskedKeyLabel"
-            :value="key(item.key)"
-          />
-        </el-select>
-      </el-form-item>
-      <template v-else>
-        <el-form-item label="固定 Key">
-          <el-select :model-value="fixed" class="w-full" @change="chooseFixed">
-            <el-option
-              v-for="item in fixedOptions"
-              :key="key(item.key)"
-              :label="item.maskedKeyLabel"
-              :value="key(item.key)"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="明确允许的备用 Key（留空不切换）">
-          <el-select
-            :model-value="fallbacks"
-            multiple
-            clearable
-            class="w-full"
-            @change="chooseFallbacks"
-          >
-            <el-option
-              v-for="item in fixedOptions.filter(
-                (item) => key(item.key) !== fixed,
-              )"
-              :key="key(item.key)"
-              :label="item.maskedKeyLabel"
-              :value="key(item.key)"
-            />
-          </el-select>
-        </el-form-item>
+    <el-collapse-item
+      name="keys"
+      :title="`Key 选择 · ${modelValue.keyMode === 'AUTO' ? '自动' : '固定'}`"
+    >
+      <el-alert
+        v-if="error"
+        :title="error"
+        type="warning"
+        class="my-2"
+        @close="error = ''"
+      />
+      <el-button :loading="loading" class="mb-3" @click="load">
+        刷新候选
+      </el-button>
+      <Form />
+      <template v-if="modelValue.keyMode === 'FIXED'">
         <div
           v-for="(item, index) in modelValue.fallbackKeys"
           :key="key(item)"
           class="my-1 flex items-center gap-2"
         >
           <span>{{ index + 1 }}. {{ label(item) }}</span>
-          <el-button
-            :disabled="disabled || index === 0"
-            size="small"
-            @click="move(index, -1)"
-          >
-            上移
-          </el-button>
-          <el-button
-            :disabled="disabled || index === modelValue.fallbackKeys.length - 1"
-            size="small"
-            @click="move(index, 1)"
-          >
-            下移
-          </el-button>
+          <VbenButtonGroup :gap="4" size="small">
+            <el-button
+              :disabled="disabled || index === 0"
+              @click="move(index, -1)"
+            >
+              上移
+            </el-button>
+            <el-button
+              :disabled="
+                disabled || index === modelValue.fallbackKeys.length - 1
+              "
+              @click="move(index, 1)"
+            >
+              下移
+            </el-button>
+          </VbenButtonGroup>
         </div>
       </template>
-    </el-form>
-  </details>
+    </el-collapse-item>
+  </el-collapse>
 </template>

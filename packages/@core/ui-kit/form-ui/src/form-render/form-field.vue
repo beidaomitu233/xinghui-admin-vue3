@@ -158,9 +158,13 @@ const computedProps = computed(() => {
   const finalComponentProps = isFunction(componentProps)
     ? componentProps(values.value, formApi!)
     : componentProps;
+  // commonConfig.componentProps 与 schema 级 componentProps 一致支持函数形式。
+  const finalCommonComponentProps = isFunction(commonComponentProps)
+    ? commonComponentProps(values.value, formApi!)
+    : commonComponentProps;
 
   return {
-    ...commonComponentProps,
+    ...finalCommonComponentProps,
     ...finalComponentProps,
     ...dynamicComponentProps.value,
   };

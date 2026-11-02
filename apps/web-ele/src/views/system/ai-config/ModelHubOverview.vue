@@ -4,14 +4,11 @@ import type { AiSettingsView } from '#/api/system/ai-settings';
 
 import { computed, ref, watch } from 'vue';
 
-import {
-  ElAlert,
-  ElButton,
-  ElEmpty,
-  ElPagination,
-  ElTable,
-  ElTableColumn,
-} from 'element-plus';
+import { VbenCheckButtonGroup } from '@vben/common-ui';
+
+import { ElAlert, ElButton, ElEmpty } from 'element-plus';
+
+import { useVbenVxeGrid } from '#/adapter/vxe-table';
 
 const props = defineProps<{
   canAddModel: boolean;
@@ -29,8 +26,6 @@ const emit = defineEmits<{
 }>();
 type Filter = 'all' | 'disabled' | 'needs' | 'protected' | 'ready' | 'weak';
 const filter = ref<Filter>('all');
-const page = ref(1);
-const audit = ref(false);
 const enabled = computed(() => props.models.filter((model) => model.enabled));
 const ready = computed(() =>
   enabled.value.filter((model) => model.health.ready),
@@ -129,18 +124,6 @@ const filters = computed(() => [
 const filtered = computed(
   () => filters.value.find((item) => item.value === filter.value)?.models ?? [],
 );
-const pageModels = computed(() =>
-  filtered.value.slice((page.value - 1) * 20, page.value * 20),
-);
-watch([filter, () => props.models], () => {
-  page.value = 1;
-});
-const noticeCount = computed(
-  () =>
-    Number(Boolean(keyIssue.value)) +
-    Number(needs.value.length > 0) +
-    Number(weak.value.length > 0),
-);
 function status(model: HubModel) {
   if (!model.enabled) return '已停用';
   return model.health.ready ? '就绪' : '待配置';
@@ -152,6 +135,46 @@ function assurance(model: HubModel) {
   if (model.health.distinctProviders < 2) return '单供应商';
   return '自动切换关闭';
 }
+const [Grid, gridApi] = useVbenVxeGrid<HubModel>({
+  gridOptions: {
+    proxyConfig: { enabled: false },
+    columns: [
+      {
+        title: '模型',
+        minWidth: 170,
+        field: 'name',
+        sortable: true,
+        slots: { default: 'cell0' },
+      },
+      {
+        title: '可用供应商',
+        width: 100,
+        field: 'health.distinctProviders',
+        sortable: true,
+        slots: { default: 'cell1' },
+      },
+      { title: '接入保障', minWidth: 110, slots: { default: 'cell2' } },
+      { title: '状态', width: 80, slots: { default: 'cell3' } },
+      { title: '操作', width: 125, slots: { default: 'cell4' } },
+    ],
+    pagerConfig: { enabled: false },
+    maxHeight: 500,
+    toolbarConfig: { custom: true },
+    rowConfig: { keyField: 'modelId' },
+  },
+});
+watch(
+  () => filtered.value,
+  (data) => gridApi.setGridOptions({ data }),
+  { immediate: true, deep: true },
+);
+function selectFilter(value: unknown) {
+  if (
+    typeof value === 'string' &&
+    filters.value.some((item) => item.value === value)
+  )
+    filter.value = value as Filter;
+}
 </script>
 
 <template>
@@ -161,25 +184,12 @@ function assurance(model: HubModel) {
         <h2>模型汇总</h2>
         <p>模型可用性与供应商接入状态</p>
       </div>
-      <ElButton @click="audit = !audit">配置巡检</ElButton>
     </header>
     <ElAlert
       v-if="!complete"
       title="部分列表尚未读全；供应商统计与筛选结果仅含已读取项目，模型总览指标使用服务端汇总。"
       type="warning"
       :closable="false"
-    />
-    <ElAlert
-      v-if="audit"
-      :title="
-        noticeCount
-          ? `发现 ${noticeCount} 类待处理配置，请从右侧提醒继续处理。`
-          : '已读取配置未发现待处理项。'
-      "
-      description="巡检只检查当前配置及已有验证记录，不发起模型或网络验证。"
-      :type="noticeCount ? 'warning' : 'info'"
-      closable
-      @close="audit = false"
     />
     <div class="overview-metrics">
       <button type="button" @click="filter = 'ready'">
@@ -188,15 +198,13 @@ function assurance(model: HubModel) {
           {{ summary?.readyModels ?? '—' }}
           <small>/ {{ summary?.totalModels ?? '—' }}</small>
         </strong>
-        <em>{{ summary?.enabledModels ?? '—' }} 个已启用</em>
       </button>
       <button type="button" @click="emit('suppliers')">
-        <span>{{ complete ? '可用渠道' : '可用渠道（已加载）' }}</span>
+        <span>{{ complete ? '已验证渠道' : '已验证渠道（已加载）' }}</span>
         <strong>
           {{ readyChannels.length }}
           <small>/ {{ channels.length }}</small>
         </strong>
-        <em>按已有验证记录统计</em>
       </button>
       <button type="button" @click="filter = 'protected'">
         <span>多供应商保障</span>
@@ -204,7 +212,6 @@ function assurance(model: HubModel) {
           {{ summary?.multiProviderModels ?? '—' }}
           <small>/ {{ summary?.enabledModels ?? '—' }}</small>
         </strong>
-        <em>{{ summary?.assuranceNeededModels ?? '—' }} 个待完善</em>
       </button>
       <button
         type="button"
@@ -219,7 +226,6 @@ function assurance(model: HubModel) {
           {{ verifiedKeyCount }}
           <small>/ {{ keyCount }}</small>
         </strong>
-        <em>未验证项不计入可用</em>
       </button>
     </div>
     <div class="overview-layout">
@@ -228,81 +234,58 @@ function assurance(model: HubModel) {
           <h3>模型接入情况</h3>
           <span>{{ filtered.length }} 个模型</span>
         </div>
-        <div class="overview-filters" aria-label="模型汇总筛选">
-          <button
-            v-for="item in filters"
-            :key="item.value"
-            type="button"
-            :class="{ active: filter === item.value }"
-            :aria-pressed="filter === item.value"
-            @click="filter = item.value"
-          >
-            {{ item.label }}
-            <span>{{ item.total ?? '—' }}</span>
-          </button>
-        </div>
-        <ElTable
-          v-if="filtered.length > 0"
-          :data="pageModels"
-          row-key="modelId"
-          aria-label="模型接入汇总"
-          class="overview-table"
-        >
-          <ElTableColumn label="模型 / 调用名称" min-width="170">
-            <template #default="{ row }">
-              <ElButton
-                link
-                type="primary"
-                @click="emit('selectModel', row.modelId)"
-              >
-                {{ row.name }}
-              </ElButton>
-              <code class="overview-call-name">{{ row.slug }}</code>
-            </template>
-          </ElTableColumn>
-          <ElTableColumn label="可用供应商" width="100">
-            <template #default="{ row }">
-              {{ row.health.distinctProviders }}
-            </template>
-          </ElTableColumn>
-          <ElTableColumn label="接入保障" min-width="110">
-            <template #default="{ row }">
-              <span
-                :class="{ 'is-protected': row.health.multiProviderProtected }"
-              >
-                {{ assurance(row) }}
-              </span>
-            </template>
-          </ElTableColumn>
-          <ElTableColumn label="状态" width="80">
-            <template #default="{ row }">{{ status(row) }}</template>
-          </ElTableColumn>
-          <ElTableColumn label="操作" width="125">
-            <template #default="{ row }">
-              <ElButton
-                link
-                type="primary"
-                @click="emit('selectModel', row.modelId)"
-              >
-                配置
-              </ElButton>
-              <ElButton
-                link
-                :disabled="!row.enabled || row.routes.length === 0"
-                @click="emit('testModel', row.modelId)"
-              >
-                测试
-              </ElButton>
-            </template>
-          </ElTableColumn>
-        </ElTable>
-        <ElPagination
-          v-if="filtered.length > 20"
-          v-model:current-page="page"
-          :total="filtered.length"
-          :page-size="20"
-          layout="prev, pager, next"
+        <VbenCheckButtonGroup
+          :model-value="filter"
+          :options="
+            filters.map((item) => ({
+              value: item.value,
+              label: `${item.label} ${item.total ?? '—'}`,
+            }))
+          "
+          :show-icon="false"
+          :gap="4"
+          aria-label="模型汇总筛选"
+          class="mb-3 flex-wrap"
+          @update:model-value="selectFilter"
         />
+        <Grid>
+          <template #cell0="{ row }">
+            <ElButton
+              link
+              type="primary"
+              @click="emit('selectModel', row.modelId)"
+            >
+              {{ row.name }}
+            </ElButton>
+          </template>
+          <template #cell1="{ row }">
+            {{ row.health.distinctProviders }}
+          </template>
+          <template #cell2="{ row }">
+            <span
+              :class="{ 'is-protected': row.health.multiProviderProtected }"
+            >
+              {{ assurance(row) }}
+            </span>
+          </template>
+          <template #cell3="{ row }">{{ status(row) }}</template>
+          <template #cell4="{ row }">
+            <ElButton
+              link
+              type="primary"
+              @click="emit('selectModel', row.modelId)"
+            >
+              配置
+            </ElButton>
+            <ElButton
+              link
+              :disabled="!row.enabled || row.routes.length === 0"
+              @click="emit('testModel', row.modelId)"
+            >
+              测试
+            </ElButton>
+          </template>
+        </Grid>
         <ElEmpty
           v-if="filtered.length === 0"
           :description="
@@ -322,43 +305,6 @@ function assurance(model: HubModel) {
           </ElButton>
         </ElEmpty>
       </section>
-      <aside class="overview-notices" aria-label="配置提醒">
-        <h3>配置提醒</h3>
-        <article v-if="keyIssue">
-          <h4>Key 配置需处理</h4>
-          <p>存在未配置或尚未验证成功的 Key。</p>
-          <ElButton
-            link
-            type="primary"
-            @click="emit('selectSupplier', keyIssue.configId)"
-          >
-            处理 Key →
-          </ElButton>
-        </article>
-        <article v-if="needs.length > 0">
-          <h4>模型等待接入</h4>
-          <p>{{ needs.length }} 个已启用模型没有可用供应商。</p>
-          <ElButton link type="primary" @click="filter = 'needs'">
-            补充接入 →
-          </ElButton>
-        </article>
-        <article v-if="weak.length > 0">
-          <h4>完善备用供应商</h4>
-          <p>{{ weak.length }} 个模型尚未形成自动切换保障。</p>
-          <ElButton link type="primary" @click="filter = 'weak'">
-            查看模型 →
-          </ElButton>
-        </article>
-        <article v-if="disabled.length > 0">
-          <h4>已停用模型</h4>
-          <p>{{ disabled.length }} 个模型当前不参与调用。</p>
-          <ElButton link @click="filter = 'disabled'">查看模型 →</ElButton>
-        </article>
-        <article v-if="!noticeCount && disabled.length === 0">
-          <h4>当前配置无需处理</h4>
-          <p>以已读取配置和已有验证记录为准。</p>
-        </article>
-      </aside>
     </div>
   </div>
 </template>
@@ -440,7 +386,7 @@ function assurance(model: HubModel) {
 
 .overview-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 210px;
+  grid-template-columns: minmax(0, 1fr);
   gap: 24px;
 }
 
@@ -456,32 +402,6 @@ function assurance(model: HubModel) {
 .overview-notices h3 {
   font-size: 13px;
   font-weight: 600;
-}
-
-.overview-filters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 16px;
-}
-
-.overview-filters button {
-  padding: 5px 8px;
-  font-size: 11px;
-  color: hsl(var(--muted-foreground));
-  border: 1px solid transparent;
-  border-radius: 5px;
-}
-
-.overview-filters button.active {
-  color: var(--hub-accent, hsl(var(--primary)));
-  background: hsl(var(--primary) / 8%);
-  border-color: hsl(var(--primary) / 25%);
-}
-
-.overview-filters span {
-  margin-left: 4px;
-  font-variant-numeric: tabular-nums;
 }
 
 .overview-table {

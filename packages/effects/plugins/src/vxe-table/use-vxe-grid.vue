@@ -80,15 +80,14 @@ const {
 const { isMobile } = usePreferences();
 const isSeparator = computed(() => {
   if (
-    !formOptions.value ||
+    (!formOptions.value && !slots.form) ||
     showSearchForm.value === false ||
     separator.value === false
   ) {
     return false;
   }
-  if (separator.value === true || separator.value === undefined) {
-    return true;
-  }
+  if (separator.value === undefined) return false;
+  if (separator.value === true) return true;
   return separator.value.show !== false;
 });
 const separatorBg = computed(() => {
@@ -99,9 +98,20 @@ const separatorBg = computed(() => {
     : separator.value.backgroundColor;
 });
 const slots: SetupContext['slots'] = useSlots();
+const hasSearchToggle = computed(
+  () =>
+    (!!formOptions.value || !!slots.form) &&
+    gridOptions.value?.toolbarConfig?.search !== false,
+);
 
 const [Form, formApi] = useTableForm({
   compact: true,
+  collapsed: false,
+  showCollapseButton: false,
+  actionLayout: 'newLine',
+  actionPosition: 'left',
+  actionButtonsReverse: true,
+  actionWrapperClass: 'border-t mt-1 pt-3',
   handleSubmit: async () => {
     const formValues = await formApi.getValues();
     formApi.setLatestSubmissionValues(toRaw(formValues));
@@ -118,11 +128,12 @@ const [Form, formApi] = useTableForm({
     }
   },
   commonConfig: {
+    labelWidth: 60,
+    labelClass: '!justify-start',
     componentProps: {
       class: 'w-full',
     },
   },
-  showCollapseButton: true,
   submitButtonOptions: {
     content: computed(() => $t('common.search')),
   },
@@ -146,8 +157,8 @@ const toolbarOptions = computed(() => {
   const slotTools = slots[TOOLBAR_TOOLS]?.();
   const searchBtn: VxeToolbarPropTypes.ToolConfig = {
     code: 'search',
-    icon: 'vxe-icon-search',
-    circle: true,
+    icon: 'vxe-icon-funnel',
+    circle: false,
     status: showSearchForm.value ? 'primary' : undefined,
     title: showSearchForm.value
       ? $t('common.hideSearchPanel')
@@ -158,7 +169,7 @@ const toolbarOptions = computed(() => {
     tools: (gridOptions.value?.toolbarConfig?.tools ??
       []) as VxeToolbarPropTypes.ToolConfig[],
   };
-  if (gridOptions.value?.toolbarConfig?.search && !!formOptions.value) {
+  if (hasSearchToggle.value) {
     toolbarConfig.tools = Array.isArray(toolbarConfig.tools)
       ? [...toolbarConfig.tools, searchBtn]
       : [searchBtn];
@@ -344,10 +355,6 @@ watch(
   },
 );
 
-const isCompactForm = computed(() => {
-  return formApi.getState()?.compact;
-});
-
 onMounted(() => {
   props.api?.mount?.(gridRef.value, formApi);
   init();
@@ -360,12 +367,12 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div :class="cn('bg-card h-full rounded-md', className)">
+  <div :class="cn('vben-list-surface h-full bg-transparent', className)">
     <VxeGrid
       ref="gridRef"
       :class="
         cn(
-          'p-2',
+          'p-0',
           {
             'pt-0': showToolbar && !formOptions,
           },
@@ -399,10 +406,9 @@ onUnmounted(() => {
       <template #toolbar-tools="slotProps">
         <slot name="toolbar-tools" v-bind="slotProps"></slot>
         <VxeButton
-          icon="vxe-icon-search"
-          circle
+          icon="vxe-icon-funnel"
           class="ml-2"
-          v-if="gridOptions?.toolbarConfig?.search && !!formOptions"
+          v-if="hasSearchToggle"
           :status="showSearchForm ? 'primary' : undefined"
           :title="$t('common.search')"
           @click="onSearchBtnClick"
@@ -412,18 +418,12 @@ onUnmounted(() => {
       <!-- form表单 -->
       <template #form>
         <div
-          v-if="formOptions"
+          v-if="formOptions || $slots.form"
           v-show="showSearchForm !== false"
           :class="
             cn(
-              'relative rounded py-3',
-              isCompactForm
-                ? isSeparator
-                  ? 'pb-8'
-                  : 'pb-4'
-                : isSeparator
-                  ? 'pb-4'
-                  : 'pb-0',
+              'bg-card relative mb-4 rounded-md px-5 pb-4 pt-5',
+              isSeparator && 'pb-8',
             )
           "
         >

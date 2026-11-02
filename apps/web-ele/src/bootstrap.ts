@@ -3,12 +3,11 @@ import { createApp, watchEffect } from 'vue';
 import { registerAccessDirective } from '@vben/access';
 import { registerLoadingDirective } from '@vben/common-ui';
 import { preferences } from '@vben/preferences';
-import { initStores } from '@vben/stores';
+import { initStores, useTabbarStore } from '@vben/stores';
 import '@vben/styles';
 import '@vben/styles/ele';
 
 import { useTitle } from '@vueuse/core';
-import { ElLoading } from 'element-plus';
 
 import { $t, setupI18n } from '#/locales';
 
@@ -17,6 +16,10 @@ import { initSetupVbenForm } from './adapter/form';
 import App from './app.vue';
 import { router } from './router';
 
+// Runtime registered controls (including the official form designer) need the
+// native styles before Vben installs its theme tokens. Lazy loading this CSS
+// later would override the active Element Plus palette.
+import 'element-plus/dist/index.css';
 import './styles/workspace-theme.css';
 
 async function bootstrap(namespace: string) {
@@ -37,12 +40,9 @@ async function bootstrap(namespace: string) {
   const app = createApp(App);
   app.provide('app-namespace', namespace);
 
-  // 注册Element Plus提供的v-loading指令
-  app.directive('loading', ElLoading.directive);
-
-  // 注册Vben提供的v-loading和v-spinning指令
+  // 业务指令沿用 Vben 原生加载组件；Grid/Modal 使用各自的加载状态。
   registerLoadingDirective(app, {
-    loading: false, // Vben提供的v-loading指令和Element Plus提供的v-loading指令二选一即可，此处false表示不注册Vben提供的v-loading指令
+    loading: true,
     spinning: 'spinning',
   });
 
@@ -51,6 +51,16 @@ async function bootstrap(namespace: string) {
 
   // 配置 pinia-tore
   await initStores(app, { namespace });
+  // Retired prompt editors must not remain as stale tabs in this Agent product.
+  const tabs = useTabbarStore();
+  const retired = new Set([
+    '/ai/applications',
+    '/ai/prompts',
+    '/ai/templates',
+    '/system/ai-prompt',
+  ]);
+  for (const tab of tabs.getTabs)
+    if (retired.has(tab.path)) await tabs.closeTab(tab, router);
 
   // 安装权限指令
   registerAccessDirective(app);

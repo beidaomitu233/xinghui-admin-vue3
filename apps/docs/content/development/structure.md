@@ -1,31 +1,31 @@
-# 代码结构与功能定位
+# 项目结构
 
-适用于第一次接手本项目的开发者。先完成[快速开始](/guide/quickstart)，确认运行的是当前前后端候选；文档中的源码路径均相对于对应仓库，不是本机路径或已发布源码浏览器链接。
+## 后端
 
-## 前端分层
+```text
+system-admin/      应用启动、管理接口、业务服务、AI 配置与工具适配
+system-agent/      AgentScope Harness 绑定、工具契约、会话与任务编排
+system-framework/  认证与框架配置
+common/            核心、缓存、租户、存储、短信、邮件等基础模块
+web-admin/         管理端模块
+web-app/           应用端模块
+```
 
-| 路径 | 职责 |
-| --- | --- |
-| `apps/web-ele/src/views/` | 当前后台页面及局部状态 |
-| `apps/web-ele/src/api/` | DTO类型、真实路径、requestClient调用 |
-| `apps/web-ele/src/composables/` | 分页、字典、编辑和确认状态 |
-| `apps/web-ele/src/adapter/` | Element Plus组件、Vben Form/VXE接入 |
-| `apps/web-ele/src/router/` | 核心路由、后端菜单转换、隐藏业务路由 |
-| `packages/@core/`、`packages/effects/` | 上游封装及本地共享能力，不为单页随意改接口 |
-| `apps/docs/content/` | 唯一文档正文来源 |
+AI 主要代码位于 `system-admin/.../ai`：config/modelhub 负责供应商与业务模型，scene 管理场景，application 管理调用与统计，agent 提供业务适配和扩展，hub 负责中台接入。
 
-## 后端分层
+迁移统一放在 `system-admin/src/main/resources/db/migration`。
 
-`system-admin`提供应用启动、Controller和当前功能服务；`system-framework`承载认证过滤器等框架接缝；`common`中的core、tenant、security、redis、oss等模块提供基础能力。业务目录包括content（目前仅资讯）、lowcode、ai、notification、quartz、businessconfig。
+## 前端
 
-`system-admin/src/main/resources/db/migration/`保存版本迁移，optional-migration保存显式可选迁移。旧已应用版本不能因文档重整改checksum；新扩展新增版本并验证空库和升级。[迁移约定](/reference/database-migrations)另有详细说明。
+```text
+apps/web-ele/src/
+  views/          业务页面
+  api/            接口与类型
+  adapter/        Vben Form、VXE、Element Plus 适配
+  router/         路由与菜单
+  views/ai/       Agent 对话
+apps/docs/        文档站
+packages/         Vben 共享组件与工程能力
+```
 
-## 从页面追到服务
-
-以字典为例：`views/system/dict/index.vue`调用`api/system/dict.ts`，落到DictionaryAdminController与DictionaryService。配置管理和业务字典读取使用不同Controller及权限，不因相似页面名推断共用权限。
-
-正常定位应能找到请求DTO、动作权限、服务字段限制及测试。找不到业务实现时先确认它是否已经移除：资料示例、网站、下载、页面业务模块不能从旧任务或历史路径重新当作当前能力。
-
-## 源码依据与恢复
-
-核对 `apps/web-ele/src/api/system/dict.ts` 与后端 `controller/DictionaryAdminController.java`、`service/DictionaryService.java`。以当前接口及权限为准同步教程。
+页面优先使用已有适配器与上游组件。新增业务无需重写表单、表格、弹窗和 Loading。

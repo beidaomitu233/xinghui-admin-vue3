@@ -1,99 +1,106 @@
 <script setup lang="ts">
-import { ElButton, ElInput } from 'element-plus';
+import { Page } from '@vben/common-ui';
 
-import AdminPageHeader from '#/components/admin-page-header.vue';
+import { ElButton, ElInput, ElTabPane, ElTabs } from 'element-plus';
 
 defineProps<{
   busy?: boolean;
   canAddChannel: boolean;
   canAddModel: boolean;
+  canReadModels: boolean;
   count: string;
   query: string;
-  view: 'models' | 'suppliers';
+  view: 'agent' | 'models' | 'suppliers';
 }>();
 const emit = defineEmits<{
   addChannel: [];
   addModel: [];
   search: [query: string];
-  selectView: [view: 'models' | 'suppliers'];
+  selectView: [view: 'agent' | 'models' | 'suppliers'];
 }>();
 const panes = [
   { value: 'models', label: '模型' },
   { value: 'suppliers', label: '供应商' },
+  { value: 'agent', label: '中台设置' },
 ] as const;
 </script>
 
 <template>
-  <section class="model-hub" aria-label="AI 配置工作区">
-    <AdminPageHeader
-      title="AI 配置"
-      description="管理业务模型、供应商与接入渠道"
-    >
-      <template #actions>
-        <slot name="header-actions"></slot>
-        <ElButton
-          v-if="canAddChannel"
-          :disabled="busy"
-          @click="emit('addChannel')"
-        >
-          添加渠道
-        </ElButton>
-        <ElButton
-          v-if="canAddModel"
-          type="primary"
-          :disabled="busy"
-          @click="emit('addModel')"
-        >
-          添加模型
-        </ElButton>
-      </template>
-    </AdminPageHeader>
-    <div class="hub-workspace">
-      <aside class="hub-sidebar">
-        <div class="hub-sidebar-heading">
-          <div class="hub-sidebar-tabs" role="tablist" aria-label="管理对象">
-            <button
-              v-for="item in panes"
-              :key="item.value"
-              type="button"
-              role="tab"
-              :aria-selected="view === item.value"
-              :class="{ active: view === item.value }"
-              :disabled="busy"
-              @click="emit('selectView', item.value)"
-            >
-              {{ item.label }}
-            </button>
-          </div>
-          <span class="hub-count">{{ count }}</span>
-        </div>
-        <ElInput
-          :model-value="query"
-          :aria-label="view === 'models' ? '搜索模型' : '搜索供应商或渠道'"
-          :placeholder="view === 'models' ? '搜索模型' : '搜索供应商或渠道'"
-          clearable
-          :disabled="busy"
-          class="hub-search"
-          @update:model-value="emit('search', $event)"
-        />
-        <nav
-          class="hub-list"
-          :aria-label="view === 'models' ? '业务模型' : '供应商渠道'"
-        >
-          <slot name="sidebar"></slot>
-        </nav>
-        <footer class="hub-sidebar-footer">
-          <slot name="sidebar-footer"></slot>
-        </footer>
-      </aside>
-      <section
-        class="hub-detail"
-        :aria-label="view === 'models' ? '当前模型配置' : '当前供应商配置'"
+  <Page
+    auto-content-height
+    header-class="flex-wrap gap-3"
+    title="AI 配置"
+    description="管理模型、供应商与中台助手"
+  >
+    <section class="model-hub" aria-label="AI 配置工作区">
+      <div
+        class="hub-workspace"
+        :class="{ 'is-agent-settings': view === 'agent' }"
       >
-        <slot></slot>
-      </section>
-    </div>
-  </section>
+        <aside class="hub-sidebar">
+          <div class="hub-sidebar-heading">
+            <ElTabs
+              :model-value="view"
+              aria-label="管理对象"
+              @tab-change="
+                emit('selectView', $event as 'agent' | 'models' | 'suppliers')
+              "
+            >
+              <ElTabPane
+                v-for="item in panes"
+                :key="item.value"
+                :name="item.value"
+                :label="item.label"
+                :disabled="busy || (item.value !== 'agent' && !canReadModels)"
+              />
+            </ElTabs>
+            <span v-if="view !== 'agent'" class="hub-count">{{ count }}</span>
+          </div>
+          <ElInput
+            v-if="view !== 'agent'"
+            :model-value="query"
+            :aria-label="view === 'models' ? '搜索模型' : '搜索供应商或渠道'"
+            :placeholder="view === 'models' ? '搜索模型' : '搜索供应商或渠道'"
+            clearable
+            :disabled="busy"
+            class="hub-search"
+            @update:model-value="emit('search', $event)"
+          />
+          <ElButton
+            v-if="
+              view !== 'agent' &&
+              (view === 'models' ? canAddModel : canAddChannel)
+            "
+            type="primary"
+            :disabled="busy"
+            @click="view === 'models' ? emit('addModel') : emit('addChannel')"
+          >
+            {{ view === 'models' ? '添加模型' : '添加渠道' }}
+          </ElButton>
+          <nav
+            v-if="view !== 'agent'"
+            class="hub-list"
+            :aria-label="view === 'models' ? '业务模型' : '供应商渠道'"
+          >
+            <slot name="sidebar"></slot>
+          </nav>
+        </aside>
+        <section
+          class="hub-detail"
+          :aria-label="
+            view === 'agent'
+              ? '中台设置'
+              : view === 'models'
+                ? '当前模型配置'
+                : '当前供应商配置'
+          "
+        >
+          <slot v-if="view === 'agent'" name="agent"></slot>
+          <slot v-else></slot>
+        </section>
+      </div>
+    </section>
+  </Page>
 </template>
 
 <style scoped>
@@ -104,8 +111,8 @@ const panes = [
   flex-direction: column;
   gap: 16px;
   min-width: 0;
-  height: calc(var(--vben-content-height, calc(100dvh - 112px)) - 48px);
-  min-height: 560px;
+  height: 100%;
+  min-height: 0;
   color: hsl(var(--foreground));
 }
 
@@ -141,42 +148,26 @@ const panes = [
   border-radius: 10px;
 }
 
+.hub-workspace.is-agent-settings {
+  flex-direction: column;
+}
+
+.is-agent-settings .hub-sidebar {
+  flex: 0 0 auto;
+  padding: 12px 24px 0;
+  border-right: 0;
+  border-bottom: 1px solid hsl(var(--border));
+}
+
 .hub-sidebar {
   display: flex;
-  flex: 0 0 240px;
+  flex: 0 0 250px;
   flex-direction: column;
   gap: 18px;
   min-width: 0;
   min-height: 0;
   padding: 24px 16px 0;
   border-right: 1px solid hsl(var(--border));
-}
-
-.hub-sidebar-tabs {
-  display: flex;
-  gap: 24px;
-}
-
-.hub-sidebar-tabs button {
-  padding: 0 0 8px;
-  color: hsl(var(--muted-foreground));
-  background: transparent;
-  border-bottom: 2px solid transparent;
-}
-
-.hub-sidebar-tabs button.active {
-  font-weight: 600;
-  color: hsl(var(--foreground));
-  border-bottom-color: hsl(var(--primary));
-}
-
-.hub-sidebar-tabs button:focus-visible {
-  outline: 2px solid hsl(var(--primary));
-  outline-offset: 3px;
-}
-
-.hub-sidebar-tabs button:disabled {
-  cursor: wait;
 }
 
 .hub-list {

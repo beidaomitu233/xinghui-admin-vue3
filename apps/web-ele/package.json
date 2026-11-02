@@ -1,6 +1,6 @@
 {
   "name": "@vben/web-ele",
-  "version": "5.5.9",
+  "version": "2.0.0",
   "homepage": "https://vben.pro",
   "bugs": "https://github.com/vbenjs/vue-vben-admin/issues",
   "repository": {
@@ -28,6 +28,11 @@
     "#/*": "./src/*"
   },
   "dependencies": {
+    "@agentscope-ai/chat": "catalog:",
+    "@agentscope-ai/design": "catalog:",
+    "@ant-design/icons": "catalog:",
+    "@form-create/designer": "catalog:",
+    "@form-create/element-ui": "catalog:",
     "@vben/access": "workspace:*",
     "@vben/common-ui": "workspace:*",
     "@vben/constants": "workspace:*",
@@ -43,13 +48,25 @@
     "@vben/types": "workspace:*",
     "@vben/utils": "workspace:*",
     "@vueuse/core": "catalog:",
+    "@vueuse/integrations": "catalog:",
+    "antd": "catalog:",
     "dayjs": "catalog:",
+    "dompurify": "catalog:",
     "element-plus": "catalog:",
+    "lucide-react": "catalog:",
+    "marked": "catalog:",
     "pinia": "catalog:",
+    "qrcode": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
     "vue": "catalog:",
     "vue-router": "catalog:"
   },
   "devDependencies": {
+    "@types/qrcode": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "jsdom": "catalog:",
     "unplugin-element-plus": "catalog:",
     "unplugin-vue-components": "catalog:"
   }

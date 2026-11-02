@@ -1,39 +1,33 @@
 <script lang="ts" setup>
-import type { FormInstance, FormRules } from 'element-plus';
-
-import type { UserForm, UserImportSummary, UserInfo } from '#/api/system/user';
+import type { VxeTableGridOptions } from '#/adapter/vxe-table';
+import type { UserImportSummary, UserInfo } from '#/api/system/user';
 import type { EntityDialogMode } from '#/composables/use-entity-dialog';
 
-import { computed, nextTick, onMounted, reactive, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 
-import { Page } from '@vben/common-ui';
+import { Page, useVbenModal } from '@vben/common-ui';
+import { ChevronDown, Search } from '@vben/icons';
+import { usePreferences } from '@vben/preferences';
 import { useAccessStore } from '@vben/stores';
 
 import { ElMessage, ElMessageBox } from 'element-plus';
 
-import { getRoleList } from '#/api/system/role';
+import { createVbenGridQuery, useVbenVxeGrid } from '#/adapter/vxe-table';
 import {
-  addUser,
   downloadUserImportTemplate,
   exportUsers,
-  getUser,
   getUserList,
   importUsers,
   removeUser,
   resetUserPwd,
-  updateUser,
 } from '#/api/system/user';
-import AdminPageHeader from '#/components/admin-page-header.vue';
-import { useEntityDialog } from '#/composables/use-entity-dialog';
+
+import UserModal from './user-modal.vue';
 
 const accessStore = useAccessStore();
+const { isMobile } = usePreferences();
 const can = (code: string) => accessStore.accessCodes.includes(code);
 const canQuery = computed(() => can('system:user:list'));
-const filters = reactive({ username: '', mobile: '', status: '' });
-const page = reactive({ pageNum: 1, pageSize: 10 });
-const rows = ref<UserInfo[]>([]);
-const total = ref(0);
-const loading = ref(false);
 const error = ref('');
 const importInput = ref<HTMLInputElement>();
 const importLoading = ref(false);
@@ -41,184 +35,258 @@ const templateLoading = ref(false);
 const exportLoading = ref(false);
 const importSummary = ref<UserImportSummary>();
 const importError = ref('');
-const roleOptions = ref<{ roleId: string; roleName: string; status: number }[]>(
-  [],
-);
-const formRef = ref<FormInstance>();
-const emptyUserForm = (): UserForm => ({
-  username: '',
-  nickname: '',
-  email: '',
-  mobile: '',
-  avatar: '',
-  status: 1,
-  password: '',
-  roleIds: [],
-});
+const quickSearch = ref('');
+let queryRevision = 0;
+const [EditModal, modalApi] = useVbenModal({ connectedComponent: UserModal });
 function canOpenDialog(mode: EntityDialogMode) {
   if (mode === 'create') return can('system:user:add');
   if (mode === 'view') return can('system:user:query');
   return can('system:user:edit') && can('system:user:query');
 }
-
-const {
-  beforeClose,
-  clearFieldError,
-  fieldErrors,
-  form,
-  loading: formLoading,
-  mode: dialogMode,
-  open: openDialog,
-  requestClose,
-  reset: resetDialog,
-  saving,
-  submit: save,
-  submitError,
-  visible: dialogVisible,
-} = useEntityDialog<UserForm>({
-  allowed: canOpenDialog,
-  empty: emptyUserForm,
-  prepare: async (mode, id) => {
-    await loadRoles();
-    if (mode === 'create') return emptyUserForm();
-    if (!id) throw new Error('缺少用户 ID');
-    const detail = await getUser(id);
-    return {
-      ...emptyUserForm(),
-      ...detail.user,
-      password: '',
-      roleIds: detail.roleIds ?? [],
-    };
+function open(mode: EntityDialogMode, id?: string) {
+  if (canOpenDialog(mode)) modalApi.setData({ mode, id }).open();
+}
+const add = () => open('create');
+const edit = (row: UserInfo) => open('edit', row.userId);
+const view = (row: UserInfo) => open('view', row.userId);
+const sortableFields = new Set([
+  'createTime',
+  'email',
+  'mobile',
+  'nickname',
+  'status',
+  'username',
+]);
+function userOrdering(sort: { field?: unknown; order?: unknown }): {
+  order: 'asc' | 'desc';
+  orderBy: string;
+} {
+  if (
+    typeof sort.field === 'string' &&
+    sortableFields.has(sort.field) &&
+    (sort.order === 'asc' || sort.order === 'desc')
+  ) {
+    return { orderBy: sort.field, order: sort.order };
+  }
+  return { orderBy: 'createTime', order: 'desc' };
+}
+const queryUsers: () => Promise<{ items: UserInfo[]; total: number }> =
+  createVbenGridQuery(
+    () => gridApi,
+    async ({ page, sort, form }) => {
+      if (!canQuery.value) return { items: [], total: 0 };
+      const result = await getUserList({
+        pageNum: page.currentPage,
+        pageSize: page.pageSize,
+        ...filterValues(form),
+        ...userOrdering(sort),
+      });
+      return { items: result.records ?? [], total: result.total };
+    },
+    () =>
+      JSON.stringify([accessStore.accessToken, canQuery.value, queryRevision]),
+  );
+const columns = computed<NonNullable<VxeTableGridOptions<UserInfo>['columns']>>(
+  () => [
+    { field: 'username', title: '账号', minWidth: 136, sortable: true },
+    { field: 'nickname', title: '昵称', minWidth: 110, sortable: true },
+    {
+      field: 'roleNames',
+      title: '角色',
+      minWidth: 180,
+      formatter: ({ cellValue }) =>
+        (cellValue as string[] | undefined)?.join('、') || '未分配',
+    },
+    { field: 'mobile', title: '手机号', minWidth: 125, sortable: true },
+    { field: 'email', title: '邮箱', minWidth: 170, sortable: true },
+    {
+      field: 'status',
+      title: '状态',
+      width: 96,
+      sortable: true,
+      slots: { default: 'status' },
+    },
+    { field: 'createTime', title: '创建时间', width: 168, sortable: true },
+    {
+      title: '操作',
+      width: 180,
+      fixed: isMobile.value ? undefined : 'right',
+      showOverflow: false,
+      slots: { default: 'actions' },
+    },
+  ],
+);
+const [Grid, gridApi] = useVbenVxeGrid<UserInfo>({
+  tableTitle: '',
+  showSearchForm: false,
+  separator: false,
+  class: '!bg-transparent',
+  gridClass: '!p-0',
+  formOptions: {
+    collapsed: false,
+    showCollapseButton: false,
+    actionLayout: 'newLine',
+    actionPosition: 'left',
+    actionButtonsReverse: true,
+    actionWrapperClass: 'border-t mt-1 pt-3',
+    resetButtonOptions: { plain: true },
+    commonConfig: { labelWidth: 60, labelClass: '!justify-start' },
+    wrapperClass: 'grid-cols-1 gap-x-6 md:grid-cols-2 xl:grid-cols-3',
+    submitOnEnter: true,
+    schema: [
+      {
+        fieldName: 'username',
+        label: '账号',
+        component: 'Input',
+        componentProps: { placeholder: '输入账号关键词', clearable: true },
+        defaultValue: '',
+      },
+      {
+        fieldName: 'mobile',
+        label: '手机号',
+        component: 'Input',
+        componentProps: { placeholder: '输入手机号', clearable: true },
+        defaultValue: '',
+      },
+      {
+        fieldName: 'status',
+        label: '状态',
+        component: 'Select',
+        componentProps: {
+          clearable: true,
+          options: [
+            { label: '启用', value: '1' },
+            { label: '禁用', value: '0' },
+          ],
+        },
+      },
+    ],
+    handleSubmit: async () => {
+      const values = await gridApi.formApi.getValues();
+      quickSearch.value = String(values.username ?? '');
+      gridApi.formApi.setLatestSubmissionValues(values);
+      await gridApi.grid.setCurrentPage(1);
+      await gridApi.query(values);
+    },
+    handleReset: async () => {
+      quickSearch.value = '';
+      await gridApi.formApi.resetForm();
+      const values = await gridApi.formApi.getValues();
+      gridApi.formApi.setLatestSubmissionValues(values);
+      await gridApi.grid.clearSort();
+      // eslint-disable-next-line unicorn/no-array-sort -- VxeGrid.sort 是原生表头排序 API，非数组排序。
+      await gridApi.grid.sort({ field: 'createTime', order: 'desc' });
+      await gridApi.grid.setCurrentPage(1);
+      await gridApi.query(values);
+    },
   },
-  save: (mode, value) => {
-    const payload = { ...value, roleIds: [...value.roleIds] };
-    if (mode === 'edit' && !payload.password) delete payload.password;
-    return mode === 'create' ? addUser(payload) : updateUser(payload);
-  },
-  validate: async () => {
-    if (!formRef.value) return false;
-    try {
-      await formRef.value.validate();
-      return true;
-    } catch {
-      return false;
-    }
-  },
-  onSaved: load,
-  parseError: (message) => {
-    const patterns = [
-      ['username', /用户名|用户账号|账号/],
-      ['mobile', /手机号/],
-      ['password', /密码/],
-      ['nickname', /昵称/],
-      ['email', /邮箱/],
-      ['roleIds', /角色/],
-    ] as const;
-    const field = patterns.find(([, pattern]) => pattern.test(message))?.[0];
-    return {
-      message,
-      fieldErrors: field ? { [field]: message } : {},
-    };
+  gridOptions: {
+    layouts: [
+      ['Toolbar', 'Form'],
+      ['Table', 'Pager'],
+    ],
+    height: 'auto',
+    align: 'left',
+    headerAlign: 'left',
+    round: false,
+    cellConfig: { height: 48 },
+    headerCellConfig: { height: 44 },
+    rowConfig: { keyField: 'userId' },
+    columns: columns.value,
+    pagerConfig: {
+      pageSize: 20,
+      pageSizes: [10, 20, 50, 100],
+      layouts: ['Total', 'Sizes', 'PrevPage', 'Number', 'NextPage'],
+    },
+    sortConfig: {
+      remote: true,
+      multiple: false,
+      trigger: 'cell',
+      defaultSort: { field: 'createTime', order: 'desc' },
+    },
+    toolbarConfig: {
+      custom: true,
+      refresh: true,
+      refreshOptions: { code: 'query' },
+      zoom: false,
+      search: false,
+    },
+    proxyConfig: {
+      sort: true,
+      ajax: {
+        query: queryUsers,
+        querySuccess: () => {
+          error.value = '';
+        },
+        queryError: () => {
+          error.value = '用户列表加载失败，请重试';
+        },
+      },
+    },
   },
 });
-const isEdit = computed(() => dialogMode.value === 'edit');
-const rules: FormRules = {
-  username: [
-    { required: true, message: '请输入账号', trigger: 'blur' },
-    {
-      pattern: /^\w{2,30}$/,
-      message: '账号需为2至30位字母、数字或下划线',
-      trigger: 'blur',
-    },
-  ],
-  password: [
-    {
-      validator: (_rule, value, callback) => {
-        if (!isEdit.value && !value) callback(new Error('请输入密码'));
-        else if (value && (value.length < 6 || value.length > 20))
-          callback(new Error('密码需为6至20位'));
-        else callback();
+const gridState = gridApi.useStore();
+async function searchAccounts() {
+  const values = {
+    ...(await gridApi.formApi.getValues()),
+    username: quickSearch.value.trim(),
+  };
+  await gridApi.formApi.setValues(values);
+  gridApi.formApi.setLatestSubmissionValues(values);
+  await gridApi.grid.setCurrentPage(1);
+  await gridApi.query(values);
+}
+watch(columns, (nextColumns) =>
+  gridApi.setGridOptions({ columns: nextColumns }),
+);
+const [ImportGrid] = useVbenVxeGrid({
+  gridOptions: {
+    height: 320,
+    pagerConfig: { enabled: false },
+    columns: [
+      { field: 'rowNumber', title: '行号', width: 90 },
+      {
+        field: 'status',
+        title: '结果',
+        width: 100,
+        formatter: ({ cellValue }: { cellValue: string }) =>
+          ({ success: '成功', failed: '失败', skipped: '跳过' })[
+            cellValue as 'failed' | 'skipped' | 'success'
+          ],
       },
-      trigger: 'blur',
-    },
-  ],
-  mobile: [
-    { required: true, message: '请输入手机号', trigger: 'blur' },
-    { pattern: /^1[3-9]\d{9}$/, message: '手机号格式不正确', trigger: 'blur' },
-  ],
-  email: [{ type: 'email', message: '邮箱格式不正确', trigger: 'blur' }],
-  nickname: [{ max: 30, message: '昵称不能超过30个字符', trigger: 'blur' }],
-};
-
-async function load() {
-  if (!canQuery.value) return;
-  loading.value = true;
-  error.value = '';
-  try {
-    const data = await getUserList({
-      ...page,
-      ...currentFilters(),
-    });
-    rows.value = data.records ?? [];
-    total.value = Number(data.total ?? 0);
-  } catch {
-    rows.value = [];
-    total.value = 0;
-    error.value = '用户列表加载失败，请重试';
-  } finally {
-    loading.value = false;
-  }
+      { field: 'field', title: '字段', width: 130 },
+      { field: 'reason', title: '原因', minWidth: 220 },
+    ],
+  },
+});
+function filterValues(values: Record<string, unknown>) {
+  const username = String(values.username ?? '').trim();
+  const mobile = String(values.mobile ?? '').trim();
+  return {
+    ...(username && { username }),
+    ...(mobile && { mobile }),
+    ...(values.status !== '' &&
+      values.status !== undefined &&
+      values.status !== null && { status: String(values.status) }),
+  };
 }
 function currentFilters() {
   return {
-    ...(filters.username.trim() && { username: filters.username.trim() }),
-    ...(filters.mobile.trim() && { mobile: filters.mobile.trim() }),
-    ...(filters.status !== '' && { status: filters.status }),
+    ...filterValues(gridApi.formApi.getLatestSubmissionValues()),
+    ...userOrdering(gridApi.grid.getSortColumns()[0] ?? {}),
   };
 }
-function search() {
-  page.pageNum = 1;
-  void load();
+async function load() {
+  queryRevision += 1;
+  await gridApi.query();
 }
-function showPendingUsers() {
-  filters.username = '';
-  filters.mobile = '';
-  filters.status = '0';
-  page.pageNum = 1;
-  void load();
-}
-function reset() {
-  filters.username = '';
-  filters.mobile = '';
-  filters.status = '';
-  search();
-}
-async function loadRoles() {
-  const options: { roleId: string; roleName: string; status: number }[] = [];
-  let pageNum = 1;
-  let totalRoles = 0;
-  do {
-    const result = await getRoleList({ pageNum, pageSize: 100 });
-    options.push(
-      ...(result.records ?? []).map((role) => ({
-        roleId: role.roleId,
-        roleName: role.roleName,
-        status: role.status,
-      })),
-    );
-    totalRoles = Number(result.total ?? 0);
-    if (!result.records?.length) break;
-    pageNum += 1;
-  } while (options.length < totalRoles);
-  roleOptions.value = options;
-}
-const add = () => openDialog('create');
-const edit = (row: UserInfo) => openDialog('edit', row.userId);
-const view = (row: UserInfo) => openDialog('view', row.userId);
-async function resetDialogForm() {
-  if (!resetDialog()) return;
-  await nextTick();
-  formRef.value?.clearValidate();
+async function showPendingUsers() {
+  quickSearch.value = '';
+  const values = { username: '', mobile: '', status: '0' };
+  await gridApi.formApi.setValues(values);
+  gridApi.formApi.setLatestSubmissionValues(values);
+  await gridApi.grid.setCurrentPage(1);
+  await gridApi.query(values);
 }
 async function remove(row: UserInfo) {
   try {
@@ -357,91 +425,16 @@ function downloadImportErrors() {
     '用户导入错误行.csv',
   );
 }
-onMounted(load);
 </script>
 
 <template>
-  <Page content-class="admin-page">
-    <AdminPageHeader title="用户管理">
-      <template #actions>
-        <el-button
-          v-if="canQuery"
-          :loading="templateLoading"
-          @click="downloadTemplate"
-        >
-          下载导入模板
-        </el-button>
-        <el-button
-          v-if="can('system:user:add')"
-          type="primary"
-          :loading="importLoading"
-          @click="chooseImportFile"
-        >
-          {{ importLoading ? '正在导入' : '导入用户' }}
-        </el-button>
-        <el-button
-          v-if="canQuery"
-          :loading="exportLoading"
-          @click="exportCurrentUsers"
-        >
-          导出当前筛选结果
-        </el-button>
-        <el-button
-          v-if="canOpenDialog('create')"
-          type="primary"
-          :loading="formLoading"
-          @click="add"
-        >
-          新增用户
-        </el-button>
-        <span
-          v-if="can('system:user:add')"
-          class="self-center text-sm text-muted-foreground"
-        >
-          .xlsx，最多1000行 / 5 MiB
-        </span>
-        <el-popover
-          v-if="can('system:user:add')"
-          placement="bottom"
-          :width="280"
-          trigger="click"
-        >
-          <template #reference>
-            <el-button link>导入字段说明</el-button>
-          </template>
-          <p>角色标识：多个值用逗号分隔。逐行处理，错误行会列出原因。</p>
-          <p class="mt-2">
-            导入不回显密码。新账号待激活，核对角色后再重置密码并启用。
-          </p>
-        </el-popover>
-        <input
-          ref="importInput"
-          type="file"
-          accept=".xlsx"
-          style="display: none"
-          @change="handleImportFile"
-        />
-      </template>
-    </AdminPageHeader>
-    <el-form :inline="true" :model="filters">
-      <el-form-item label="账号">
-        <el-input v-model="filters.username" clearable @keyup.enter="search" />
-      </el-form-item>
-      <el-form-item label="手机号">
-        <el-input v-model="filters.mobile" clearable @keyup.enter="search" />
-      </el-form-item>
-      <el-form-item label="状态">
-        <el-select v-model="filters.status" clearable style="width: 120px">
-          <el-option label="启用" value="1" />
-          <el-option label="禁用" value="0" />
-        </el-select>
-      </el-form-item>
-      <el-form-item>
-        <el-button type="primary" @click="search">查询</el-button>
-        <el-button @click="reset">重置</el-button>
-      </el-form-item>
-    </el-form>
-
+  <Page
+    title="用户管理"
+    class="user-management"
+    header-class="!px-5 !py-3"
+    auto-content-height
+    content-class="flex min-h-0 flex-col !p-5"
+  >
     <el-alert v-if="error" :title="error" type="error" show-icon class="mb-4">
       <el-button link @click="load">重试</el-button>
     </el-alert>
@@ -484,216 +477,149 @@ onMounted(load);
           下载错误行报告
         </el-button>
       </div>
-      <el-table
-        :data="importSummary.rows"
-        height="320"
-        empty-text="工作簿没有数据行"
-        class="mb-4"
-      >
-        <el-table-column prop="rowNumber" label="行号" width="90" />
-        <el-table-column label="结果" width="100">
-          <template #default="{ row }">
-            <el-tag
-              :type="
-                row.status === 'success'
-                  ? 'success'
-                  : row.status === 'failed'
-                    ? 'danger'
-                    : 'info'
-              "
-            >
-              {{
-                row.status === 'success'
-                  ? '成功'
-                  : row.status === 'failed'
-                    ? '失败'
-                    : '跳过'
-              }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="field" label="字段" width="130" />
-        <el-table-column
-          prop="reason"
-          label="原因"
-          min-width="220"
-          show-overflow-tooltip
-        />
-      </el-table>
+      <ImportGrid :grid-options="{ data: importSummary.rows }" class="mb-4" />
     </template>
-    <el-table v-loading="loading" :data="rows" empty-text="暂无用户">
-      <el-table-column prop="username" label="账号" />
-      <el-table-column prop="nickname" label="昵称" />
-      <el-table-column prop="mobile" label="手机号" />
-      <el-table-column prop="email" label="邮箱" />
-      <el-table-column label="状态">
-        <template #default="{ row }">
-          <el-tag :type="row.status === 1 ? 'success' : 'danger'">
-            {{ row.status === 1 ? '启用' : '禁用' }}
-          </el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column prop="createTime" label="创建时间" />
-      <el-table-column label="操作" width="280">
-        <template #default="{ row }">
-          <el-button v-if="canOpenDialog('view')" link @click="view(row)">
+    <Grid class="min-h-0 flex-1 !bg-transparent">
+      <template #toolbar-actions>
+        <el-button v-if="canOpenDialog('create')" type="primary" @click="add">
+          新增用户
+        </el-button>
+        <el-button
+          v-if="can('system:user:add')"
+          :loading="importLoading"
+          @click="chooseImportFile"
+        >
+          {{ importLoading ? '正在导入' : '导入用户' }}
+        </el-button>
+        <el-dropdown v-if="canQuery" trigger="click" class="ml-3">
+          <el-button :loading="templateLoading || exportLoading">
+            更多操作
+            <ChevronDown class="ml-2 size-3.5" />
+          </el-button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item
+                :disabled="templateLoading"
+                @click="downloadTemplate"
+              >
+                下载导入模板
+              </el-dropdown-item>
+              <el-dropdown-item
+                :disabled="exportLoading"
+                @click="exportCurrentUsers"
+              >
+                导出筛选结果
+              </el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
+        <el-popover
+          v-if="can('system:user:add')"
+          placement="bottom"
+          :width="280"
+          trigger="click"
+        >
+          <template #reference>
+            <el-button text class="ml-2">导入说明</el-button>
+          </template>
+          <p>.xlsx，最多1000行 / 5 MiB。</p>
+          <p>角色标识：多个值用逗号分隔。逐行处理，错误行会列出原因。</p>
+          <p class="mt-2">
+            导入不回显密码。新账号待激活，核对角色后再重置密码并启用。
+          </p>
+        </el-popover>
+        <input
+          ref="importInput"
+          type="file"
+          accept=".xlsx"
+          style="display: none"
+          @change="handleImportFile"
+        />
+      </template>
+      <template #toolbar-tools>
+        <div class="flex items-center gap-2">
+          <el-input
+            v-model="quickSearch"
+            class="w-[200px]"
+            placeholder="搜索账号"
+            aria-label="搜索账号"
+            clearable
+            @keyup.enter="searchAccounts"
+            @clear="searchAccounts"
+          >
+            <template #prefix>
+              <Search class="size-4" />
+            </template>
+          </el-input>
+          <el-tooltip
+            :content="gridState.showSearchForm ? '收起筛选' : '高级筛选'"
+          >
+            <el-button
+              text
+              :type="gridState.showSearchForm ? 'primary' : undefined"
+              :aria-label="gridState.showSearchForm ? '收起筛选' : '高级筛选'"
+              :aria-expanded="!!gridState.showSearchForm"
+              @click="gridApi.toggleSearchForm()"
+            >
+              <i class="vxe-icon-funnel" aria-hidden="true"></i>
+            </el-button>
+          </el-tooltip>
+        </div>
+      </template>
+      <template #status="{ row }">
+        <el-tag :type="row.status === 1 ? 'success' : 'danger'">
+          {{ row.status === 1 ? '启用' : '禁用' }}
+        </el-tag>
+      </template>
+      <template #actions="{ row }">
+        <div class="flex items-center gap-2 whitespace-nowrap">
+          <el-button
+            v-if="canOpenDialog('view')"
+            link
+            type="primary"
+            class="!m-0"
+            @click="view(row)"
+          >
             详情
           </el-button>
-          <el-button v-if="canOpenDialog('edit')" link @click="edit(row)">
+          <el-button
+            v-if="canOpenDialog('edit')"
+            link
+            type="primary"
+            class="!m-0"
+            @click="edit(row)"
+          >
             编辑
           </el-button>
-          <el-button
-            v-if="can('system:user:edit')"
-            link
-            @click="resetPassword(row)"
+          <el-dropdown
+            v-if="can('system:user:edit') || can('system:user:remove')"
+            trigger="click"
+            class="!ml-0"
           >
-            重置密码
-          </el-button>
-          <el-button
-            v-if="can('system:user:remove')"
-            link
-            type="danger"
-            @click="remove(row)"
-          >
-            删除
-          </el-button>
-        </template>
-      </el-table-column>
-    </el-table>
-    <el-pagination
-      v-model:current-page="page.pageNum"
-      v-model:page-size="page.pageSize"
-      :total="total"
-      :page-sizes="[10, 20, 50, 100]"
-      layout="total, sizes, prev, pager, next"
-      class="mt-4 justify-end"
-      @change="load"
-    />
-    <el-dialog
-      v-model="dialogVisible"
-      :title="
-        dialogMode === 'create'
-          ? '新增用户'
-          : dialogMode === 'edit'
-            ? '编辑用户'
-            : '用户详情'
-      "
-      width="560px"
-      destroy-on-close
-      :before-close="beforeClose"
-    >
-      <el-alert
-        v-if="submitError"
-        :title="submitError"
-        type="error"
-        show-icon
-        class="mb-4"
-      />
-      <el-form
-        ref="formRef"
-        :model="form"
-        :rules="rules"
-        :disabled="dialogMode === 'view'"
-        label-width="90px"
-      >
-        <el-form-item
-          label="账号"
-          prop="username"
-          :error="fieldErrors.username"
-        >
-          <el-input
-            v-model="form.username"
-            autocomplete="off"
-            @input="clearFieldError('username')"
-          />
-        </el-form-item>
-        <el-form-item
-          v-if="dialogMode !== 'view'"
-          label="密码"
-          prop="password"
-          :error="fieldErrors.password"
-        >
-          <el-input
-            v-model="form.password"
-            type="password"
-            show-password
-            autocomplete="new-password"
-            :placeholder="isEdit ? '留空则不修改' : '至少6位'"
-            @input="clearFieldError('password')"
-          />
-        </el-form-item>
-        <el-form-item
-          label="昵称"
-          prop="nickname"
-          :error="fieldErrors.nickname"
-        >
-          <el-input
-            v-model="form.nickname"
-            @input="clearFieldError('nickname')"
-          />
-        </el-form-item>
-        <el-form-item label="手机号" prop="mobile" :error="fieldErrors.mobile">
-          <el-input v-model="form.mobile" @input="clearFieldError('mobile')" />
-        </el-form-item>
-        <el-form-item label="邮箱" prop="email" :error="fieldErrors.email">
-          <el-input v-model="form.email" @input="clearFieldError('email')" />
-        </el-form-item>
-        <el-form-item label="状态">
-          <el-radio-group v-model="form.status">
-            <el-radio :value="1">启用</el-radio>
-            <el-radio :value="0">禁用</el-radio>
-          </el-radio-group>
-          <el-popover placement="top" :width="240" trigger="click">
-            <template #reference>
-              <el-button link class="ml-2">启用说明</el-button>
+            <el-button link type="primary">
+              更多
+              <ChevronDown class="ml-1 size-3" />
+            </el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item
+                  v-if="can('system:user:edit')"
+                  @click="resetPassword(row)"
+                >
+                  重置密码
+                </el-dropdown-item>
+                <el-dropdown-item
+                  v-if="can('system:user:remove')"
+                  @click="remove(row)"
+                >
+                  <span class="text-destructive">删除用户</span>
+                </el-dropdown-item>
+              </el-dropdown-menu>
             </template>
-            <p>
-              待激活账号需先核对角色，并重置和安全交付一次性密码，再启用登录。
-            </p>
-          </el-popover>
-        </el-form-item>
-        <el-form-item label="角色" prop="roleIds" :error="fieldErrors.roleIds">
-          <el-select
-            v-model="form.roleIds"
-            multiple
-            clearable
-            class="w-full"
-            @change="clearFieldError('roleIds')"
-          >
-            <el-option
-              v-for="role in roleOptions"
-              :key="role.roleId"
-              :label="
-                role.status === 1
-                  ? role.roleName
-                  : `${role.roleName}（已停用，可移除）`
-              "
-              :disabled="
-                role.status !== 1 && !form.roleIds.includes(role.roleId)
-              "
-              :value="role.roleId"
-            />
-          </el-select>
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="requestClose">
-          {{ dialogMode === 'view' ? '关闭' : '取消' }}
-        </el-button>
-        <template v-if="dialogMode !== 'view'">
-          <el-button :disabled="saving" @click="resetDialogForm">
-            重置
-          </el-button>
-          <el-button
-            type="primary"
-            :loading="saving"
-            :disabled="formLoading"
-            @click="save"
-          >
-            保存
-          </el-button>
-        </template>
+          </el-dropdown>
+        </div>
       </template>
-    </el-dialog>
+    </Grid>
+    <EditModal @saved="load" />
   </Page>
 </template>

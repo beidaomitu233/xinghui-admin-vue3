@@ -7,6 +7,8 @@ export namespace AuthApi {
     password: string;
     code?: string;
     uuid?: string;
+    smsRequestId?: string;
+    smsCode?: string;
   }
 
   /** 登录接口返回值 */
@@ -19,9 +21,27 @@ export namespace AuthApi {
  * 登录
  */
 export async function loginApi(data: AuthApi.LoginParams) {
-  const token = await requestClient.post<string>('/user/login', data);
+  const token = data.smsRequestId
+    ? await requestClient.post<string>('/auth/sms/login', {
+        phone: data.phone,
+        requestId: data.smsRequestId,
+        code: data.smsCode,
+      })
+    : await requestClient.post<string>('/user/login', data);
   return { accessToken: token };
 }
+export const getSmsLoginCapability = () =>
+  requestClient.get<{ available: boolean }>('/auth/sms/capability');
+export const sendSmsLoginCode = (data: {
+  code?: string;
+  phone: string;
+  uuid?: string;
+}) =>
+  requestClient.post<{
+    expiresInSeconds: number;
+    requestId: string;
+    retryAfterSeconds: number;
+  }>('/auth/sms/code', data);
 
 /**
  * 退出登录

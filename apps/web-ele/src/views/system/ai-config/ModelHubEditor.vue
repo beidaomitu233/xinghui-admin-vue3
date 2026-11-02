@@ -3,17 +3,13 @@ import type { HubSourceOption, ModelMetadata } from './model-hub-state';
 
 import type { HubModel } from '#/api/system/ai-model-hub';
 
-import { computed, reactive, watch } from 'vue';
+import { computed, reactive, ref, watch } from 'vue';
 
-import {
-  ElAlert,
-  ElButton,
-  ElCheckbox,
-  ElDrawer,
-  ElForm,
-  ElFormItem,
-  ElInput,
-} from 'element-plus';
+import { useVbenDrawer } from '@vben/common-ui';
+
+import { ElAlert, ElButton, ElOption, ElSelect } from 'element-plus';
+
+import { useVbenForm, z } from '#/adapter/form';
 
 const props = defineProps<{
   busy: boolean;
@@ -36,8 +32,72 @@ const form = reactive<ModelMetadata>({
   contextWindow: '',
   enabled: true,
 });
+const selectedSource = ref('');
 let baseline = '';
 const dirty = computed(() => JSON.stringify(form) !== baseline);
+const [Form, formApi] = useVbenForm({
+  showDefaultActions: false,
+  layout: 'vertical',
+  wrapperClass: 'grid-cols-1',
+  commonConfig: {
+    componentProps: () => ({
+      class: 'w-full',
+      disabled: props.busy || props.unknown,
+    }),
+  },
+  handleValuesChange: (values) => {
+    Object.assign(form, values);
+  },
+  schema: [
+    {
+      component: 'Input',
+      fieldName: 'name',
+      label: '模型名称',
+      rules: z.string().trim().min(1).max(50),
+      componentProps: { maxlength: 50, placeholder: '例如：客服对话模型' },
+    },
+    {
+      component: 'Input',
+      fieldName: 'slug',
+      label: '调用名称',
+      rules: z.string().trim().min(1).max(80),
+      componentProps: () => ({
+        readonly: !!props.model,
+        maxlength: 80,
+        placeholder: '例如：customer-chat',
+      }),
+      description: () =>
+        props.model
+          ? '创建后保持稳定。'
+          : '业务调用时使用此名称，上游模型 ID 在供应商绑定中配置。',
+    },
+    {
+      component: 'Input',
+      fieldName: 'capabilities',
+      label: '模型能力',
+      componentProps: { maxlength: 100, placeholder: '例如：对话 / 视觉' },
+    },
+    {
+      component: 'Input',
+      fieldName: 'contextWindow',
+      label: '上下文窗口',
+      componentProps: { maxlength: 32, placeholder: '例如：128K' },
+    },
+    {
+      component: 'Checkbox',
+      fieldName: 'enabled',
+      label: '启用模型',
+      defaultValue: true,
+    },
+  ],
+});
+const [Drawer, drawerApi] = useVbenDrawer({
+  closeOnClickModal: false,
+  onBeforeClose: () => {
+    emit('close');
+    return false;
+  },
+});
 function selectSource(source: HubSourceOption) {
   if (props.busy || props.unknown) return;
   form.name = source.name;
@@ -47,11 +107,14 @@ function selectSource(source: HubSourceOption) {
     .toLowerCase();
   form.capabilities = source.capabilities;
   form.contextWindow = source.contextWindow;
+  void formApi.setValues(form);
 }
 watch(
   () => props.open,
   (open) => {
+    drawerApi.setState({ isOpen: open });
     if (!open) return;
+    selectedSource.value = '';
     const model = props.model;
     form.name = model?.name ?? '';
     form.slug = model?.slug ?? '';
@@ -59,11 +122,19 @@ watch(
     form.contextWindow = model?.contextWindow ?? '';
     form.enabled = model?.enabled ?? true;
     baseline = JSON.stringify(form);
+    void formApi.setValues(form);
   },
   { immediate: true },
 );
-function submit() {
+async function submit() {
   if (props.busy) return;
+  if (!props.unknown) {
+    const validation = await formApi.validate();
+    if (!validation.valid) return;
+  }
+  const values = await formApi.getValues();
+  if (props.busy) return;
+  Object.assign(form, values);
   emit('save', {
     ...form,
     name: form.name.trim(),
@@ -72,37 +143,37 @@ function submit() {
     contextWindow: form.contextWindow.trim(),
   });
 }
-function beforeClose() {
-  emit('close');
-}
 defineExpose({
   hasUnsaved: () => props.open && (dirty.value || props.unknown),
 });
 </script>
 
 <template>
-  <ElDrawer
-    :model-value="open"
-    :title="model ? '模型设置' : '添加模型'"
-    size="min(680px, 100vw)"
-    :close-on-click-modal="false"
-    :before-close="beforeClose"
-  >
+  <Drawer :title="model ? '模型设置' : '添加模型'" class="w-full max-w-[680px]">
     <ElAlert v-if="error" :title="error" type="error" :closable="false" />
     <section v-if="!model" class="model-source-options">
       <h3>从可用模型中选择</h3>
-      <div v-if="sources.length > 0" class="model-source-list">
-        <button
+      <ElSelect
+        v-if="sources.length > 0"
+        v-model="selectedSource"
+        filterable
+        :disabled="busy || unknown"
+        class="w-full"
+        placeholder="选择可用模型填入名称与能力"
+        @change="
+          (code) => {
+            const source = sources.find((item) => item.code === code);
+            if (source) selectSource(source);
+          }
+        "
+      >
+        <ElOption
           v-for="source in sources"
           :key="source.code"
-          type="button"
-          :disabled="busy || unknown"
-          @click="selectSource(source)"
-        >
-          <strong>{{ source.name }}</strong>
-          <small>{{ source.code }}</small>
-        </button>
-      </div>
+          :value="source.code"
+          :label="`${source.name} · ${source.code}`"
+        />
+      </ElSelect>
       <div v-else class="model-source-empty">
         <p>尚未获取可选模型，请先添加渠道并获取模型目录。</p>
         <ElButton :disabled="busy || unknown" @click="emit('suppliers')">
@@ -111,56 +182,7 @@ defineExpose({
       </div>
       <p>创建模型后再配置供应商，业务调用名称独立保留。</p>
     </section>
-    <ElForm
-      label-position="top"
-      :disabled="busy || unknown"
-      class="model-editor-form"
-      @submit.prevent="submit"
-    >
-      <ElFormItem label="模型名称" required>
-        <ElInput
-          v-model="form.name"
-          aria-label="业务模型名称"
-          maxlength="50"
-          placeholder="例如：客服对话模型"
-        />
-      </ElFormItem>
-      <ElFormItem label="调用名称" required>
-        <ElInput
-          v-model="form.slug"
-          :readonly="Boolean(model)"
-          aria-label="业务模型调用名称"
-          maxlength="80"
-          placeholder="例如：customer-chat"
-        />
-        <p class="model-field-help">
-          {{
-            model
-              ? '创建后保持稳定。'
-              : '业务调用时使用此名称，上游模型 ID 在供应商绑定中配置。'
-          }}
-        </p>
-      </ElFormItem>
-      <div class="model-form-row">
-        <ElFormItem label="模型能力">
-          <ElInput
-            v-model="form.capabilities"
-            aria-label="业务模型能力"
-            maxlength="100"
-            placeholder="例如：对话 / 视觉"
-          />
-        </ElFormItem>
-        <ElFormItem label="上下文窗口">
-          <ElInput
-            v-model="form.contextWindow"
-            aria-label="业务模型上下文"
-            maxlength="32"
-            placeholder="例如：128K"
-          />
-        </ElFormItem>
-      </div>
-      <ElCheckbox v-model="form.enabled">启用模型</ElCheckbox>
-    </ElForm>
+    <Form />
     <template #footer>
       <div class="model-editor-footer">
         <ElButton
@@ -187,7 +209,7 @@ defineExpose({
         </div>
       </div>
     </template>
-  </ElDrawer>
+  </Drawer>
 </template>
 
 <style scoped>

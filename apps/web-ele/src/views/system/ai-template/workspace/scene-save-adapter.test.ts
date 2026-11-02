@@ -5,9 +5,23 @@ import type {
 
 import { describe, expect, it, vi } from 'vitest';
 
-import { cloneScene, persistScene } from './scene-save-adapter';
+import {
+  cloneScene,
+  persistScene,
+  sceneSaveProblem,
+} from './scene-save-adapter';
 
 const save = vi.hoisted(() => vi.fn());
+it('explains Agent prompt validation without reflecting unknown server messages', () => {
+  const known = sceneSaveProblem({
+    response: { status: 400, data: { message: 'AGENT_INPUT_COMES_FROM_CHAT' } },
+  });
+  expect(known.message).toContain('变量');
+  const unknown = sceneSaveProblem({
+    response: { status: 400, data: { message: 'private provider diagnostic' } },
+  });
+  expect(unknown.message).not.toContain('private provider');
+});
 vi.mock('#/api/system/ai-scene', () => ({ saveScene: save }));
 function definition(): SceneDefinition {
   return {

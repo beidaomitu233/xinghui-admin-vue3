@@ -25,6 +25,7 @@ export function localDateTime(value: null | string, timeZone?: string) {
   return `${fields.year}-${fields.month}-${fields.day} ${fields.hour}:${fields.minute}:${fields.second}.${fields.fractionalSecond}`;
 }
 export const entryLabels = {
+  AGENT_MODEL: '工作台模型调用',
   CONFIGURATION_TEST: '连接测试',
   MODEL_DISCOVERY: '模型目录扫描',
   REQUEST_ATTEMPT: '模型调用',
@@ -52,6 +53,9 @@ export function costValue(call: CallLogRow) {
   return `${call.reportedCost} ${call.currency ?? '币种未提供'}`;
 }
 const exportFields = [
+  'agentSessionId',
+  'agentRunId',
+  'agentModelCallId',
   'callId',
   'requestId',
   'attemptId',

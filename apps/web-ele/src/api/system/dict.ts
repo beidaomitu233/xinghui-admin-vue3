@@ -1,17 +1,17 @@
 import { requestClient } from '#/api/request';
 
 export interface DictType {
-  id: number;
+  id: number | string;
   code: string;
   name: string;
   enabled: boolean;
   remark?: string;
-  revision: number;
+  revision: number | string;
 }
 
 export interface DictItem {
-  id: number;
-  typeId: number;
+  id: number | string;
+  typeId: number | string;
   value: string;
   label: string;
   sortOrder: number;
@@ -34,20 +34,24 @@ export interface DictLabel {
 
 export const listDictTypes = () =>
   requestClient.get<DictType[]>('/system/dict/types');
-export const listDictItems = (typeId: number) =>
+export const listDictItems = (typeId: number | string) =>
   requestClient.get<DictItem[]>(`/system/dict/types/${typeId}/items`);
 export const createDictType = (data: Omit<DictType, 'id' | 'revision'>) =>
-  requestClient.post<number>('/system/dict/types', data);
+  requestClient.post<number | string>('/system/dict/types', data);
 export const updateDictType = (
-  id: number,
+  id: number | string,
   data: Pick<DictType, 'enabled' | 'name' | 'remark'>,
 ) => requestClient.put(`/system/dict/types/${id}`, data);
 export const createDictItem = (
-  typeId: number,
+  typeId: number | string,
   data: Omit<DictItem, 'id' | 'typeId'>,
-) => requestClient.post<number>(`/system/dict/types/${typeId}/items`, data);
+) =>
+  requestClient.post<number | string>(
+    `/system/dict/types/${typeId}/items`,
+    data,
+  );
 export const updateDictItem = (
-  id: number,
+  id: number | string,
   data: Pick<DictItem, 'enabled' | 'label' | 'remark' | 'sortOrder'>,
 ) => requestClient.put(`/system/dict/items/${id}`, data);
 

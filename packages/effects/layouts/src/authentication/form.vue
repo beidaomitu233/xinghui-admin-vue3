@@ -1,9 +1,12 @@
 <script setup lang="ts">
+import { cn } from '@vben/utils';
+
 defineOptions({
   name: 'AuthenticationFormView',
 });
 
 defineProps<{
+  contentClass?: string;
   dataSide?: 'bottom' | 'left' | 'right' | 'top';
 }>();
 </script>
@@ -20,7 +23,12 @@ defineProps<{
           <component
             :is="Component"
             :key="route.fullPath"
-            class="side-content mt-6 w-full sm:mx-auto md:max-w-md"
+            :class="
+              cn(
+                'side-content mt-6 w-full sm:mx-auto md:max-w-md',
+                contentClass,
+              )
+            "
             :data-side="dataSide"
           />
         </KeepAlive>

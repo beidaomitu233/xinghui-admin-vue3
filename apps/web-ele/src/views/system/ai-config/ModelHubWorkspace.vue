@@ -23,25 +23,23 @@ import {
 } from 'vue';
 import { onBeforeRouteLeave } from 'vue-router';
 
+import { useVbenDrawer, useVbenModal } from '@vben/common-ui';
 import { useAccessStore } from '@vben/stores';
 
 import {
   ElAlert,
   ElButton,
   ElCheckbox,
-  ElDialog,
-  ElDrawer,
   ElEmpty,
   ElForm,
   ElFormItem,
   ElMessageBox,
   ElOption,
   ElSelect,
-  ElTable,
-  ElTableColumn,
   ElTooltip,
 } from 'element-plus';
 
+import { useVbenVxeGrid } from '#/adapter/vxe-table';
 import {
   activateConfiguration,
   disableConfiguration,
@@ -70,6 +68,7 @@ import {
   settingsProviders,
 } from '#/api/system/ai-settings';
 
+import AgentSettings from './AgentSettings.vue';
 import ChannelWorkspace from './ChannelWorkspace.vue';
 import {
   hubModelChange,
@@ -81,9 +80,14 @@ import ModelHubLayout from './ModelHubLayout.vue';
 import ModelHubModel from './ModelHubModel.vue';
 import ModelHubOverview from './ModelHubOverview.vue';
 import ModelHubSupplier from './ModelHubSupplier.vue';
+import SupplierModelSelect from './SupplierModelSelect.vue';
 
-const emit = defineEmits<{ routing: [] }>();
+const agentSettings = ref<InstanceType<typeof AgentSettings>>();
 const access = useAccessStore();
+const agentOpen = ref(
+  !access.accessCodes.includes('ai:config:list') &&
+    access.accessCodes.includes('ai:scene:query'),
+);
 const can = (action: string) =>
   access.accessCodes.includes(`ai:config:${action}`);
 const identity = computed(() =>
@@ -117,7 +121,11 @@ const routeDraft = reactive({
   upstreamModel: '',
   enabled: true,
 });
-const pendingSave = ref<{ body: HubModelChange; modelId?: string }>();
+const pendingSave = ref<{
+  body: HubModelChange;
+  modelId?: string;
+  preserveView?: boolean;
+}>();
 const pendingToggle = ref<{
   body: {
     clientMutationId: string;
@@ -165,12 +173,12 @@ const selectedChannel = computed(() =>
     (channel) => channel.configId === selectedChannelId.value,
   ),
 );
-const boundModelCount = computed(() => {
+const boundModels = computed(() => {
   const channelId = selectedChannel.value?.configId;
-  if (!channelId) return 0;
+  if (!channelId) return [];
   return models.value.filter((model) =>
     model.routes.some((route) => route.channelId === channelId),
-  ).length;
+  );
 });
 const filteredModels = computed(() =>
   models.value.filter((model) =>
@@ -266,9 +274,6 @@ function switchReason(reason: string) {
   if (reason === 'FALLBACK_MODEL') return '切换备用接入';
   return reason ? '已记录切换原因' : '—';
 }
-const canRouting = computed(
-  () => can('query') && access.accessCodes.includes('ai:scene:query'),
-);
 function providerName(code: string) {
   return (
     providers.value.find((provider) => provider.code === code)?.name ?? code
@@ -478,7 +483,11 @@ async function closeModel() {
   modelEditorOpen.value = false;
   return true;
 }
-async function saveModel(body?: HubModelChange, modelId?: string) {
+async function saveModel(
+  body?: HubModelChange,
+  modelId?: string,
+  preserveView = false,
+) {
   const targetId = pendingSave.value?.modelId ?? modelId;
   if (
     saving.value ||
@@ -488,7 +497,7 @@ async function saveModel(body?: HubModelChange, modelId?: string) {
     return false;
   if (!pendingSave.value) {
     if (!body) return false;
-    pendingSave.value = { body, modelId };
+    pendingSave.value = { body, modelId, preserveView };
   }
   const attempt = pendingSave.value;
   const actor = identity.value;
@@ -501,8 +510,10 @@ async function saveModel(body?: HubModelChange, modelId?: string) {
       : await createHubModel(attempt.body);
     if (!alive || actor !== identity.value) return false;
     replaceModel(value);
-    selectedModelId.value = value.modelId;
-    view.value = 'models';
+    if (!attempt.preserveView) {
+      selectedModelId.value = value.modelId;
+      view.value = 'models';
+    }
     pendingSave.value = undefined;
     unknown.value = false;
     modelEditorOpen.value = false;
@@ -594,6 +605,24 @@ function mutateModel(change: Partial<HubModelChange>) {
     model.modelId,
   );
 }
+function updateSupplierPolicy(
+  modelId: string,
+  strategy: HubModel['strategy'],
+  fallback: boolean,
+) {
+  const model = models.value.find((item) => item.modelId === modelId);
+  if (!model || busy.value || !can('edit')) return;
+  void saveModel(
+    {
+      ...hubModelChange(model),
+      strategy,
+      fallback,
+      clientMutationId: crypto.randomUUID(),
+    },
+    modelId,
+    true,
+  );
+}
 async function removeModel() {
   const model = editingModel.value;
   if (!model || busy.value || !can('edit')) return;
@@ -657,14 +686,6 @@ function saveRoute() {
     busy.value
   )
     return;
-  if (
-    !routeChannel.value?.models.some(
-      (item) => item.code === routeDraft.upstreamModel,
-    )
-  ) {
-    error.value = '请先为该渠道 Key 配置所选上游模型。';
-    return;
-  }
   const routes = hubModelChange(model).routes;
   const values = { ...routeDraft };
   if (
@@ -904,11 +925,17 @@ function beforeUnload(event: BeforeUnloadEvent) {
     event.returnValue = '';
   }
 }
-async function showRouting() {
-  if (await leave()) emit('routing');
+async function selectWorkspace(next: 'agent' | 'models' | 'suppliers') {
+  if (busy.value) return;
+  if (agentOpen.value && !(await agentSettings.value?.requestLeave())) return;
+  if (next === 'agent' && !(await leave())) return;
+  agentOpen.value = next === 'agent';
+  if (next !== 'agent') changeView(next);
 }
 onBeforeRouteLeave(leave);
 watch(identity, () => {
+  agentOpen.value =
+    !can('list') && access.accessCodes.includes('ai:scene:query');
   generation++;
   selection++;
   testGeneration++;
@@ -951,28 +978,58 @@ onBeforeUnmount(() => {
   pendingTest = undefined;
   pendingSave.value = undefined;
 });
+const [RouteModal, routeModalApi] = useVbenModal({
+  onBeforeClose: () => !saving.value,
+  onOpenChange: (open) => {
+    routeEditorOpen.value = open;
+  },
+});
+watch(routeEditorOpen, (open) => routeModalApi.setState({ isOpen: open }), {
+  immediate: true,
+});
+const [TestDrawer, testDrawerApi] = useVbenDrawer({ onBeforeClose: closeTest });
+watch(testOpen, (open) => testDrawerApi.setState({ isOpen: open }), {
+  immediate: true,
+});
+const [AttemptsGrid, attemptsGridApi] = useVbenVxeGrid<
+  HubModelTest['attempts'][number]
+>({
+  gridOptions: {
+    columns: [
+      { title: '次序', width: 65, field: 'number', sortable: true },
+      { title: '供应商 / 模型', minWidth: 160, slots: { default: 'cell1' } },
+      { title: '状态', minWidth: 100, slots: { default: 'cell2' } },
+      { title: '切换记录', minWidth: 120, slots: { default: 'cell3' } },
+      { title: '耗时', width: 90, slots: { default: 'cell4' } },
+    ],
+    pagerConfig: { enabled: false },
+    proxyConfig: { enabled: false },
+    toolbarConfig: { custom: true },
+  },
+});
+watch(
+  () => testResult.value?.attempts ?? [],
+  (data) => attemptsGridApi.setGridOptions({ data }),
+  { immediate: true },
+);
 </script>
 
 <template>
   <ModelHubLayout
-    :view="view"
+    :view="agentOpen ? 'agent' : view"
     :query="query"
     :count="count"
+    :can-read-models="can('list')"
     :can-add-channel="can('add')"
     :can-add-model="can('add')"
     :busy="busy"
-    @select-view="changeView"
+    @select-view="selectWorkspace"
     @search="query = $event"
     @add-channel="editor?.open()"
     @add-model="openModel()"
   >
-    <template #header-actions>
-      <ElButton v-if="canRouting" link :disabled="busy" @click="showRouting">
-        场景调用顺序
-      </ElButton>
-      <ElButton :loading="loading" :disabled="busy" @click="load">
-        刷新
-      </ElButton>
+    <template #agent>
+      <AgentSettings ref="agentSettings" :models="models" />
     </template>
     <template #sidebar>
       <template v-if="view === 'models'">
@@ -1050,15 +1107,7 @@ onBeforeUnmount(() => {
         </button>
       </template>
     </template>
-    <template #sidebar-footer>
-      {{ count }} 个{{ view === 'models' ? '模型' : '渠道' }} ·
-      {{
-        view === 'models'
-          ? models.filter((model) => model.enabled).length
-          : channels.filter((channel) => channel.active).length
-      }}
-      个已启用{{ complete ? '' : '（已读取）' }}
-    </template>
+
     <ElAlert
       v-if="error"
       :title="error"
@@ -1118,8 +1167,7 @@ onBeforeUnmount(() => {
       :busy="busy"
       @edit="openModel(selectedModel)"
       @toggle="toggleModel"
-      @strategy="mutateModel({ strategy: $event })"
-      @fallback="mutateModel({ fallback: $event })"
+      @supplier="selectSupplier"
       @add-route="openRoute()"
       @edit-route="openRoute"
       @remove-route="removeRoute"
@@ -1131,7 +1179,7 @@ onBeforeUnmount(() => {
       v-else-if="view === 'suppliers' && selectedChannel"
       :channel="selectedChannel"
       :provider-name="providerName(selectedChannel.provider)"
-      :bound-models="boundModelCount"
+      :bound-models="boundModels"
       :can-edit="can('edit')"
       :can-enable="can('enable')"
       :can-scan="can('test')"
@@ -1144,9 +1192,9 @@ onBeforeUnmount(() => {
       @configure="editor?.open(selectedChannel)"
       @configure-keys="editor?.open(selectedChannel, true)"
       @scan="refreshCatalog"
-      @page="readCatalog(selectedChannel.configId, $event)"
       @test="editor?.open(selectedChannel)"
       @toggle="toggleChannel"
+      @policy="updateSupplierPolicy"
     />
     <ElEmpty
       v-else
@@ -1172,12 +1220,10 @@ onBeforeUnmount(() => {
       }
     "
   />
-  <ElDialog
-    v-model="routeEditorOpen"
+  <RouteModal
     :title="editingRouteId ? '编辑供应商' : '添加供应商'"
-    width="min(560px, 95vw)"
+    class="w-full max-w-[560px]"
     :close-on-click-modal="false"
-    :show-close="!saving"
     :close-on-press-escape="!saving"
   >
     <p class="hub-dialog-model">
@@ -1201,22 +1247,25 @@ onBeforeUnmount(() => {
         </ElSelect>
       </ElFormItem>
       <ElFormItem label="上游模型" required>
-        <ElSelect
+        <SupplierModelSelect
           v-model="routeDraft.upstreamModel"
-          aria-label="供应商上游模型"
-          filterable
-        >
-          <ElOption
-            v-for="model in routeChannel?.models ?? []"
-            :key="model.code"
-            :value="model.code"
-            :label="`${model.name} — ${model.code}`"
-          />
-        </ElSelect>
+          :channel="routeChannel"
+        />
       </ElFormItem>
       <p v-if="routeChannel" class="hub-dialog-help">
         {{ routeChannel.endpointUrl }} ·
         {{ routeChannel.active ? '渠道已启用' : '渠道未启用' }}
+      </p>
+      <p
+        v-if="
+          routeDraft.upstreamModel &&
+          !routeChannel?.models.some(
+            (model) => model.code === routeDraft.upstreamModel,
+          )
+        "
+        class="hub-dialog-help"
+      >
+        此模型尚未关联 Key，保存后可在供应商管理中配置并验证。
       </p>
       <ElCheckbox v-model="routeDraft.enabled">启用此供应商</ElCheckbox>
     </ElForm>
@@ -1237,12 +1286,10 @@ onBeforeUnmount(() => {
         {{ unknown ? '重试原保存' : '保存配置' }}
       </ElButton>
     </template>
-  </ElDialog>
-  <ElDrawer
-    :model-value="testOpen"
+  </RouteModal>
+  <TestDrawer
     title="测试调用"
-    size="min(620px, 100vw)"
-    :before-close="closeTest"
+    class="w-full max-w-[620px]"
     :close-on-click-modal="false"
   >
     <h2 class="hub-test-name">{{ testModel?.name }}</h2>
@@ -1263,42 +1310,28 @@ onBeforeUnmount(() => {
         <dd>{{ testResult.attemptCount }}</dd>
       </div>
     </dl>
-    <ElTable
-      v-if="testResult?.attempts?.length"
-      :data="testResult.attempts"
-      aria-label="真实供应商尝试轨迹"
-      class="hub-test-attempts"
-    >
-      <ElTableColumn prop="number" label="次序" width="65" />
-      <ElTableColumn label="供应商 / 模型" min-width="160">
-        <template #default="{ row }">
-          <strong>
-            {{
-              row.providerCode ? providerName(row.providerCode) : '未记录供应商'
-            }}
-          </strong>
-          <small>{{ row.upstreamModel || '未记录模型' }}</small>
-        </template>
-      </ElTableColumn>
-      <ElTableColumn label="状态" min-width="100">
-        <template #default="{ row }">
-          {{ testStatus(row.status) }}
-          <small v-if="row.errorCode">
-            {{ aiErrorMessage(row.errorCode) }}
-          </small>
-        </template>
-      </ElTableColumn>
-      <ElTableColumn label="切换记录" min-width="120">
-        <template #default="{ row }">
-          {{ switchReason(row.switchReason) }}
-        </template>
-      </ElTableColumn>
-      <ElTableColumn label="耗时" width="90">
-        <template #default="{ row }">
-          {{ row.elapsedMs === null ? '未记录' : `${row.elapsedMs} ms` }}
-        </template>
-      </ElTableColumn>
-    </ElTable>
+    <AttemptsGrid v-if="testResult?.attempts?.length">
+      <template #cell1="{ row }">
+        <strong>
+          {{
+            row.providerCode ? providerName(row.providerCode) : '未记录供应商'
+          }}
+        </strong>
+        <small>{{ row.upstreamModel || '未记录模型' }}</small>
+      </template>
+      <template #cell2="{ row }">
+        {{ testStatus(row.status) }}
+        <small v-if="row.errorCode">
+          {{ aiErrorMessage(row.errorCode) }}
+        </small>
+      </template>
+      <template #cell3="{ row }">
+        {{ switchReason(row.switchReason) }}
+      </template>
+      <template #cell4="{ row }">
+        {{ row.elapsedMs === null ? '未记录' : `${row.elapsedMs} ms` }}
+      </template>
+    </AttemptsGrid>
     <p v-if="!testResult" class="hub-dialog-help">
       使用当前模型已保存的供应商顺序与策略进行真实调用。
     </p>
@@ -1324,7 +1357,7 @@ onBeforeUnmount(() => {
         </ElButton>
       </ElTooltip>
     </template>
-  </ElDrawer>
+  </TestDrawer>
 </template>
 
 <style scoped>

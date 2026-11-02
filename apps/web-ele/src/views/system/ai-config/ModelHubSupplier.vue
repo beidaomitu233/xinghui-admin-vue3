@@ -3,24 +3,34 @@ import type {
   CatalogModel,
   ModelCatalogPage,
 } from '#/api/system/ai-model-catalog';
+import type { HubModel } from '#/api/system/ai-model-hub';
 import type {
   AiSettingsView,
   ConnectionStatus,
 } from '#/api/system/ai-settings';
 
-import { computed } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
+
+import { useAccessStore } from '@vben/stores';
 
 import {
   ElAlert,
   ElButton,
-  ElEmpty,
+  ElOption,
+  ElSelect,
   ElSwitch,
   ElTable,
   ElTableColumn,
 } from 'element-plus';
 
+import { useVbenVxeGrid } from '#/adapter/vxe-table';
+import {
+  catalogError as formatCatalogError,
+  getStoredCatalog,
+} from '#/api/system/ai-model-catalog';
+
 const props = defineProps<{
-  boundModels: number;
+  boundModels: HubModel[];
   busy: boolean;
   canEdit: boolean;
   canEnable: boolean;
@@ -36,7 +46,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   configure: [];
   configureKeys: [];
-  page: [page: number];
+  policy: [modelId: string, strategy: HubModel['strategy'], fallback: boolean];
   scan: [];
   test: [];
   toggle: [enabled: boolean];
@@ -83,6 +93,133 @@ const refreshedAt = computed(() => {
     timeZone: 'Asia/Shanghai',
     hour12: false,
   });
+});
+
+const access = useAccessStore();
+const gridError = ref('');
+let generation = 0;
+let result = { items: [] as CatalogModel[], total: 0 };
+const queryParameters = (
+  page: { currentPage: number; pageSize: number },
+  sort: { field?: string; order?: null | string },
+) => ({
+  pageNum: page.currentPage,
+  pageSize: page.pageSize,
+  ...(sort.order === 'asc' || sort.order === 'desc'
+    ? { orderBy: sort.field, order: sort.order as 'asc' | 'desc' }
+    : {}),
+});
+type GridQuery = {
+  page: { currentPage: number; pageSize: number };
+  sort: { field: string; order: 'asc' | 'desc' | null };
+};
+const [Grid, gridApi] = useVbenVxeGrid<CatalogModel>({
+  gridOptions: {
+    rowConfig: { keyField: 'code' },
+    columns: [
+      { field: 'name', title: '模型名称', minWidth: 160, sortable: true },
+      {
+        field: 'code',
+        title: '上游模型 ID',
+        minWidth: 200,
+        sortable: true,
+        slots: { default: 'code' },
+      },
+      { title: '能力', minWidth: 130, slots: { default: 'capabilities' } },
+      {
+        field: 'contextLength',
+        title: '上下文',
+        minWidth: 120,
+        sortable: true,
+        slots: { default: 'context' },
+      },
+    ],
+    pagerConfig: { pageSize: 20, pageSizes: [10, 20, 50, 100] },
+    sortConfig: { remote: true },
+    toolbarConfig: {
+      refresh: true,
+      refreshOptions: { code: 'query' },
+      custom: true,
+    },
+    proxyConfig: {
+      sort: true,
+      ajax: {
+        query: async ({ page, sort }: GridQuery) => {
+          const run = ++generation;
+          let id = props.channel.configId;
+          const token = access.accessToken;
+          gridError.value = '';
+          try {
+            let parameters = queryParameters(page, sort);
+            let value: Awaited<ReturnType<typeof getStoredCatalog>> | undefined;
+            let catalogVersion = props.catalog?.refreshedAt;
+            for (;;) {
+              let failure: unknown;
+              try {
+                value = await getStoredCatalog(id, parameters);
+              } catch (error_) {
+                failure = error_;
+              }
+              if (run !== generation || token !== access.accessToken)
+                return result;
+              const current = queryParameters(
+                {
+                  currentPage: gridApi.grid.getCurrentPage(),
+                  pageSize: gridApi.grid.getPageSize(),
+                },
+                gridApi.grid.getSortColumns()[0] ?? {},
+              );
+              if (
+                id !== props.channel.configId ||
+                catalogVersion !== props.catalog?.refreshedAt ||
+                JSON.stringify(current) !== JSON.stringify(parameters)
+              ) {
+                id = props.channel.configId;
+                catalogVersion = props.catalog?.refreshedAt;
+                parameters = current;
+                continue;
+              }
+              if (failure) throw failure;
+              if (!value) throw new Error('模型目录未返回结果');
+              break;
+            }
+            if (
+              run !== generation ||
+              id !== props.channel.configId ||
+              token !== access.accessToken
+            )
+              return result;
+            return (result = {
+              items: value.catalog.records,
+              total: value.catalog.total,
+            });
+          } catch (error) {
+            if (run !== generation) return result;
+            result = { items: [], total: 0 };
+            gridError.value = formatCatalogError(error);
+            throw error;
+          }
+        },
+      },
+    },
+  },
+});
+watch(
+  () => props.channel.configId,
+  () => {
+    result = { items: [], total: 0 };
+    gridApi.grid?.loadData?.([]);
+    void gridApi.grid?.setCurrentPage?.(1)?.then(() => gridApi.query());
+  },
+);
+watch(
+  () => props.catalog,
+  () => {
+    void gridApi.query();
+  },
+);
+onBeforeUnmount(() => {
+  ++generation;
 });
 </script>
 
@@ -155,13 +292,51 @@ const refreshedAt = computed(() => {
       </div>
       <div>
         <dt>绑定业务模型</dt>
-        <dd>{{ boundModels }}</dd>
+        <dd>{{ boundModels.length }}</dd>
       </div>
       <div>
         <dt>连接状态</dt>
         <dd>{{ statusLabel(channel.connection?.status) }}</dd>
       </div>
     </dl>
+    <section v-if="boundModels.length > 0" aria-label="供应商调度策略">
+      <div class="supplier-section-heading"><h3>模型调度策略</h3></div>
+      <ElTable :data="boundModels" row-key="modelId" size="small">
+        <ElTableColumn prop="name" label="业务模型" min-width="160" />
+        <ElTableColumn label="供应商调用顺序" min-width="200">
+          <template #default="{ row }">
+            <ElSelect
+              :model-value="row.strategy"
+              :aria-label="`${row.name} 调度策略`"
+              :disabled="busy || !canEdit"
+              @change="
+                emit(
+                  'policy',
+                  row.modelId,
+                  $event as HubModel['strategy'],
+                  row.fallback,
+                )
+              "
+            >
+              <ElOption label="按优先级调用" value="PRIORITY" />
+              <ElOption label="轮询调用" value="ROUND_ROBIN" />
+            </ElSelect>
+          </template>
+        </ElTableColumn>
+        <ElTableColumn label="失败自动切换" width="140">
+          <template #default="{ row }">
+            <ElSwitch
+              :model-value="row.fallback"
+              :aria-label="`${row.name} 失败自动切换`"
+              :disabled="busy || !canEdit"
+              @change="
+                emit('policy', row.modelId, row.strategy, Boolean($event))
+              "
+            />
+          </template>
+        </ElTableColumn>
+      </ElTable>
+    </section>
     <ElAlert
       v-if="channel.pendingChanges"
       title="修改待验证，当前仍使用已生效的原连接。"
@@ -199,59 +374,22 @@ const refreshedAt = computed(() => {
       type="warning"
       :closable="false"
     />
-    <ElTable
-      v-if="catalog?.records.length"
-      :data="catalog.records"
-      row-key="code"
-      aria-label="渠道可用模型"
-      class="supplier-catalog"
-    >
-      <ElTableColumn prop="name" label="模型名称" min-width="160" />
-      <ElTableColumn label="上游模型 ID" min-width="200">
-        <template #default="{ row }">
-          <code>{{ row.code }}</code>
-        </template>
-      </ElTableColumn>
-      <ElTableColumn label="能力" min-width="130">
-        <template #default="{ row }">{{ capabilities(row) }}</template>
-      </ElTableColumn>
-      <ElTableColumn label="上下文" width="110">
-        <template #default="{ row }">
-          {{ contextSize(row.contextLength) }}
-        </template>
-      </ElTableColumn>
-    </ElTable>
-    <ElEmpty
-      v-else
-      :description="catalogLoading ? '正在读取目录' : '尚未获取模型目录'"
-      :image-size="64"
-    />
+    <ElAlert v-if="gridError" :title="gridError" type="error" />
+    <Grid>
+      <template #code="{ row }">
+        <code>{{ row.code }}</code>
+      </template>
+      <template #capabilities="{ row }">{{ capabilities(row) }}</template>
+      <template #context="{ row }">
+        {{ contextSize(row.contextLength) }}
+      </template>
+    </Grid>
     <div v-if="catalog" class="supplier-catalog-footer">
       <p>
         目录元数据不代表连接验证{{
           refreshedAt ? ` · 更新于 ${refreshedAt}` : ''
         }}
       </p>
-      <div class="supplier-actions">
-        <ElButton
-          link
-          :disabled="catalogLoading || catalog.pageNum <= 1"
-          @click="emit('page', catalog.pageNum - 1)"
-        >
-          上一页
-        </ElButton>
-        <span>第 {{ catalog.pageNum }} 页</span>
-        <ElButton
-          link
-          :disabled="
-            catalogLoading ||
-            catalog.pageNum * catalog.pageSize >= catalog.total
-          "
-          @click="emit('page', catalog.pageNum + 1)"
-        >
-          下一页
-        </ElButton>
-      </div>
     </div>
   </div>
 </template>

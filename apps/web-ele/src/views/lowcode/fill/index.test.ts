@@ -2,9 +2,32 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { reactive } from 'vue';
 
 import ElementPlus, { ElMessageBox } from 'element-plus';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
+
+import { initComponentAdapter } from '#/adapter/component';
+import { initSetupVbenForm } from '#/adapter/form';
 
 import FillPage from './index.vue';
+
+beforeAll(async () => {
+  await initComponentAdapter();
+  await initSetupVbenForm();
+  // RuntimeFields 的表单控件是 defineAsyncComponent，预热门模块避免首个用例冷加载未渲染。
+  await Promise.all([
+    import('element-plus/es/components/input/index'),
+    import('element-plus/es/components/input/style/css'),
+    import('element-plus/es/components/select-v2/index'),
+    import('element-plus/es/components/select-v2/style/css'),
+  ]);
+});
 
 const context = vi.hoisted(() => ({
   push: vi.fn(),
@@ -21,7 +44,10 @@ vi.mock('vue-router', () => ({
   useRouter: () => ({ push: context.push }),
 }));
 vi.mock('#/store/auth', () => ({ useAuthStore: () => context }));
-vi.mock('@vben/hooks', () => ({ useAppConfig: () => ({ apiURL: '/api' }) }));
+vi.mock('@vben/hooks', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  useAppConfig: () => ({ apiURL: '/api' }),
+}));
 vi.mock('@vben/stores', () => ({ useAccessStore: () => context }));
 const definition = {
   title: '报名填写',

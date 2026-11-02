@@ -13,6 +13,11 @@ const logoDark = computed(() => preferences.logo.sourceDark);
 
 <template>
   <AuthPageLayout
+    layout="center"
+    form-class="!w-[760px] !max-w-[calc(100vw_-_2rem)] !flex-none !rounded-xl !pb-10"
+    content-class="!mt-0 md:!max-w-none"
+    center-illustration
+    :toolbar-list="['theme']"
     :app-name="appName"
     :logo="logo"
     :logo-dark="logoDark"

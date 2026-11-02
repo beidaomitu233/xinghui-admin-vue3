@@ -78,7 +78,12 @@ export interface RequestLogStatistics {
 }
 const base = '/system/ai/requests';
 export function listRequestLogs(
-  params: RequestLogFilters & { pageNum: number; pageSize: number },
+  params: RequestLogFilters & {
+    order?: 'asc' | 'desc';
+    orderBy?: string;
+    pageNum: number;
+    pageSize: number;
+  },
 ) {
   return requestClient.get<AiPage<RequestLogRow>>(base, { params });
 }

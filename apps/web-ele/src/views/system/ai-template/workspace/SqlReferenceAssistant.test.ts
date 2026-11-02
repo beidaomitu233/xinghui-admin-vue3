@@ -343,6 +343,25 @@ describe('bounded SQL reference assistant', () => {
         ?.value,
     ).toBe(edited);
   });
+  it('shows a newly generated query after an earlier request has finished', async () => {
+    await render();
+    await generate();
+    api.start.mockResolvedValueOnce({
+      requestId: 'new-request',
+      status: 'QUEUED',
+    });
+    api.poll.mockResolvedValueOnce({
+      requestId: 'new-request',
+      status: 'SUCCEEDED',
+      query,
+      schemaFingerprint: 'schema-a',
+      diagnostics: [],
+    });
+    await generate();
+    expect(api.poll).toHaveBeenLastCalledWith('new-request');
+    expect(document.body.textContent).toContain('生成完成');
+    expect(document.body.textContent).not.toContain('受理未确认');
+  });
   it('cancels the original generated request and confirms the terminal state by polling without trial execution', async () => {
     api.poll
       .mockResolvedValueOnce({

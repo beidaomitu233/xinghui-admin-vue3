@@ -1,4 +1,6 @@
 <script lang="ts" setup>
+import type { NotificationItem } from '@vben/layouts';
+
 import type {
   NotificationId,
   PersonalNotification,
@@ -7,7 +9,8 @@ import type {
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 
-import { Bell } from '@vben/icons';
+import { useVbenDrawer } from '@vben/common-ui';
+import { Notification } from '@vben/layouts';
 import { useAccessStore } from '@vben/stores';
 
 import { ElMessage } from 'element-plus';
@@ -34,9 +37,55 @@ const previewLoading = ref(false);
 const previewFailed = ref(false);
 const markingPreviewRead = ref(false);
 const unreadCount = computed(() => notificationStore.unreadCount);
-const visibleUnreadCount = computed(() => {
-  const count = unreadCount.value;
-  return count !== null && count > 0 ? count : undefined;
+const triggerLabel = computed(() =>
+  unreadCount.value === null
+    ? '个人通知，未读数暂不可用'
+    : `个人通知，未读 ${unreadCount.value} 条`,
+);
+let previewGeneration = 0;
+const popupItems = computed<NotificationItem[]>(() =>
+  previewLoading.value || previewFailed.value
+    ? []
+    : previewItems.value.map((item) => ({
+        id: item.id,
+        title: item.title,
+        message: item.body,
+        date: item.createTime,
+        avatar: '',
+        isRead: item.readTime !== null,
+      })),
+);
+watch(open, (visible) => {
+  if (visible) void loadPreview();
+});
+async function markPreviewItem(item: NotificationItem) {
+  if (markingPreviewRead.value) return;
+  const token = accessStore.accessToken;
+  markingPreviewRead.value = true;
+  try {
+    await markMyNotificationsRead([item.id]);
+    if (token === accessStore.accessToken)
+      await Promise.all([loadPreview(), refreshCount()]);
+  } catch {
+    if (token === accessStore.accessToken)
+      ElMessage.error('标记通知已读失败，请重试');
+  } finally {
+    if (token === accessStore.accessToken) markingPreviewRead.value = false;
+  }
+}
+
+const [CenterDrawer, centerDrawerApi] = useVbenDrawer({
+  title: '通知中心',
+  class: 'w-[min(960px,100vw)]',
+  footer: false,
+  onOpenChange: (visible) => {
+    centerVisible.value = visible;
+  },
+  onClosed: () => refreshCount(),
+});
+watch(centerVisible, (visible) => {
+  if (visible) centerDrawerApi.open();
+  else centerDrawerApi.close();
 });
 
 let pollTimer: ReturnType<typeof setInterval> | undefined;
@@ -69,6 +118,7 @@ async function refreshCount() {
 }
 
 async function loadPreview() {
+  const run = ++previewGeneration;
   if (!accessStore.accessToken) {
     previewItems.value = [];
     previewFailed.value = false;
@@ -83,14 +133,15 @@ async function loadPreview() {
       pageNum: 1,
       pageSize: previewSize,
     });
-    if (token !== accessStore.accessToken) return;
+    if (run !== previewGeneration || token !== accessStore.accessToken) return;
     previewItems.value = result.items;
   } catch {
-    if (token !== accessStore.accessToken) return;
+    if (run !== previewGeneration || token !== accessStore.accessToken) return;
     previewItems.value = [];
     previewFailed.value = true;
   } finally {
-    if (token === accessStore.accessToken) previewLoading.value = false;
+    if (run === previewGeneration && token === accessStore.accessToken)
+      previewLoading.value = false;
   }
 }
 
@@ -101,6 +152,7 @@ async function openInbox(notificationId?: NotificationId) {
 }
 
 async function markPreviewRead() {
+  const token = accessStore.accessToken;
   const ids = previewItems.value
     .filter((item) => item.readTime === null)
     .map((item) => item.id);
@@ -109,17 +161,22 @@ async function markPreviewRead() {
   markingPreviewRead.value = true;
   try {
     await markMyNotificationsRead(ids);
+    if (token !== accessStore.accessToken) return;
     await Promise.all([loadPreview(), refreshCount()]);
   } catch {
-    ElMessage.error('标记通知已读失败，请重试');
+    if (token === accessStore.accessToken)
+      ElMessage.error('标记通知已读失败，请重试');
   } finally {
-    markingPreviewRead.value = false;
+    if (token === accessStore.accessToken) markingPreviewRead.value = false;
   }
 }
 
 watch(
   () => accessStore.accessToken,
   (token) => {
+    previewGeneration++;
+    previewLoading.value = false;
+    markingPreviewRead.value = false;
     stopPolling();
     open.value = false;
     centerVisible.value = false;
@@ -150,126 +207,52 @@ watch(
 );
 
 onBeforeUnmount(() => {
+  previewGeneration++;
   stopPolling();
   notificationStore.clearUnreadCount();
 });
 </script>
 
 <template>
-  <el-popover
-    v-model:visible="open"
-    placement="bottom-end"
-    :width="360"
-    trigger="click"
-    @show="loadPreview"
+  <Notification
+    v-model:open="open"
+    :trigger-label="triggerLabel"
+    :dot="unreadCount !== null && unreadCount > 0"
+    :notifications="popupItems"
+    :show-clear="false"
+    :show-remove="false"
+    :navigate-on-click="false"
+    :mark-all-disabled="
+      previewLoading ||
+      markingPreviewRead ||
+      !previewItems.some((item) => item.readTime === null)
+    "
+    mark-all-text="当前列表已读"
+    @item-click="(item) => openInbox(item.id)"
+    @read="markPreviewItem"
+    @make-all="markPreviewRead"
+    @view-all="openInbox()"
   >
-    <template #reference>
-      <div class="flex-center mr-2 h-full">
-        <el-badge
-          :value="visibleUnreadCount"
-          :max="99"
-          class="notification-badge"
+    <template #empty>
+      <div class="p-4">
+        <el-skeleton v-if="previewLoading" :rows="3" animated />
+        <el-alert
+          v-else-if="previewFailed"
+          title="通知加载失败，请重试"
+          type="error"
+          :closable="false"
         >
-          <el-button
-            aria-label="个人通知"
-            circle
-            text
-            title="个人通知"
-            @click.stop="open = !open"
-          >
-            <Bell class="size-5" />
-          </el-button>
-        </el-badge>
+          <el-button link type="primary" @click="loadPreview">重试</el-button>
+        </el-alert>
+        <el-empty v-else description="暂无通知" :image-size="64" />
       </div>
     </template>
-
-    <div class="space-y-3">
-      <div class="flex items-center justify-between">
-        <strong>个人通知</strong>
-        <span class="text-xs text-muted-foreground">
-          {{
-            unreadCount === null ? '未读数暂不可用' : `未读 ${unreadCount} 条`
-          }}
-        </span>
-      </div>
-
-      <div v-if="previewLoading" class="py-8 text-center text-muted-foreground">
-        正在加载通知…
-      </div>
-      <el-alert
-        v-else-if="previewFailed"
-        title="通知加载失败，请重试"
-        type="error"
-        :closable="false"
-      >
-        <template #default>
-          <el-button link type="primary" @click="loadPreview">重试</el-button>
-        </template>
-      </el-alert>
-      <div
-        v-else-if="previewItems.length === 0"
-        class="py-8 text-center text-muted-foreground"
-      >
-        暂无通知
-      </div>
-      <div v-else class="max-h-80 space-y-1 overflow-auto">
-        <button
-          v-for="item in previewItems"
-          :key="item.id"
-          class="w-full rounded px-3 py-2 text-left hover:bg-muted"
-          type="button"
-          @click="openInbox(item.id)"
-        >
-          <span class="flex items-center justify-between gap-3">
-            <span class="truncate font-medium">{{ item.title }}</span>
-            <el-tag v-if="item.readTime === null" size="small" type="warning">
-              未读
-            </el-tag>
-          </span>
-          <span class="mt-1 block truncate text-xs text-muted-foreground">
-            {{ item.body }}
-          </span>
-          <span class="mt-1 block text-xs text-muted-foreground">{{
-            item.createTime
-          }}</span>
-        </button>
-      </div>
-
-      <div class="flex justify-between border-t pt-2">
-        <el-button
-          :disabled="
-            markingPreviewRead ||
-            !previewItems.some((item) => item.readTime === null)
-          "
-          :loading="markingPreviewRead"
-          size="small"
-          @click="markPreviewRead"
-        >
-          当前列表全部已读
-        </el-button>
-        <el-button size="small" type="primary" @click="openInbox()">
-          查看全部
-        </el-button>
-      </div>
-    </div>
-  </el-popover>
-  <el-drawer
-    v-model="centerVisible"
-    title="通知中心"
-    size="min(960px, 100vw)"
-    destroy-on-close
-    @closed="refreshCount"
-  >
+  </Notification>
+  <CenterDrawer>
     <NotificationCenter
       v-if="centerVisible"
       :notification-id="centerNotificationId"
       @navigate="centerVisible = false"
     />
-  </el-drawer>
+  </CenterDrawer>
 </template>
-
-<style scoped>
-.notification-badge :deep(.el-badge__content) {
-  pointer-events: none;
-}
-</style>

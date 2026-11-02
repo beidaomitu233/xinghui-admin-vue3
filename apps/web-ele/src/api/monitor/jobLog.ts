@@ -24,10 +24,21 @@ export interface JobFirePage {
 }
 
 export interface JobFireFilters {
-  pageNum: number;
-  pageSize: number;
   jobId?: string;
   jobName?: string;
+  order: 'asc' | 'desc';
+  orderBy:
+    | 'attemptCount'
+    | 'completedAt'
+    | 'fireId'
+    | 'jobGroup'
+    | 'jobName'
+    | 'scheduledFireTime'
+    | 'startedAt'
+    | 'status'
+    | 'triggerType';
+  pageNum: number;
+  pageSize: number;
   status?: string;
   triggerType?: string;
 }

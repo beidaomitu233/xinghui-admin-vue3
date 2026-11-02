@@ -23,7 +23,6 @@ describe('aI compatibility deep links', () => {
           route,
           { path: '/ai/configurations', component: {}, name: 'Configurations' },
           { path: '/ai/requests', component: {}, name: 'Monitor' },
-          { path: '/ai/templates', component: {}, name: 'Templates' },
           { path: '/auth/login', component: {}, name: 'Login' },
         ],
       });

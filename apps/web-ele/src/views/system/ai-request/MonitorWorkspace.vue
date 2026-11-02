@@ -1,37 +1,62 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { onMounted, ref } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 
+import { useAccessStore } from '@vben/stores';
+
+import { ElCard, ElTabPane, ElTabs } from 'element-plus';
+
+import AiStatistics from './AiStatistics.vue';
 import CallLogPanel from './CallLogPanel.vue';
-import ConversationWorkspace from './conversations/ConversationWorkspace.vue';
+import AgentConversationHistory from './conversations/AgentConversationHistory.vue';
 
-defineProps<{ initialKeySettings?: boolean }>();
-const tab = ref('conversations');
+const props = defineProps<{ initialKeySettings?: boolean }>();
+const access = useAccessStore();
+const route = useRoute();
+const router = useRouter();
+onMounted(() => {
+  if (
+    (props.initialKeySettings || route.query.settings === 'keys') &&
+    access.accessCodes.some((code) =>
+      /^ai:(?:config|model):(?:list|query|add|edit|test|enable)$/.test(code),
+    )
+  )
+    void router.replace('/ai/configurations');
+});
+const tab = ref(
+  route.query.conversation ||
+    route.query.session ||
+    !access.accessCodes.includes('ai:request:list')
+    ? 'conversations'
+    : 'statistics',
+);
 const logsVisited = ref(false);
 </script>
 <template>
   <section class="monitor-workspace">
-    <nav class="monitor-tabs" aria-label="调用监控视图">
-      <button
-        :aria-pressed="tab === 'conversations'"
-        @click="tab = 'conversations'"
-      >
-        我的对话
-      </button>
-      <button
-        :aria-pressed="tab === 'logs'"
-        @click="
-          logsVisited = true;
-          tab = 'logs';
+    <ElCard class="monitor-navigation" shadow="never">
+      <ElTabs
+        v-model="tab"
+        class="monitor-tabs"
+        @tab-change="
+          (value) => {
+            if (value === 'logs') logsVisited = true;
+          }
         "
       >
-        请求日志
-      </button>
-    </nav>
+        <ElTabPane label="使用统计" name="statistics" />
+        <ElTabPane label="对话记录" name="conversations" />
+        <ElTabPane label="请求日志" name="logs" />
+      </ElTabs>
+    </ElCard>
+    <div v-if="tab === 'statistics'" class="monitor-pane">
+      <AiStatistics :active="tab === 'statistics'" />
+    </div>
     <div
       v-show="tab === 'conversations'"
       class="monitor-pane monitor-conversations"
     >
-      <ConversationWorkspace :initial-key-settings="initialKeySettings" />
+      <AgentConversationHistory :active="tab === 'conversations'" />
     </div>
     <div v-if="logsVisited" v-show="tab === 'logs'" class="monitor-pane">
       <CallLogPanel :active="tab === 'logs'" />
@@ -43,11 +68,10 @@ const logsVisited = ref(false);
 .monitor-workspace {
   display: flex;
   flex-direction: column;
+  gap: 16px;
   min-width: 0;
-  height: calc(var(--vben-content-height, calc(100dvh - 112px)) - 120px);
-  min-height: 520px;
-  border: 1px solid hsl(var(--border));
-  border-radius: 10px;
+  height: 100%;
+  min-height: 0;
 }
 
 .monitor-pane {
@@ -71,22 +95,19 @@ const logsVisited = ref(false);
 }
 
 .monitor-tabs {
-  display: flex;
   flex: none;
-  gap: 8px;
-  padding: 12px 16px;
-  border-bottom: 1px solid hsl(var(--border));
 }
 
-.monitor-tabs button {
-  padding: 8px 16px;
-  color: hsl(var(--muted-foreground));
-  border-radius: 6px;
+.monitor-navigation {
+  flex: none;
 }
 
-.monitor-tabs button[aria-pressed='true'] {
-  color: hsl(var(--primary));
-  background: hsl(var(--muted));
+.monitor-navigation :deep(.el-card__body) {
+  padding: 0 16px;
+}
+
+.monitor-navigation :deep(.el-tabs__header) {
+  margin-bottom: 0;
 }
 
 @media (max-width: 767px) {

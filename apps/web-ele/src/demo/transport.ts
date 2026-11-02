@@ -479,7 +479,7 @@ export function createDemoTransport(storage: DemoStorage) {
                 sortOrder: Number(data.sortOrder) || 0,
                 remark: String(data.remark ?? ''),
               });
-              type.revision++;
+              type.revision = Number(type.revision) + 1;
               changed = true;
               return nextId;
             }
@@ -489,7 +489,7 @@ export function createDemoTransport(storage: DemoStorage) {
             type.name = text(data.name, 100);
             type.enabled = data.enabled === true;
             type.remark = String(data.remark ?? '');
-            type.revision++;
+            type.revision = Number(type.revision) + 1;
             changed = true;
             return null;
           }

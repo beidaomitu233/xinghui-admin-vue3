@@ -3,7 +3,9 @@ import type { ConversationMessage } from './view-model';
 
 import { nextTick, ref, watch } from 'vue';
 
-import { ElEmpty, ElSkeleton, ElTag } from 'element-plus';
+import { Loading } from '@vben/common-ui';
+
+import { ElEmpty, ElTag } from 'element-plus';
 
 import { conversationTime } from './view-model';
 
@@ -49,7 +51,7 @@ const states: Record<ConversationMessage['state'], string> = {
     aria-live="polite"
     @scroll="trackScroll"
   >
-    <ElSkeleton v-if="loading" :rows="6" animated aria-label="正在读取对话" />
+    <Loading v-if="loading" :spinning="true" text="正在读取对话…" />
     <ElEmpty
       v-else-if="historyUnavailable"
       description="旧记录未保留对话"

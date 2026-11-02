@@ -22,6 +22,8 @@ export interface PersonalNotificationPage {
 }
 
 export const listMyNotifications = async (params: {
+  order?: 'asc' | 'desc';
+  orderBy?: string;
   pageNum?: number;
   pageSize?: number;
   unreadOnly?: boolean;

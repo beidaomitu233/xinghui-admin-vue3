@@ -3,7 +3,7 @@ import type { SceneDataForm } from '#/api/system/ai-scene-data';
 
 import { onBeforeUnmount, onMounted, ref } from 'vue';
 
-import { ElAlert, ElButton, ElOption, ElSelect } from 'element-plus';
+import { ElAlert, ElOption, ElPagination, ElSelect } from 'element-plus';
 
 import { sceneDataForms } from '#/api/system/ai-scene-data';
 
@@ -12,7 +12,7 @@ const emit = defineEmits<{ change: [value: string] }>();
 const forms = ref<SceneDataForm[]>([]);
 const keyword = ref('');
 const page = ref(1);
-const total = ref('0');
+const total = ref(0);
 const error = ref('');
 const loading = ref(false);
 let generation = 0;
@@ -29,7 +29,10 @@ async function load() {
     });
     if (!disposed && run === generation) {
       forms.value = result.records;
-      total.value = result.total;
+      const count = Number(result.total);
+      if (!Number.isSafeInteger(count) || count < 0)
+        throw new Error('Invalid total');
+      total.value = count;
       error.value = '';
     }
   } catch {
@@ -81,31 +84,16 @@ onBeforeUnmount(() => {
         :value="form.formId"
       />
       <template #footer>
-        <div class="form-pages">
-          <ElButton
-            link
-            :disabled="disabled || page <= 1 || loading"
-            @click="
-              page--;
-              load();
-            "
-          >
-            上一页
-          </ElButton>
-          <span>第 {{ page }} 页</span>
-          <ElButton
-            link
-            :disabled="
-              disabled || BigInt(page * 20) >= BigInt(total) || loading
-            "
-            @click="
-              page++;
-              load();
-            "
-          >
-            下一页
-          </ElButton>
-        </div>
+        <ElPagination
+          v-model:current-page="page"
+          :disabled="disabled || loading"
+          :page-size="20"
+          :total="total"
+          layout="prev,pager,next"
+          small
+          @click.stop
+          @current-change="load"
+        />
       </template>
     </ElSelect>
     <ElAlert
@@ -117,22 +105,3 @@ onBeforeUnmount(() => {
     />
   </div>
 </template>
-<style scoped>
-.scene-form-picker {
-  display: grid;
-  gap: 8px;
-  width: 100%;
-}
-
-.scene-form-picker :deep(.el-select) {
-  width: 100%;
-}
-
-.form-pages {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 12px;
-}
-</style>

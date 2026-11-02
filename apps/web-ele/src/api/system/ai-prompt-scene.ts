@@ -1,3 +1,5 @@
+import type { AiRestLong } from './ai-application';
+
 import { requestClient } from '#/api/request';
 
 export type PromptVariableType = 'BOOLEAN' | 'NUMBER' | 'STRING';
@@ -11,20 +13,20 @@ export interface PromptVariable {
 }
 
 export interface PromptModelOption {
-  id: number;
+  id: AiRestLong;
   providerCode: string;
   modelCode: string;
 }
 
 export interface PromptSceneSummary {
-  id: number;
+  id: AiRestLong;
   appKey: string;
   sceneKey: string;
-  draftModelId: number;
+  draftModelId: AiRestLong;
   draftProviderCode: string;
   draftModelCode: string;
   draftModelEnabled: boolean;
-  publishedModelId: null | number;
+  publishedModelId: AiRestLong | null;
   publishedProviderCode: null | string;
   publishedModelCode: null | string;
   publishedModelEnabled: boolean;
@@ -52,6 +54,8 @@ export interface PromptSceneView extends PromptSceneSummary {
 }
 
 export interface PromptSceneFilters {
+  orderBy?: string;
+  order?: 'asc' | 'desc';
   pageNum: number;
   pageSize: number;
   appKey?: string;
@@ -61,7 +65,7 @@ export interface PromptSceneFilters {
 }
 
 export interface PromptSceneDraft {
-  modelId: number;
+  modelId: AiRestLong;
   prompt: string;
   variables: PromptVariable[];
 }
@@ -73,7 +77,7 @@ export interface PromptSceneCreate extends PromptSceneDraft {
 
 export interface PromptPreview {
   prompt: string;
-  modelId: number;
+  modelId: AiRestLong;
   providerCode: string;
   modelCode: string;
   draftRevision: number;
@@ -85,30 +89,30 @@ export const listPromptScenes = (params: PromptSceneFilters) =>
 export const listPromptSceneModels = () =>
   requestClient.get<PromptModelOption[]>('/system/ai/prompts/models');
 
-export const getPromptScene = (id: number) =>
+export const getPromptScene = (id: AiRestLong) =>
   requestClient.get<PromptSceneView>(`/system/ai/prompts/${id}`);
 
 export const createPromptScene = (data: PromptSceneCreate) =>
-  requestClient.post<number>('/system/ai/prompts', data);
+  requestClient.post<AiRestLong>('/system/ai/prompts', data);
 
 export const updatePromptSceneDraft = (
-  id: number,
+  id: AiRestLong,
   data: PromptSceneDraft & { revision: number },
 ) => requestClient.put<PromptSceneView>(`/system/ai/prompts/${id}/draft`, data);
 
 export const previewPromptScene = (
-  id: number,
+  id: AiRestLong,
   data: { revision: number; values: Record<string, string> },
 ) =>
   requestClient.post<PromptPreview>(`/system/ai/prompts/${id}/preview`, data);
 
-export const publishPromptScene = (id: number, revision: number) =>
+export const publishPromptScene = (id: AiRestLong, revision: number) =>
   requestClient.post<PromptSceneView>(`/system/ai/prompts/${id}/publish`, {
     revision,
   });
 
 export const setPromptSceneEnabled = (
-  id: number,
+  id: AiRestLong,
   data: { enabled: boolean; revision: number },
 ) =>
   requestClient.request<PromptSceneView>(`/system/ai/prompts/${id}/enabled`, {
@@ -116,7 +120,7 @@ export const setPromptSceneEnabled = (
     method: 'PATCH',
   });
 
-export const removePromptScene = (id: number, revision: number) =>
+export const removePromptScene = (id: AiRestLong, revision: number) =>
   requestClient.delete<undefined>(`/system/ai/prompts/${id}`, {
     params: { revision },
   });

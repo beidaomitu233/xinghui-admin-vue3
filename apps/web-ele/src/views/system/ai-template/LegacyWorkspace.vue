@@ -13,12 +13,21 @@ import type {
   View,
 } from '#/api/system/ai-template';
 
-import { computed, onMounted, ref, shallowReactive, shallowRef } from 'vue';
+import {
+  computed,
+  onBeforeUnmount,
+  ref,
+  shallowReactive,
+  shallowRef,
+  watch,
+} from 'vue';
 
+import { useVbenModal } from '@vben/common-ui';
 import { useAccessStore } from '@vben/stores';
 
 import { ElMessage, ElMessageBox } from 'element-plus';
 
+import { useVbenVxeGrid } from '#/adapter/vxe-table';
 import {
   changeDefinition,
   createDefinition,
@@ -49,8 +58,6 @@ const busy = ref(false);
 const failed = ref(false);
 const rows = ref<Summary[]>([]);
 const total = ref(0);
-const pageNum = ref(1);
-const pageSize = 20;
 const editing = shallowRef<View>();
 const editorLocked = computed(
   () => busy.value || !can(editing.value ? 'edit' : 'add'),
@@ -85,8 +92,6 @@ const references = ref('');
 const checks = ref<Record<string, string>[]>([]);
 const legacyVisible = ref(false);
 const legacy = ref<LegacyScene[]>([]);
-const legacyPage = ref(1);
-const legacyTotal = ref(0);
 const stateNames: Record<string, string> = {
   DRAFT: '草稿',
   TESTED: '测试通过',
@@ -99,29 +104,17 @@ const empty = () => {
   total.value = 0;
 };
 
-async function load() {
-  if (!can('list')) {
-    empty();
-    return;
-  }
-  loading.value = true;
-  failed.value = false;
-  try {
-    const page = await listDefinitions(kind.value, pageNum.value, pageSize);
-    rows.value = page.records;
-    total.value = Number(page.total);
-  } catch {
-    empty();
-    failed.value = true;
-  } finally {
-    loading.value = false;
-  }
+function load() {
+  ++refreshRevision;
+  return gridApi.query();
 }
 function switchTab() {
-  pageNum.value = 1;
   visible.value = false;
   editing.value = undefined;
-  void load();
+  void gridApi.grid
+    ?.clearSort?.()
+    ?.then(() => gridApi.grid.setCurrentPage(1))
+    .then(() => gridApi.query());
 }
 function split(value: string) {
   return [
@@ -426,18 +419,8 @@ async function inspectReferences(version: Version) {
     busy.value = false;
   }
 }
-async function loadLegacy() {
-  busy.value = true;
-  try {
-    const page = await listLegacyScenes(legacyPage.value);
-    legacy.value = page.records;
-    legacyTotal.value = Number(page.total);
-    legacyVisible.value = true;
-  } catch {
-    ElMessage.error('读取兼容映射失败，请重试');
-  } finally {
-    busy.value = false;
-  }
+function loadLegacy() {
+  legacyVisible.value = true;
 }
 function addVariable() {
   variables.value = [
@@ -470,7 +453,316 @@ function addBinding() {
     outputText: '',
   });
 }
-onMounted(load);
+
+const queryParameters = (
+  page: { currentPage: number; pageSize: number },
+  sort: { field?: string; order?: null | string },
+) => ({
+  pageNum: page.currentPage,
+  pageSize: page.pageSize,
+  ...(sort.order === 'asc' || sort.order === 'desc'
+    ? { orderBy: sort.field, order: sort.order as 'asc' | 'desc' }
+    : {}),
+});
+let listGeneration = 0;
+let refreshRevision = 0;
+let legacyGeneration = 0;
+const legacyTotal = ref(0);
+type GridQuery = {
+  page: { currentPage: number; pageSize: number };
+  sort: { field: string; order: 'asc' | 'desc' | null };
+};
+const [Grid, gridApi] = useVbenVxeGrid<Summary>({
+  gridOptions: {
+    columns: [
+      { title: '名称', minWidth: 150, field: 'name', sortable: true },
+      { title: 'ID', minWidth: 170, field: 'id' },
+      {
+        title: '启用',
+        width: 80,
+        field: 'enabled',
+        sortable: true,
+        slots: { default: 'cell2' },
+      },
+      {
+        title: '审批状态',
+        field: 'state',
+        width: 110,
+        visible: kind.value === 'data-resources',
+        slots: { default: 'cell3' },
+      },
+      { title: '修订', width: 70, field: 'revision', sortable: true },
+      {
+        title: '更新时间',
+        minWidth: 160,
+        field: 'update_time',
+        sortable: true,
+      },
+      { title: '操作', minWidth: 380, slots: { default: 'cell6' } },
+    ],
+    pagerConfig: { pageSize: 20, pageSizes: [10, 20, 50, 100] },
+    sortConfig: { remote: true },
+    toolbarConfig: {
+      refresh: true,
+      refreshOptions: { code: 'query' },
+      custom: true,
+    },
+    proxyConfig: {
+      sort: true,
+      ajax: {
+        query: async ({ page, sort }: GridQuery) => {
+          const run = ++listGeneration;
+          const token = access.accessToken;
+          const resource = kind.value;
+          if (!can('list')) return { items: [], total: 0 };
+          loading.value = true;
+          failed.value = false;
+          try {
+            let observedRefresh = refreshRevision;
+            let parameters = queryParameters(page, sort);
+            let value: Awaited<ReturnType<typeof listDefinitions>> | undefined;
+            for (;;) {
+              let failure: unknown;
+              try {
+                value = await listDefinitions(
+                  kind.value,
+                  parameters.pageNum,
+                  parameters.pageSize,
+                  parameters,
+                );
+              } catch (error_) {
+                failure = error_;
+              }
+              if (run !== listGeneration)
+                return { items: rows.value, total: total.value };
+              const current = queryParameters(
+                {
+                  currentPage: gridApi.grid.getCurrentPage(),
+                  pageSize: gridApi.grid.getPageSize(),
+                },
+                gridApi.grid.getSortColumns()[0] ?? {},
+              );
+              if (
+                JSON.stringify(current) !== JSON.stringify(parameters) ||
+                observedRefresh !== refreshRevision
+              ) {
+                parameters = current;
+                observedRefresh = refreshRevision;
+                continue;
+              }
+              if (failure) throw failure;
+              if (!value) throw new Error('列表未返回结果');
+              break;
+            }
+            if (
+              run !== listGeneration ||
+              token !== access.accessToken ||
+              resource !== kind.value
+            )
+              return { items: rows.value, total: total.value };
+            const count = Number(value.total);
+            if (!Number.isSafeInteger(count) || count < 0)
+              throw new Error('Invalid total');
+            rows.value = value.records;
+            total.value = count;
+            return { items: value.records, total: count };
+          } catch (error) {
+            if (run === listGeneration) {
+              failed.value = true;
+              empty();
+            }
+            throw error;
+          } finally {
+            if (run === listGeneration) loading.value = false;
+          }
+        },
+      },
+    },
+  },
+});
+const [LegacyGrid, legacyGridApi] = useVbenVxeGrid<LegacyScene>({
+  gridOptions: {
+    columns: [
+      { title: '旧场景ID', minWidth: 170, field: 'scene_id' },
+      { title: '应用标识', field: 'app_key', sortable: true },
+      { title: '场景标识', field: 'scene_key', sortable: true },
+      { title: '原发布模型ID', minWidth: 170, field: 'published_model_id' },
+      {
+        title: '当前快照修订',
+        width: 120,
+        field: 'published_revision',
+        sortable: true,
+      },
+    ],
+    pagerConfig: { pageSize: 20, pageSizes: [10, 20, 50, 100] },
+    sortConfig: { remote: true },
+    toolbarConfig: {
+      refresh: true,
+      refreshOptions: { code: 'query' },
+      custom: true,
+    },
+    proxyConfig: {
+      sort: true,
+      ajax: {
+        query: async ({ page, sort }: GridQuery) => {
+          const run = ++legacyGeneration;
+          const token = access.accessToken;
+          const resource = kind.value;
+          try {
+            let parameters = queryParameters(page, sort);
+            let value: Awaited<ReturnType<typeof listLegacyScenes>> | undefined;
+            for (;;) {
+              let failure: unknown;
+              try {
+                value = await listLegacyScenes(
+                  parameters.pageNum,
+                  parameters.pageSize,
+                  parameters,
+                );
+              } catch (error_) {
+                failure = error_;
+              }
+              if (run !== legacyGeneration)
+                return { items: legacy.value, total: legacyTotal.value };
+              const current = queryParameters(
+                {
+                  currentPage: legacyGridApi.grid.getCurrentPage(),
+                  pageSize: legacyGridApi.grid.getPageSize(),
+                },
+                legacyGridApi.grid.getSortColumns()[0] ?? {},
+              );
+              if (JSON.stringify(current) !== JSON.stringify(parameters)) {
+                parameters = current;
+                continue;
+              }
+              if (failure) throw failure;
+              if (!value) throw new Error('列表未返回结果');
+              break;
+            }
+            if (
+              run !== legacyGeneration ||
+              token !== access.accessToken ||
+              resource !== kind.value
+            )
+              return { items: legacy.value, total: legacyTotal.value };
+            const count = Number(value.total);
+            if (!Number.isSafeInteger(count) || count < 0)
+              throw new Error('Invalid total');
+            legacy.value = value.records;
+            legacyTotal.value = count;
+            return { items: value.records, total: count };
+          } catch (error) {
+            if (run === legacyGeneration) {
+              legacy.value = [];
+              legacyTotal.value = 0;
+            }
+            throw error;
+          }
+        },
+      },
+    },
+  },
+});
+const [HistoryGrid, historyGridApi] = useVbenVxeGrid<Version>({
+  gridOptions: {
+    columns: [
+      { title: '版本', width: 70, field: 'version_no', sortable: true },
+      { title: '精确版本ID', minWidth: 170, field: 'id' },
+      {
+        title: '发布时间',
+        minWidth: 160,
+        field: 'create_time',
+        sortable: true,
+      },
+      { title: '操作', width: 200, slots: { default: 'cell3' } },
+    ],
+    pagerConfig: { enabled: false },
+    proxyConfig: { enabled: false },
+    toolbarConfig: { custom: true },
+  },
+});
+watch(
+  () => history.value,
+  (data) => historyGridApi.setGridOptions({ data }),
+  { immediate: true },
+);
+const [ChecksGrid, checksGridApi] = useVbenVxeGrid<Record<string, string>>({
+  gridOptions: {
+    columns: [
+      { title: '动作', field: 'action', sortable: true },
+      { title: '结果', field: 'outcome', sortable: true },
+      { title: '操作者', field: 'subject_id' },
+      { title: '时间', field: 'create_time', sortable: true },
+    ],
+    pagerConfig: { enabled: false },
+    proxyConfig: { enabled: false },
+    toolbarConfig: { custom: true },
+  },
+});
+watch(
+  () => checks.value,
+  (data) => checksGridApi.setGridOptions({ data }),
+  { immediate: true },
+);
+onBeforeUnmount(() => {
+  ++listGeneration;
+  ++legacyGeneration;
+});
+watch(kind, () => {
+  ++listGeneration;
+  empty();
+  gridApi.grid?.loadData?.([]);
+  if (kind.value === 'data-resources') void gridApi.grid?.showColumn?.('state');
+  else void gridApi.grid?.hideColumn?.('state');
+});
+const [EditModal, editModalApi] = useVbenModal({
+  footer: true,
+  onBeforeClose: () => !busy.value,
+  onOpenChange: (open) => {
+    visible.value = open;
+  },
+});
+watch(visible, (open) => editModalApi.setState({ isOpen: open }));
+const [LegacyModal, legacyModalApi] = useVbenModal({
+  footer: false,
+  onBeforeClose: () => !busy.value,
+  onOpenChange: (open) => {
+    legacyVisible.value = open;
+  },
+});
+watch(legacyVisible, (open) => legacyModalApi.setState({ isOpen: open }));
+const [TestModal, testModalApi] = useVbenModal({
+  footer: false,
+  onBeforeClose: () => !busy.value,
+  onOpenChange: (open) => {
+    testVisible.value = open;
+  },
+});
+watch(testVisible, (open) => testModalApi.setState({ isOpen: open }));
+const [HistoryModal, historyModalApi] = useVbenModal({
+  footer: false,
+  onBeforeClose: () => !busy.value,
+  onOpenChange: (open) => {
+    historyVisible.value = open;
+  },
+});
+watch(historyVisible, (open) => historyModalApi.setState({ isOpen: open }));
+watch(
+  () => [access.accessToken, ...access.accessCodes],
+  () => {
+    ++listGeneration;
+    ++legacyGeneration;
+    empty();
+    legacy.value = [];
+    gridApi.grid?.loadData?.([]);
+    legacyGridApi.grid?.loadData?.([]);
+    visible.value =
+      legacyVisible.value =
+      historyVisible.value =
+      testVisible.value =
+        false;
+  },
+);
 </script>
 
 <template>
@@ -489,26 +781,7 @@ onMounted(load);
         name="data-resources"
       />
     </el-tabs>
-    <div class="mb-4 flex gap-3">
-      <el-button
-        v-if="can('add')"
-        :disabled="busy || loading"
-        type="primary"
-        @click="openCreate"
-      >
-        新增{{ kind === 'templates' ? '模板' : '数据引用' }}
-      </el-button>
-      <el-button :disabled="busy" :loading="loading" @click="load">
-        刷新
-      </el-button>
-      <el-button
-        v-if="kind === 'templates' && can('query')"
-        :disabled="busy || loading"
-        @click="loadLegacy"
-      >
-        旧场景兼容映射
-      </el-button>
-    </div>
+
     <el-alert
       v-if="failed"
       title="加载失败，请重试"
@@ -516,126 +789,113 @@ onMounted(load);
       :closable="false"
       class="mb-4"
     />
-    <el-table
-      v-loading="loading"
-      :data="rows"
-      row-key="id"
-      empty-text="暂无配置"
-    >
-      <el-table-column prop="name" label="名称" min-width="150" />
-      <el-table-column prop="id" label="ID" min-width="170" />
-      <el-table-column label="启用" width="80">
-        <template #default="{ row }">
-          <el-tag :type="row.enabled ? 'success' : 'info'">
-            {{ row.enabled ? '已启用' : '已停用' }}
-          </el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column
-        v-if="kind === 'data-resources'"
-        label="审批状态"
-        width="110"
-      >
-        <template #default="{ row }">
-          {{ stateNames[row.state] || row.state }}
-        </template>
-      </el-table-column>
-      <el-table-column prop="revision" label="修订" width="70" />
-      <el-table-column prop="update_time" label="更新时间" min-width="160" />
-      <el-table-column label="操作" min-width="380">
-        <template #default="{ row }">
-          <el-button
-            v-if="can('query')"
-            :disabled="busy"
-            link
-            @click="open(row)"
-          >
-            查看 / 编辑
-          </el-button>
-          <el-button
-            v-if="can('test') || (kind === 'templates' && can('preview'))"
-            :disabled="busy"
-            link
-            @click="openTest(row)"
-          >
-            测试 / 预览
-          </el-button>
-          <el-button
-            v-if="can('query')"
-            :disabled="busy"
-            link
-            @click="openHistory(row)"
-          >
-            版本与引用
-          </el-button>
-          <el-button
-            v-if="kind === 'templates' && can('publish')"
-            link
-            type="primary"
-            :disabled="busy"
-            @click="action(row, 'publish')"
-          >
-            发布
-          </el-button>
-          <el-button
-            v-if="kind === 'data-resources' && can('submit')"
-            link
-            :disabled="busy || row.state !== 'TESTED'"
-            @click="action(row, 'submit')"
-          >
-            提交审批
-          </el-button>
-          <el-button
-            v-if="
-              kind === 'data-resources' &&
-              can('approve') &&
-              row.state === 'PENDING'
-            "
-            link
-            type="success"
-            :disabled="busy"
-            @click="action(row, 'approval', true)"
-          >
-            批准
-          </el-button>
-          <el-button
-            v-if="
-              kind === 'data-resources' &&
-              can('approve') &&
-              row.state === 'PENDING'
-            "
-            link
-            type="danger"
-            :disabled="busy"
-            @click="action(row, 'approval', false)"
-          >
-            拒绝
-          </el-button>
-          <el-button
-            v-if="can('disable')"
-            link
-            :disabled="busy"
-            @click="toggle(row)"
-          >
-            {{ row.enabled ? '停用' : '启用' }}
-          </el-button>
-        </template>
-      </el-table-column>
-    </el-table>
-    <el-pagination
-      v-model:current-page="pageNum"
-      :page-size="pageSize"
-      :total="total"
-      layout="total, prev, pager, next"
-      class="mt-4"
-      @current-change="load"
-    />
+    <Grid>
+      <template #toolbar-actions>
+        <el-button
+          v-if="can('add')"
+          :disabled="busy || loading"
+          type="primary"
+          @click="openCreate"
+        >
+          新增{{ kind === 'templates' ? '模板' : '数据引用' }}
+        </el-button>
+        <el-button :disabled="busy" :loading="loading" @click="load">
+          刷新
+        </el-button>
+        <el-button
+          v-if="kind === 'templates' && can('query')"
+          :disabled="busy || loading"
+          @click="loadLegacy"
+        >
+          旧场景兼容映射
+        </el-button>
+      </template>
+      <template #cell2="{ row }">
+        <el-tag :type="row.enabled ? 'success' : 'info'">
+          {{ row.enabled ? '已启用' : '已停用' }}
+        </el-tag>
+      </template>
+      <template #cell3="{ row }">
+        {{ (row.state && stateNames[row.state]) || row.state }}
+      </template>
+      <template #cell6="{ row }">
+        <el-button v-if="can('query')" :disabled="busy" link @click="open(row)">
+          查看 / 编辑
+        </el-button>
+        <el-button
+          v-if="can('test') || (kind === 'templates' && can('preview'))"
+          :disabled="busy"
+          link
+          @click="openTest(row)"
+        >
+          测试 / 预览
+        </el-button>
+        <el-button
+          v-if="can('query')"
+          :disabled="busy"
+          link
+          @click="openHistory(row)"
+        >
+          版本与引用
+        </el-button>
+        <el-button
+          v-if="kind === 'templates' && can('publish')"
+          link
+          type="primary"
+          :disabled="busy"
+          @click="action(row, 'publish')"
+        >
+          发布
+        </el-button>
+        <el-button
+          v-if="kind === 'data-resources' && can('submit')"
+          link
+          :disabled="busy || row.state !== 'TESTED'"
+          @click="action(row, 'submit')"
+        >
+          提交审批
+        </el-button>
+        <el-button
+          v-if="
+            kind === 'data-resources' &&
+            can('approve') &&
+            row.state === 'PENDING'
+          "
+          link
+          type="success"
+          :disabled="busy"
+          @click="action(row, 'approval', true)"
+        >
+          批准
+        </el-button>
+        <el-button
+          v-if="
+            kind === 'data-resources' &&
+            can('approve') &&
+            row.state === 'PENDING'
+          "
+          link
+          type="danger"
+          :disabled="busy"
+          @click="action(row, 'approval', false)"
+        >
+          拒绝
+        </el-button>
+        <el-button
+          v-if="can('disable')"
+          link
+          :disabled="busy"
+          @click="toggle(row)"
+        >
+          {{ row.enabled ? '停用' : '启用' }}
+        </el-button>
+      </template>
+    </Grid>
 
-    <el-dialog
-      v-model="visible"
+    <EditModal
       :title="`${editing ? '配置草稿' : '新增配置'} · ${kind === 'templates' ? '模板' : '数据引用'}`"
-      width="min(1100px, 95vw)"
-      destroy-on-close
+      class="w-full max-w-[1100px]"
+      :destroy-on-close="true"
       :close-on-click-modal="false"
     >
       <el-form label-width="110px" :disabled="editorLocked">
@@ -824,47 +1084,20 @@ onMounted(load);
           保存草稿
         </el-button>
       </template>
-    </el-dialog>
-    <el-dialog
-      v-model="legacyVisible"
-      title="旧场景兼容映射"
-      width="min(1000px, 95vw)"
-    >
+    </EditModal>
+    <LegacyModal title="旧场景兼容映射" class="w-full max-w-[1000px]">
       <el-alert
         title="旧appKey/sceneKey继续使用原读取链路。当前publishedRevision只表示旧表快照，不是独立模板版本，也不自动迁入应用。"
         :closable="false"
         class="mb-3"
       />
-      <el-table :data="legacy">
-        <el-table-column prop="scene_id" label="旧场景ID" min-width="170" />
-        <el-table-column prop="app_key" label="应用标识" />
-        <el-table-column prop="scene_key" label="场景标识" />
-        <el-table-column
-          prop="published_model_id"
-          label="原发布模型ID"
-          min-width="170"
-        />
-        <el-table-column
-          prop="published_revision"
-          label="当前快照修订"
-          width="120"
-        />
-      </el-table>
-      <el-pagination
-        v-model:current-page="legacyPage"
-        :page-size="20"
-        :total="legacyTotal"
-        layout="total, prev, pager, next"
-        class="mt-3"
-        @current-change="loadLegacy"
-      />
-    </el-dialog>
+      <LegacyGrid />
+    </LegacyModal>
 
-    <el-dialog
-      v-model="testVisible"
+    <TestModal
       title="当前身份测试"
-      width="min(900px, 95vw)"
-      destroy-on-close
+      class="w-full max-w-[900px]"
+      :destroy-on-close="true"
       :close-on-click-modal="false"
     >
       <el-form label-width="115px">
@@ -950,31 +1183,25 @@ onMounted(load);
           </el-collapse-item>
         </el-collapse>
       </template>
-    </el-dialog>
+    </TestModal>
 
-    <el-dialog
-      v-model="historyVisible"
+    <HistoryModal
       title="不可变版本、比较与应用引用"
-      width="min(1100px, 95vw)"
-      destroy-on-close
+      class="w-full max-w-[1100px]"
+      :destroy-on-close="true"
     >
       <el-alert
         title="新发布版本不会自动升级应用的固定绑定。旧场景仍在原“场景提示词”页面读取，不伪造历史版本。"
         :closable="false"
         class="mb-3"
       />
-      <el-table :data="history" empty-text="尚无发布版本">
-        <el-table-column prop="version_no" label="版本" width="70" />
-        <el-table-column prop="id" label="精确版本ID" min-width="170" />
-        <el-table-column prop="create_time" label="发布时间" min-width="160" />
-        <el-table-column label="操作" width="200">
-          <template #default="{ row }">
-            <el-button link @click="inspect(row)">查看</el-button>
-            <el-button link @click="inspect(row, true)">对比</el-button>
-            <el-button link @click="inspectReferences(row)">引用</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+      <HistoryGrid>
+        <template #cell3="{ row }">
+          <el-button link @click="inspect(row)">查看</el-button>
+          <el-button link @click="inspect(row, true)">对比</el-button>
+          <el-button link @click="inspectReferences(row)">引用</el-button>
+        </template>
+      </HistoryGrid>
       <p v-if="references" class="my-3 whitespace-pre-wrap">{{ references }}</p>
       <div class="mt-3 grid gap-3 md:grid-cols-2">
         <pre
@@ -990,14 +1217,9 @@ onMounted(load);
       </div>
       <el-collapse v-if="checks.length > 0" class="mt-4">
         <el-collapse-item title="测试与审批证据">
-          <el-table :data="checks">
-            <el-table-column prop="action" label="动作" />
-            <el-table-column prop="outcome" label="结果" />
-            <el-table-column prop="subject_id" label="操作者" />
-            <el-table-column prop="create_time" label="时间" />
-          </el-table>
+          <ChecksGrid />
         </el-collapse-item>
       </el-collapse>
-    </el-dialog>
+    </HistoryModal>
   </section>
 </template>

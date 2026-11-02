@@ -10,7 +10,6 @@ import { useAccessStore } from '@vben/stores';
 import { ElMessage, ElMessageBox } from 'element-plus';
 
 import { addRecord, getRuntime } from '#/api/lowcode/forms';
-import AdminPageHeader from '#/components/admin-page-header.vue';
 
 import { dataError, initialData } from '../form-schema';
 import RuntimeFields from '../RuntimeFields.vue';
@@ -99,8 +98,7 @@ watch(
 <template>
   <!-- Prettier formats adjacent inline controls; avoid conflicting whitespace rules. -->
   <!-- eslint-disable vue/multiline-html-element-content-newline, vue/html-closing-bracket-newline -->
-  <Page content-class="admin-page">
-    <AdminPageHeader :title="runtime?.name || '填写表单'" />
+  <Page :title="runtime?.name || '填写表单'">
     <el-card v-loading="loading" class="max-w-4xl">
       <el-alert
         v-if="!can('add')"

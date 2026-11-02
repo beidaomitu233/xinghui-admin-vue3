@@ -99,6 +99,8 @@ const base = '/system/ai/settings';
 export const settingsProviders = () =>
   requestClient.get<SettingsProvider[]>(`${base}/providers`);
 export const listAiSettings = (params: {
+  order?: 'asc' | 'desc';
+  orderBy?: string;
   pageNum: number;
   pageSize: number;
   search?: string;
