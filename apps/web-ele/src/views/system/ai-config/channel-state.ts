@@ -4,6 +4,8 @@ import type {
   SettingsKeyView,
 } from '#/api/system/ai-settings';
 
+import { secureId } from '#/composables/secure-id';
+
 export interface ChannelKeyDraft {
   apiKey: string;
   keyConfigured: boolean;
@@ -24,7 +26,7 @@ export function channelKey(
   value?: SettingsKeyView,
 ): ChannelKeyDraft {
   return {
-    localId: crypto.randomUUID(),
+    localId: secureId(),
     keyId: value?.keyId,
     name: value?.name ?? `Key ${index}`,
     apiKey: '',
@@ -58,6 +60,8 @@ export function channelMetadata(value: ChannelDraft) {
 }
 export function channelError(value: ChannelDraft): string {
   if (!value.name.trim()) return '请填写渠道名称。';
+  if (value.provider === 'openai-compatible' && !value.endpointUrl.trim())
+    return '请填写 OpenAI 兼容服务地址。';
   if (value.keys.length === 0 || value.keys.length > 16)
     return '每个渠道需保留 1 到 16 个 Key。';
   for (const key of value.keys) {

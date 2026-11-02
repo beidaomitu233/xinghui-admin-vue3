@@ -269,6 +269,12 @@ beforeEach(() => {
       defaultEndpoint: 'https://api.deepseek.com/chat/completions',
       suggestedModels: [],
     },
+    {
+      code: 'openai-compatible',
+      name: 'OpenAI 兼容服务',
+      defaultEndpoint: '',
+      suggestedModels: [],
+    },
   ]);
   api.update.mockImplementation(async (_id, body) => ({
     ...first,
@@ -582,6 +588,35 @@ describe('independent multi-key channel management', () => {
             modelCodes: ['vendor/catalog-model'],
           }),
         ],
+      }),
+    );
+  });
+  it('discovers and saves models from a user-supplied compatible provider', async () => {
+    api.draftScan.mockResolvedValue(
+      catalog('vendor/catalog-model', '目录模型', 'openai-compatible'),
+    );
+    const wrapper = render();
+    await flushPromises();
+    await click('新增渠道');
+    await fill('渠道名称', '兼容渠道');
+    await selectNative('渠道服务商', 'openai-compatible');
+    await fill('兼容服务地址', 'https://vendor.example/v1');
+    await fill('Key 1 密钥', 'fictional-custom-key');
+    await click('获取模型目录');
+    expect(api.draftScan.mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({
+        provider: 'openai-compatible',
+        endpointUrl: 'https://vendor.example/v1',
+        apiKey: 'fictional-custom-key',
+      }),
+    );
+    await selectValue(wrapper, 'Key 1 模型', ['vendor/catalog-model']);
+    await click('保存渠道');
+    expect(api.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: 'openai-compatible',
+        endpointUrl: 'https://vendor.example/v1',
+        modelCodes: ['vendor/catalog-model'],
       }),
     );
   });

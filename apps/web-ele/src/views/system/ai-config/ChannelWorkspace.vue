@@ -65,6 +65,7 @@ import {
   testAiSettings,
   updateAiSettings,
 } from '#/api/system/ai-settings';
+import { secureId } from '#/composables/secure-id';
 
 import {
   channelDraft,
@@ -233,6 +234,9 @@ function changeProvider() {
     invalidateCatalog(key);
   }
 }
+function changeEndpoint() {
+  for (const key of form.keys) invalidateCatalog(key);
+}
 function restoreOfficialEndpoint() {
   if (readonly.value) return;
   const preset = providers.value.find(
@@ -292,6 +296,8 @@ function tone(
 }
 function canScan(key: ChannelKeyDraft) {
   if (busy.value || saveUnconfirmed.value) return false;
+  if (form.provider === 'openai-compatible' && !form.endpointUrl.trim())
+    return false;
   return key.apiKey.trim()
     ? can('add') || can('edit') || can('test')
     : Boolean(current.value && key.keyId && can('test'));
@@ -310,6 +316,11 @@ function apply(value?: AiSettingsView) {
   clearSecrets();
   current.value = value;
   Object.assign(form, channelDraft(value));
+  if (editorOpen.value)
+    void metadataFormApi.setValues({
+      name: form.name,
+      provider: form.provider,
+    });
   baseline.value = channelMetadata(form);
   confirmedCosts.value = false;
   saveUnconfirmed.value = false;
@@ -579,7 +590,7 @@ async function save() {
   error.value = '';
   try {
     pendingSave ??= {
-      body: channelPayload(form, current.value, crypto.randomUUID()),
+      body: channelPayload(form, current.value, secureId()),
       configId: current.value?.configId ?? null,
     };
     const attempt = pendingSave;
@@ -1024,12 +1035,6 @@ const [MetadataForm, metadataFormApi] = useVbenForm({
     },
   ],
 });
-watch(
-  () => JSON.stringify(metadataValues()),
-  () => {
-    if (editorOpen.value) void metadataFormApi.setValues(metadataValues());
-  },
-);
 const [ChannelDrawer, channelDrawerApi] = useVbenDrawer({
   onBeforeClose: () => requestClose(),
 });
@@ -1141,7 +1146,20 @@ watch(
     >
       <MetadataForm />
       <ElForm class="channel-form" label-position="top" @submit.prevent="save">
-        <p class="channel-secondary">
+        <ElFormItem
+          v-if="form.provider === 'openai-compatible'"
+          label="服务地址"
+          required
+        >
+          <ElInput
+            v-model="form.endpointUrl"
+            :disabled="readonly || !!current"
+            aria-label="兼容服务地址"
+            placeholder="https://example.com/v1 或完整聊天接口地址"
+            @input="changeEndpoint"
+          />
+        </ElFormItem>
+        <p v-else class="channel-secondary">
           服务地址：{{ form.endpointUrl }}
           <ElButton
             v-if="

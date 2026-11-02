@@ -125,7 +125,7 @@ export function sceneSaveProblem(error: unknown) {
           typeof path === 'string' ? path.replace(/^definition\./, '') : path;
         if (
           typeof name === 'string' &&
-          /^(?:name|purpose|promptText|outputRequirement|dataObjects|dataBindings|sqlBindings|initialModel|businessModel|modelPolicy)(?:\.\w+|\[\d{1,3}\])*$/.test(
+          /^(?:name|purpose|promptText|outputRequirement|dataObjects|dataBindings|sqlBindings|initialModel|businessModel|businessModels|modelPolicy)(?:\.\w+|\[\d{1,3}\])*$/.test(
             name,
           )
         ) {

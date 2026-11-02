@@ -33,6 +33,7 @@ import {
   sceneModels,
   setSceneEnabled,
 } from '#/api/system/ai-scene';
+import { secureId } from '#/composables/secure-id';
 
 import ModelPriorityEditor from '../ai-template/workspace/ModelPriorityEditor.vue';
 import { promptDocument } from '../ai-template/workspace/prompt-document';
@@ -65,7 +66,7 @@ const dirty = computed(() =>
   Boolean(draft.value && JSON.stringify(draft.value) !== confirmed.value),
 );
 let pending: Parameters<typeof saveScene>[1] | undefined;
-let createId = crypto.randomUUID();
+let createId = secureId();
 function assign(value: SceneDetail) {
   detail.value = value;
   draft.value = cloneScene(
@@ -150,7 +151,7 @@ async function initialize() {
     });
     if (!live(actor, run)) return;
     assign(value);
-    createId = crypto.randomUUID();
+    createId = secureId();
   } catch {
     if (live(actor, run)) error.value = '初始化未完成，可重试原操作。';
   } finally {
@@ -168,7 +169,7 @@ async function save() {
     if (!pending) {
       const { modelPolicy: _policy, ...definition } = cloneScene(draft.value);
       pending = {
-        clientMutationId: crypto.randomUUID(),
+        clientMutationId: secureId(),
         expectedRevision: detail.value.scene.revision,
         definition,
       };
@@ -176,7 +177,11 @@ async function save() {
     const result = await saveScene(detail.value.scene.sceneKey, pending);
     if (!live(actor, run)) return;
     assign(result.detail);
-    ElMessage.success('中台配置已保存，新任务使用此配置');
+    ElMessage.success(
+      result.detail.scene.currentVersionId
+        ? '中台配置已保存，新任务使用此配置'
+        : '设置已保存，请选择模型后开始使用中台',
+    );
   } catch (error_) {
     if (!live(actor, run)) return;
     const problem = sceneSaveProblem(error_);
@@ -201,7 +206,7 @@ async function enable(value: unknown) {
     const result = await setSceneEnabled(detail.value.scene.sceneKey, {
       enabled: Boolean(value),
       expectedRevision: detail.value.scene.revision,
-      clientMutationId: crypto.randomUUID(),
+      clientMutationId: secureId(),
     });
     if (!live(actor, run)) return;
     assign(result.detail);
@@ -265,7 +270,7 @@ watch(identity, () => {
   pending = undefined;
   saving.value = false;
   loading.value = false;
-  createId = crypto.randomUUID();
+  createId = secureId();
   void load();
 });
 onBeforeUnmount(() => {
@@ -312,6 +317,14 @@ defineExpose({ requestLeave });
     >
       <ElButton link @click="reload">重新读取</ElButton>
     </ElAlert>
+    <ElAlert
+      v-if="detail && !detail.scene.currentVersionId"
+      class="mt-4"
+      title="可先保存提示词；选择模型后即可启用中台。"
+      type="info"
+      :closable="false"
+      show-icon
+    />
     <ElSkeleton v-if="loading" :rows="8" animated class="mt-6" />
     <ElEmpty
       v-else-if="!can('list') || !can('query')"

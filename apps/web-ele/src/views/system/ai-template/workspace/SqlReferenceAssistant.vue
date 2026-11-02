@@ -47,6 +47,7 @@ import {
   getSqlAssistance,
   startSqlAssistance,
 } from '#/api/system/ai-sql-assistance';
+import { secureId } from '#/composables/secure-id';
 
 import { variableToken } from './prompt-tokens';
 import { queryParameterText, readQueryParameters } from './query-parameters';
@@ -458,7 +459,7 @@ async function generateSql() {
       : {}),
     expectedSchemaFingerprint: schema.value.fingerprint,
     confirmedCosts: true,
-    clientMutationId: crypto.randomUUID(),
+    clientMutationId: secureId(),
     maxRows: maxRows.value,
   };
   const attempt = pendingStart;
