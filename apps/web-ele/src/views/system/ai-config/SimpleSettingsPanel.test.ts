@@ -221,10 +221,12 @@ function render(page = false) {
 }
 function deferred<T>() {
   let resolve: (value: T) => void = () => {};
-  const promise = new Promise<T>((yes) => {
+  let reject: (reason?: unknown) => void = () => {};
+  const promise = new Promise<T>((yes, no) => {
     resolve = yes;
+    reject = no;
   });
-  return { promise, resolve };
+  return { promise, reject, resolve };
 }
 // 抽屉内容经 teleport 挂到 body，Key 区块从 document 查询。
 function keySection(index: number) {
@@ -328,6 +330,50 @@ afterEach(() => {
   document.body.innerHTML = '';
 });
 describe('independent multi-key channel management', () => {
+  it('finishes a pending scan and applies the latest search without staying in loading state', async () => {
+    const delayed = deferred<ModelCatalogPage>();
+    api.draftScan.mockReturnValueOnce(delayed.promise);
+    api.ticket.mockResolvedValueOnce(catalog('vendor/free', '免费模型'));
+    const wrapper = render();
+    await flushPromises();
+    await click('新增渠道');
+    await fill('Key 1 密钥', 'fictional-key');
+    await click('获取模型目录');
+    const remote = selectControl(wrapper, 'Key 1 模型').props('remoteMethod');
+    if (!remote) throw new Error('Missing catalog search');
+    remote('free');
+    delayed.resolve({ ...catalog(), catalogScanId: 'scan-ticket' });
+    await flushPromises();
+    expect(api.ticket).toHaveBeenCalledWith('scan-ticket', {
+      search: 'free',
+      pageNum: 1,
+      pageSize: 50,
+    });
+    expect(optionNames(wrapper, 'Key 1 模型')).toContain('免费模型');
+    const button = keySection(1)
+      .findAll('button')
+      .find((item) => item.text() === '刷新目录');
+    expect(button?.classes()).not.toContain('is-loading');
+  });
+  it('clears loading and reports a timeout when search changes during a failed scan', async () => {
+    const delayed = deferred<ModelCatalogPage>();
+    api.draftScan.mockReturnValueOnce(delayed.promise);
+    const wrapper = render();
+    await flushPromises();
+    await click('新增渠道');
+    await fill('Key 1 密钥', 'fictional-key');
+    await click('获取模型目录');
+    const remote = selectControl(wrapper, 'Key 1 模型').props('remoteMethod');
+    if (!remote) throw new Error('Missing catalog search');
+    remote('free');
+    delayed.reject({ code: 'ECONNABORTED' });
+    await flushPromises();
+    expect(keySection(1).text()).toContain('目录读取超时，请重试。');
+    const button = keySection(1)
+      .findAll('button')
+      .find((item) => item.text() === '获取模型目录');
+    expect(button?.classes()).not.toContain('is-loading');
+  });
   it('uses the owner-scoped scan receipt for draft catalog search without retransmitting a key and invalidates it on material change', async () => {
     api.draftScan.mockResolvedValue({
       ...catalog('vendor/first', '首批目录', 'openrouter', 1, 60),

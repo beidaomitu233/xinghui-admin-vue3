@@ -64,17 +64,27 @@ export interface StoredCatalog {
   sources: CatalogSource[];
 }
 const base = '/system/ai/model-catalog';
+// The upstream catalog has its own 15-second deadline; allow it to return a
+// useful error instead of the shared 10-second client timeout winning first.
+const catalogTimeout = 25_000;
 export const publicModelCatalog = (params: CatalogQuery) =>
   requestClient.get<ModelCatalogPage>(base, { params });
 export const scanSavedModels = (
   input: SavedCatalogScan,
   signal?: AbortSignal,
-) => requestClient.post<ModelCatalogPage>(`${base}/scan`, input, { signal });
+) =>
+  requestClient.post<ModelCatalogPage>(`${base}/scan`, input, {
+    signal,
+    timeout: catalogTimeout,
+  });
 export const scanDraftModels = (
   input: DraftCatalogScan,
   signal?: AbortSignal,
 ) =>
-  requestClient.post<ModelCatalogPage>(`${base}/draft-scan`, input, { signal });
+  requestClient.post<ModelCatalogPage>(`${base}/draft-scan`, input, {
+    signal,
+    timeout: catalogTimeout,
+  });
 export const getStoredCatalog = (
   configId: string,
   params: CatalogQuery & {
@@ -116,6 +126,8 @@ const errors: Record<string, string> = {
   UPSTREAM_UNAUTHORIZED: '模型目录认证失败，请检查 Key。',
 };
 export function catalogError(error: unknown) {
+  if ((error as { code?: string })?.code === 'ECONNABORTED')
+    return '目录读取超时，请重试。';
   const data = (error as { response?: { data?: { message?: unknown } } })
     ?.response?.data;
   const code =

@@ -777,6 +777,8 @@ async function scanModels(key: ChannelKeyDraft, pageNum = 1) {
   const endpoint = form.endpointUrl;
   const generation = state.generation;
   const request = ++state.request;
+  const search = state.search;
+  let received = false;
   const valid = () =>
     alive &&
     run === selection &&
@@ -823,6 +825,7 @@ async function scanModels(key: ChannelKeyDraft, pageNum = 1) {
     state.source = result.source;
     state.catalogScanId = result.catalogScanId ?? undefined;
     state.status = 'READY';
+    received = true;
   } catch (error_) {
     if (valid() && !controller.signal.aborted) {
       state.error = catalogError(error_);
@@ -831,6 +834,7 @@ async function scanModels(key: ChannelKeyDraft, pageNum = 1) {
   } finally {
     if (valid()) state.loading = false;
   }
+  if (received && valid() && state.search !== search) changeCatalogPage(key, 1);
 }
 async function readSavedCatalog(key: ChannelKeyDraft, pageNum = 1) {
   const saved = current.value;
@@ -838,6 +842,15 @@ async function readSavedCatalog(key: ChannelKeyDraft, pageNum = 1) {
   const state = getCatalog(key);
   const run = selection;
   const request = ++state.request;
+  const search = state.search;
+  const generation = state.generation;
+  let received = false;
+  const valid = () =>
+    alive &&
+    run === selection &&
+    catalogs[key.localId]?.generation === generation &&
+    catalogs[key.localId]?.request === request &&
+    form.keys.some((item) => item.localId === key.localId);
   state.loading = true;
   try {
     const stored = await getStoredCatalog(saved.configId, {
@@ -846,13 +859,7 @@ async function readSavedCatalog(key: ChannelKeyDraft, pageNum = 1) {
       pageNum,
       pageSize: 50,
     });
-    if (
-      !alive ||
-      run !== selection ||
-      request !== state.request ||
-      !form.keys.some((item) => item.localId === key.localId)
-    )
-      return;
+    if (!valid()) return;
     const currentSource = stored.sources.some(
       (source) => source.keyId === key.keyId && source.current,
     );
@@ -873,13 +880,13 @@ async function readSavedCatalog(key: ChannelKeyDraft, pageNum = 1) {
     state.refreshedAt = stored.catalog.refreshedAt;
     if (usable) state.status = 'READY';
     else state.status = stored.state === 'STALE' ? 'STALE' : 'UNSCANNED';
+    received = true;
   } catch {
-    if (alive && run === selection && request === state.request)
-      state.error = '已保存目录暂未读到，可主动重新获取。';
+    if (valid()) state.error = '已保存目录暂未读到，可主动重新获取。';
   } finally {
-    if (alive && run === selection && request === state.request)
-      state.loading = false;
+    if (valid()) state.loading = false;
   }
+  if (received && valid() && state.search !== search) changeCatalogPage(key, 1);
 }
 function changeCatalogPage(key: ChannelKeyDraft, pageNum: number) {
   const state = getCatalog(key);
@@ -903,6 +910,8 @@ async function readScanPage(
   const run = selection;
   const generation = state.generation;
   const request = ++state.request;
+  const search = state.search;
+  let received = false;
   const valid = () =>
     alive &&
     run === selection &&
@@ -920,16 +929,22 @@ async function readScanPage(
     state.total = result.total;
     state.page = result.pageNum;
     for (const model of result.records) state.labels[model.code] = model;
+    received = true;
   } catch {
     if (valid())
       state.error = '扫描目录暂未读到，票据可能已过期；请主动重新获取。';
   } finally {
     if (valid()) state.loading = false;
   }
+  if (received && valid() && state.search !== search) changeCatalogPage(key, 1);
 }
 function searchModels(key: ChannelKeyDraft, search: string) {
   const state = getCatalog(key);
-  state.search = search.slice(0, 128);
+  const next = search.slice(0, 128);
+  if (state.search === next) return;
+  state.search = next;
+  // Keep the active scan alive; its completion will apply the latest search.
+  if (state.loading) return;
   state.request++;
   clearTimeout(catalogTimers.get(key.localId));
   catalogTimers.set(
